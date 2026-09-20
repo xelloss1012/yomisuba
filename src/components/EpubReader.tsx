@@ -241,8 +241,11 @@ export const EpubReader: React.FC<Props> = ({
         const bodyContent = parsed.body.innerHTML;
         const fontCss = getFontFamilyCss(settings.fontFamily);
         const mobile = window.innerWidth < 640;
-        const pad = mobile ? '14px 16px' : '32px 44px';
-        const imgMaxH = mobile ? 'calc(100dvh - 32px)' : 'calc(100vh - 68px)';
+        const sidePad = mobile ? 16 : 44;
+        // Keep only a small permanent margin. The outer reader viewport
+        // reserves the larger header/footer areas only while the UI is open.
+        const pad = `${mobile ? 18 : 32}px ${sidePad}px ${mobile ? 52 : 40}px`;
+        const imgMaxH = 'calc(100% - 32px)';
         const imgMaxW = mobile ? 'calc(100vw - 28px)' : 'calc(100vw - 88px)';
         const colGap = '0px';
         const fontSize = mobile ? Math.min(settings.fontSize, 18) : settings.fontSize;
@@ -488,7 +491,8 @@ export const EpubReader: React.FC<Props> = ({
   // Re-apply transform when page changes from React state
   useEffect(() => { updatePagination(); }, [currentPage, updatePagination]);
 
-  // The visible header/footer change the iframe viewport height.
+  // When the chrome is shown, the iframe viewport becomes smaller. Recalculate
+  // against that viewport after the transition so controls never cover text.
   useEffect(() => {
     const timer = window.setTimeout(updatePagination, 220);
     return () => window.clearTimeout(timer);
@@ -556,10 +560,22 @@ export const EpubReader: React.FC<Props> = ({
         onUpdateSettings={onUpdateSettings}
       />
 
-      {/* Explicit UI toggle, especially important on mobile where the header overlays the reader. */}
+      {/* Compact progress stays available without opening the full controls. */}
+      <div
+        className={`fixed bottom-[max(env(safe-area-inset-bottom,0px),8px)] left-1/2 -translate-x-1/2 z-[45] rounded-full px-3 py-1 bg-black/45 text-white/90 backdrop-blur-md text-[10px] tabular-nums pointer-events-none transition-opacity ${
+          showUi ? 'opacity-0' : 'opacity-100'
+        }`}
+        aria-live="polite"
+      >
+        {currentPage + 1}/{Math.max(1, totalPages)} · C{currentSpineIndex + 1}/{epub.spine.length}
+      </div>
+
+      {/* Keep the toggle in the bottom chrome instead of over the text header area. */}
       <button
         onClick={() => setShowUi((visible) => !visible)}
-        className={`fixed top-3 right-3 z-[55] p-2 rounded-full backdrop-blur-md shadow-md transition-colors ${
+        className={`fixed right-3 z-[55] p-2 rounded-full backdrop-blur-md shadow-md transition-colors ${
+          showUi ? 'bottom-[118px]' : 'bottom-[max(env(safe-area-inset-bottom,8px),8px)]'
+        } ${
           showUi
             ? 'bg-white/90 text-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-200'
             : 'bg-zinc-900/40 text-white/80'
@@ -570,7 +586,8 @@ export const EpubReader: React.FC<Props> = ({
         {showUi ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
       </button>
 
-      {/* Reader Viewport */}
+      {/* Reader Viewport: use the full screen when chrome is hidden, and
+          reserve only the actual header/footer space when it is visible. */}
       <div
         className="absolute left-0 right-0 overflow-hidden transition-[top,bottom] duration-200"
         style={{
