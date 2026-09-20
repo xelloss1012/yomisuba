@@ -657,13 +657,6 @@ export const EpubReader: React.FC<Props> = ({
   // Re-apply transform when page changes from React state
   useEffect(() => { updatePagination(); }, [currentPage, updatePagination]);
 
-  // When the chrome is shown, the iframe viewport becomes smaller. Recalculate
-  // against that viewport after the transition so controls never cover text.
-  useEffect(() => {
-    const timer = window.setTimeout(updatePagination, 220);
-    return () => window.clearTimeout(timer);
-  }, [showUi, updatePagination]);
-
   // Resize
   useEffect(() => {
     const onResize = () => {
@@ -815,14 +808,9 @@ export const EpubReader: React.FC<Props> = ({
         {showUi ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
       </button>
 
-      {/* Reader Viewport: use the full screen when chrome is hidden, and
-          reserve only the actual header/footer space when it is visible. */}
+      {/* Keep the viewport fixed so showing the controls never changes pagination. */}
       <div
-        className="absolute left-0 right-0 overflow-hidden transition-[top,bottom] duration-200"
-        style={{
-          top: showUi ? '64px' : 0,
-          bottom: showUi ? '108px' : 0,
-        }}
+        className="absolute inset-0 overflow-hidden"
       >
         <iframe
           ref={iframeRef}
