@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Volume2, ExternalLink, Languages, BookOpen, Loader2 } from 'lucide-react';
 import { AiProvider } from '../types/epub';
 import { AI_PROVIDER_LABELS, translateWithAi } from '../utils/aiTranslation';
+import { getCachedTranslation, saveCachedTranslation } from '../utils/translationCache';
 
 interface Props {
   isOpen: boolean;
@@ -21,15 +22,28 @@ export const TranslationModal: React.FC<Props> = ({ isOpen, onClose, selectedTex
 
     const translate = async () => {
       setIsLoading(true);
+      const provider = aiProvider || 'google';
+      const providerKey = aiApiKey || '';
+      const cachedTranslation = getCachedTranslation(provider, selectedText, providerKey);
+      if (cachedTranslation) {
+        setTranslatedText(cachedTranslation);
+        setIsLoading(false);
+        return;
+      }
+
       try {
         if (aiProvider && aiApiKey) {
-          setTranslatedText(await translateWithAi(aiProvider, aiApiKey, selectedText));
+          const result = await translateWithAi(aiProvider, aiApiKey, selectedText);
+          setTranslatedText(result);
+          saveCachedTranslation(provider, selectedText, result, providerKey);
         } else {
           const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=es&dt=t&q=${encodeURIComponent(selectedText)}`;
           const res = await fetch(url);
           const data = await res.json();
           if (data && data[0]) {
-            setTranslatedText(data[0].map((item: [string]) => item[0]).join(''));
+            const result = data[0].map((item: [string]) => item[0]).join('');
+            setTranslatedText(result);
+            saveCachedTranslation(provider, selectedText, result, providerKey);
           } else {
             setTranslatedText('No se pudo traducir el texto.');
           }
