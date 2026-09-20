@@ -6,8 +6,12 @@ interface Props {
   isVisible: boolean;
   currentPage: number;
   totalPages: number;
+  currentChapterPage?: number;
+  currentChapterTotalPages?: number;
   currentSpineIndex: number;
   totalSpineCount: number;
+  displayChapter?: number;
+  displayChapterCount?: number;
   direction: ProgressionDirection;
   isVertical: boolean;
   onPrevPage: () => void;
@@ -22,8 +26,12 @@ export const ReaderFooter: React.FC<Props> = ({
   isVisible,
   currentPage,
   totalPages,
+  currentChapterPage = currentPage,
+  currentChapterTotalPages = totalPages,
   currentSpineIndex,
   totalSpineCount,
+  displayChapter = currentSpineIndex + 1,
+  displayChapterCount = totalSpineCount,
   direction,
   isVertical,
   onPrevPage,
@@ -35,9 +43,10 @@ export const ReaderFooter: React.FC<Props> = ({
 }) => {
   const isRtl = direction === 'rtl' || isVertical;
   const safeTotalPages = Math.max(1, totalPages);
+  const safeChapterPages = Math.max(1, currentChapterTotalPages);
   const progressPercent = Math.round(((currentPage + 1) / safeTotalPages) * 100);
   const bookProgressPercent =
-    totalSpineCount > 0 ? Math.round(((currentSpineIndex + 1) / totalSpineCount) * 100) : 0;
+    displayChapterCount > 0 ? Math.round((displayChapter / displayChapterCount) * 100) : 0;
 
   // In RTL (Japanese vertical), left advances to NEXT page, right goes back to PREVIOUS.
   // In LTR (Western horizontal), left goes to PREVIOUS, right advances to NEXT.
@@ -48,12 +57,12 @@ export const ReaderFooter: React.FC<Props> = ({
   const rightLabel = isRtl ? 'Anterior' : 'Siguiente';
 
   const isLeftDisabled = isRtl
-    ? currentPage >= safeTotalPages - 1 && currentSpineIndex >= totalSpineCount - 1
-    : currentPage === 0 && currentSpineIndex === 0;
+    ? currentChapterPage >= safeChapterPages - 1 && currentSpineIndex >= totalSpineCount - 1
+    : currentChapterPage === 0 && currentSpineIndex === 0;
 
   const isRightDisabled = isRtl
-    ? currentPage === 0 && currentSpineIndex === 0
-    : currentPage >= safeTotalPages - 1 && currentSpineIndex >= totalSpineCount - 1;
+    ? currentChapterPage === 0 && currentSpineIndex === 0
+    : currentChapterPage >= safeChapterPages - 1 && currentSpineIndex >= totalSpineCount - 1;
 
   return (
     <footer
@@ -112,7 +121,7 @@ export const ReaderFooter: React.FC<Props> = ({
               </span>
             </div>
             <div className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5 truncate max-w-[180px] sm:max-w-none">
-              Capítulo {currentSpineIndex + 1}/{totalSpineCount} • Libro {bookProgressPercent}%
+              Capítulo {displayChapter}/{displayChapterCount} • Libro {bookProgressPercent}%
             </div>
           </div>
 

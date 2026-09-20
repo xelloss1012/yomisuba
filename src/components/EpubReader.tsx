@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { App as CapacitorApp } from '@capacitor/app';
 import { AiProvider, ParsedEpub, ReaderSettingsState } from '../types/epub';
 import { ReaderNavbar } from './ReaderNavbar';
 import { ReaderFooter } from './ReaderFooter';
@@ -29,6 +30,8 @@ export const EpubReader: React.FC<Props> = ({
   const [currentSpineIndex, setCurrentSpineIndex] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+  const [bookTotalPages, setBookTotalPages] = useState(1);
+  const [chapterPageCounts, setChapterPageCounts] = useState<number[]>([]);
   const [isLoadingChapter, setIsLoadingChapter] = useState(true);
   const [showUi, setShowUi] = useState(false);
   const [isTocOpen, setIsTocOpen] = useState(false);
@@ -66,12 +69,28 @@ export const EpubReader: React.FC<Props> = ({
   const currentPageRef = useRef(0);
   const totalPagesRef = useRef(1);
   const currentSpineRef = useRef(0);
+  const chapterPageCountsRef = useRef<number[]>([]);
 
   const isVertical = settings.writingMode === 'vertical-rl';
   const isRtl = isVertical || settings.progressionDirection === 'rtl';
 
   const currentSpineItem = epub.spine[currentSpineIndex];
   const spineHrefs = epub.spine.map((s) => s.href);
+  const displayChapterCount = Math.max(1, epub.toc.length || epub.spine.length);
+  const getDisplayChapter = useCallback((spineIndex: number) => {
+    const href = epub.spine[spineIndex]?.href || '';
+    const topLevelIndex = epub.toc.findIndex((item) => {
+      const clean = item.href.split('#')[0];
+      return href.endsWith(clean) || clean.endsWith(href);
+    });
+    return topLevelIndex >= 0 ? topLevelIndex + 1 : Math.min(spineIndex + 1, displayChapterCount);
+  }, [displayChapterCount, epub.spine, epub.toc]);
+
+  const getGlobalPage = useCallback((spineIndex: number, page: number) => {
+    const counts = chapterPageCountsRef.current;
+    const precedingPages = counts.slice(0, spineIndex).reduce((sum, count) => sum + Math.max(1, count), 0);
+    return precedingPages + page;
+  }, []);
 
   const saveReadingPosition = useCallback((position: ReadingPosition) => {
     try {
@@ -110,7 +129,7 @@ export const EpubReader: React.FC<Props> = ({
     dark: { bg: '#18181b', text: '#e4e4e7' },
   }[settings.theme];
 
-  const getFontFamilyCss = (font: string) => {
+  const getFontFamilyCss = useCallback((font: string) => {
     switch (font) {
       case 'mincho':
         return '"Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", "MS PMincho", serif';
@@ -122,7 +141,7 @@ export const EpubReader: React.FC<Props> = ({
       default:
         return 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif';
     }
-  };
+  }, []);
 
   // ─── PAGINATION ───────────────────────────────────────────────────────────────
   // Both vertical and horizontal use CSS multi-column.
@@ -152,6 +171,15 @@ export const EpubReader: React.FC<Props> = ({
     const pages = Math.max(1, Math.ceil(totalWidth / vw));
     setTotalPages(pages);
     totalPagesRef.current = pages;
+    if (!chapterPageCountsRef.current[ currentSpineRef.current ] ||
+        chapterPageCountsRef.current[currentSpineRef.current] !== pages) {
+      const nextCounts = [...chapterPageCountsRef.current];
+      nextCounts[currentSpineRef.current] = pages;
+      chapterPageCountsRef.current = nextCounts;
+      setChapterPageCounts(nextCounts);
+      const knownTotal = nextCounts.reduce((sum, count) => sum + Math.max(1, count || 0), 0);
+      setBookTotalPages(Math.max(knownTotal, pages));
+    }
 
     const page = currentPageRef.current;
 
@@ -162,6 +190,48 @@ export const EpubReader: React.FC<Props> = ({
       scroller.style.transform = `translateX(${-page * vw}px)`;
     }
   }, [isVertical]);
+
+  const measureBookPages = useCallback(async () => {
+    const host = iframeRef.current;
+    if (!host || !epub.spine.length) return;
+    const frame = document.createElement('iframe');
+    const vw = host.clientWidth || window.innerWidth;
+    frame.style.cssText = 'position:fixed;left:-10000px;top:0;width:100vw;height:100vh;visibility:hidden;pointer-events:none;border:0;';
+    document.body.appendChild(frame);
+    const counts: number[] = [];
+    try {
+      for (let index = 0; index < epub.spine.length; index += 1) {
+        const rawHtml = await epub.getChapterContent(epub.spine[index].href);
+        const mobile = window.innerWidth < 640;
+        const sidePad = mobile ? 16 : 44;
+        const pad = `${mobile ? 18 : 32}px ${sidePad}px ${mobile ? 52 : 40}px`;
+        const fontSize = mobile ? Math.min(settings.fontSize, 18) : settings.fontSize;
+        const content = new DOMParser().parseFromString(rawHtml, 'text/html').body.innerHTML;
+        const css = isVertical
+          ? `position:absolute;top:0;right:0;height:100%;width:max-content;writing-mode:vertical-rl;direction:ltr;column-width:100vw;column-gap:0;column-fill:auto;padding:${pad};font-family:${getFontFamilyCss(settings.fontFamily)};font-size:${fontSize}px;line-height:${settings.lineHeight};letter-spacing:${settings.letterSpacing}em;`
+          : `position:absolute;top:0;left:0;height:100%;width:max-content;writing-mode:horizontal-tb;direction:ltr;column-width:100vw;column-gap:0;column-fill:auto;padding:${pad};font-family:${getFontFamilyCss(settings.fontFamily)};font-size:${fontSize}px;line-height:${settings.lineHeight};letter-spacing:${settings.letterSpacing}em;`;
+        const doc = frame.contentDocument;
+        if (!doc) break;
+        doc.open();
+        doc.write(`<style>*{box-sizing:border-box}html,body{margin:0;width:100vw;height:100%;overflow:hidden}#reader-scroller{${css}}img,svg{max-width:calc(100vw - 32px);max-height:calc(100% - 32px);object-fit:contain;break-inside:avoid;page-break-inside:avoid;display:block}p,h1,h2,h3,h4{break-inside:auto}</style><div id="reader-scroller">${content}</div>`);
+        doc.close();
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 80));
+        const scroller = doc.getElementById('reader-scroller');
+        const range = doc.createRange();
+        if (scroller) {
+          range.selectNodeContents(scroller);
+          counts[index] = Math.max(1, Math.ceil(Math.max(scroller.scrollWidth, Math.abs(range.getBoundingClientRect().width), vw) / vw));
+        } else {
+          counts[index] = 1;
+        }
+      }
+      chapterPageCountsRef.current = counts;
+      setChapterPageCounts(counts);
+      setBookTotalPages(counts.reduce((sum, count) => sum + Math.max(1, count), 0));
+    } finally {
+      frame.remove();
+    }
+  }, [epub, getFontFamilyCss, isVertical, settings]);
 
   // ─── SELECTION ────────────────────────────────────────────────────────────────
   const handleSelection = useCallback(() => {
@@ -188,8 +258,8 @@ export const EpubReader: React.FC<Props> = ({
   // We use refs so that callbacks registered inside the iframe closure stay fresh.
   const doNextPage = useCallback(() => {
     const page = currentPageRef.current;
-    const pages = totalPagesRef.current;
     const spine = currentSpineRef.current;
+    const pages = chapterPageCountsRef.current[spine] || totalPagesRef.current;
 
     if (page < pages - 1) {
       currentPageRef.current = page + 1;
@@ -335,7 +405,13 @@ export const EpubReader: React.FC<Props> = ({
     }
     ::selection { background: #818cf8; color: #fff; }
     img, svg { max-height: ${imgMaxH}; max-width: ${imgMaxW}; object-fit: contain;
-      break-inside: avoid; margin: 0.4rem auto; display: block; }
+      break-inside: avoid; page-break-inside: avoid; break-before: auto; break-after: auto;
+      margin: 0.4rem auto; display: block; cursor: zoom-in; }
+    img.reader-image-zoomed, svg.reader-image-zoomed {
+      max-width: none; max-height: none; width: auto; height: auto;
+      transform: scale(2); transform-origin: center center; cursor: zoom-out;
+      position: relative; z-index: 10;
+    }
     p  { margin: 0 0 ${isVertical ? '0 0.5rem' : '0.5rem 0'}; }
     h1,h2,h3,h4 { font-weight:700; break-after:avoid; }
     ruby rt { font-size: 0.52em; line-height:1; opacity:0.85; font-weight:400; }
@@ -357,9 +433,13 @@ export const EpubReader: React.FC<Props> = ({
 
         // ── Gesture & tap handlers attached inside the iframe ──
         let sx = 0, sy = 0, st = 0, moved = false;
+        let imageTarget: Element | null = null;
 
-        const onStart = (cx: number, cy: number) => {
+        const onStart = (cx: number, cy: number, target?: EventTarget | null) => {
           sx = cx; sy = cy; st = Date.now(); moved = false;
+          imageTarget = target && typeof (target as Element).closest === 'function'
+            ? (target as Element).closest('img, svg')
+            : null;
         };
         const onMove = (cx: number, cy: number) => {
           if (Math.abs(cx - sx) > 20 || Math.abs(cy - sy) > 20) moved = true;
@@ -369,6 +449,11 @@ export const EpubReader: React.FC<Props> = ({
           const dx = cx - sx;
 
           setTimeout(() => {
+            if (!moved && imageTarget) {
+              imageTarget.classList.toggle('reader-image-zoomed');
+              imageTarget = null;
+              return;
+            }
             const sel = iframe.contentWindow?.getSelection()?.toString().trim();
             if (sel) { handleSelection(); return; }
 
@@ -397,10 +482,10 @@ export const EpubReader: React.FC<Props> = ({
         };
 
         doc.addEventListener('selectionchange', handleSelection);
-        doc.addEventListener('mousedown',  (e) => onStart(e.clientX, e.clientY));
+        doc.addEventListener('mousedown',  (e) => onStart(e.clientX, e.clientY, e.target));
         doc.addEventListener('mousemove',  (e) => onMove(e.clientX, e.clientY));
         doc.addEventListener('mouseup',    (e) => onEnd(e.clientX));
-        doc.addEventListener('touchstart', (e) => { if (e.touches[0]) onStart(e.touches[0].clientX, e.touches[0].clientY); }, { passive: true });
+        doc.addEventListener('touchstart', (e) => { if (e.touches[0]) onStart(e.touches[0].clientX, e.touches[0].clientY, e.target); }, { passive: true });
         doc.addEventListener('touchmove',  (e) => { if (e.touches[0]) onMove(e.touches[0].clientX, e.touches[0].clientY); }, { passive: true });
         doc.addEventListener('touchend',   (e) => { if (e.changedTouches[0]) onEnd(e.changedTouches[0].clientX); }, { passive: true });
 
@@ -488,6 +573,11 @@ export const EpubReader: React.FC<Props> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void measureBookPages(); }, 700);
+    return () => window.clearTimeout(timer);
+  }, [measureBookPages]);
+
   // Re-apply transform when page changes from React state
   useEffect(() => { updatePagination(); }, [currentPage, updatePagination]);
 
@@ -533,11 +623,36 @@ export const EpubReader: React.FC<Props> = ({
         : ['ArrowLeft', 'PageUp', 'k'];
       if (next.includes(e.key)) handleNextPage();
       else if (prev.includes(e.key)) handlePrevPage();
-      else if (e.key === 'Escape') { setShowUi(p => !p); setSelectedText(''); setSelectionPos(null); }
+      else if (e.key === 'Escape') {
+        setSelectedText('');
+        setSelectionPos(null);
+        if (isSettingsOpen) setIsSettingsOpen(false);
+        else if (isTocOpen) setIsTocOpen(false);
+        else if (isTranslateOpen) setIsTranslateOpen(false);
+        else onCloseBook();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isRtl, isSettingsOpen, isTocOpen, isTranslateOpen, handleNextPage, handlePrevPage]);
+  }, [isRtl, isSettingsOpen, isTocOpen, isTranslateOpen, handleNextPage, handlePrevPage, onCloseBook]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let removeListener: (() => Promise<void>) | undefined;
+    void CapacitorApp.addListener('backButton', () => {
+      if (!cancelled) onCloseBook();
+    }).then((listener) => {
+      removeListener = () => listener.remove();
+    });
+    return () => {
+      cancelled = true;
+      if (removeListener) void removeListener();
+    };
+  }, [onCloseBook]);
+
+  const currentChapterPages = chapterPageCounts[currentSpineIndex] || totalPages;
+  const globalPage = getGlobalPage(currentSpineIndex, currentPage);
+  const displayChapter = getDisplayChapter(currentSpineIndex);
 
   const currentChapterToc = epub.toc.find(
     t => t.href.includes(currentSpineItem?.href) || currentSpineItem?.href.includes(t.href)
@@ -567,7 +682,7 @@ export const EpubReader: React.FC<Props> = ({
         }`}
         aria-live="polite"
       >
-        {currentPage + 1}/{Math.max(1, totalPages)} · C{currentSpineIndex + 1}/{epub.spine.length}
+        {globalPage + 1}/{Math.max(1, bookTotalPages)} · C{displayChapter}/{displayChapterCount}
       </div>
 
       {/* Keep the toggle in the bottom chrome instead of over the text header area. */}
@@ -639,9 +754,13 @@ export const EpubReader: React.FC<Props> = ({
       <ReaderFooter
         isVisible={showUi}
         currentPage={currentPage}
-        totalPages={totalPages}
+        totalPages={bookTotalPages}
+        currentChapterPage={currentPage}
+        currentChapterTotalPages={currentChapterPages}
         currentSpineIndex={currentSpineIndex}
         totalSpineCount={epub.spine.length}
+        displayChapter={displayChapter}
+        displayChapterCount={displayChapterCount}
         direction={settings.progressionDirection}
         isVertical={isVertical}
         onPrevPage={handlePrevPage}
