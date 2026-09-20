@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Bookmark, ChevronLeft, ChevronRight, SkipBack, SkipForward } from 'lucide-react';
 import { ProgressionDirection } from '../types/epub';
 
@@ -17,6 +17,7 @@ interface Props {
   isVertical: boolean;
   onPrevPage: () => void;
   onNextPage: () => void;
+  onSeekPage: (page: number) => void;
   onPrevChapter: () => void;
   onNextChapter: () => void;
   isBookmarked: boolean;
@@ -38,6 +39,7 @@ export const ReaderFooter: React.FC<Props> = ({
   isVertical,
   onPrevPage,
   onNextPage,
+  onSeekPage,
   onPrevChapter,
   onNextChapter,
   isBookmarked,
@@ -46,7 +48,24 @@ export const ReaderFooter: React.FC<Props> = ({
   const isRtl = direction === 'rtl' || isVertical;
   const safeTotalPages = Math.max(1, totalPages);
   const safeChapterPages = Math.max(1, currentChapterTotalPages);
-  const progressPercent = Math.round(((displayPage + 1) / safeTotalPages) * 100);
+  const safeDisplayPage = Math.min(Math.max(0, displayPage), safeTotalPages - 1);
+  const sliderMax = safeTotalPages - 1;
+  const [pendingSliderPage, setPendingSliderPage] = useState(
+    isRtl ? sliderMax - safeDisplayPage : safeDisplayPage
+  );
+  const committedSliderPageRef = useRef<number | null>(null);
+  useEffect(() => {
+    setPendingSliderPage(isRtl ? sliderMax - safeDisplayPage : safeDisplayPage);
+  }, [isRtl, safeDisplayPage, sliderMax]);
+
+  const commitSliderPage = () => {
+    const requestedPage = isRtl ? sliderMax - pendingSliderPage : pendingSliderPage;
+    if (committedSliderPageRef.current === requestedPage) return;
+    committedSliderPageRef.current = requestedPage;
+    onSeekPage(requestedPage);
+  };
+
+  const progressPercent = Math.round(((safeDisplayPage + 1) / safeTotalPages) * 100);
   const bookProgressPercent =
     displayChapterCount > 0 ? Math.round((displayChapter / displayChapterCount) * 100) : 0;
 
@@ -74,6 +93,28 @@ export const ReaderFooter: React.FC<Props> = ({
       onClick={(e) => e.stopPropagation()}
     >
       <div className="bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border-t border-zinc-200/80 dark:border-zinc-800/80 px-3 pt-2.5 pb-[max(calc(env(safe-area-inset-bottom,0px)+12px),18px)] shadow-2xl max-w-2xl mx-auto rounded-t-2xl sm:mb-2 sm:rounded-2xl border">
+        <div className="mb-2 px-1">
+          <input
+            type="range"
+            min={0}
+            max={sliderMax}
+            step={1}
+            value={pendingSliderPage}
+            onChange={(event) => setPendingSliderPage(Number(event.target.value))}
+            onPointerUp={commitSliderPage}
+            onKeyUp={(event) => {
+              if (event.key === 'ArrowLeft' || event.key === 'ArrowRight' || event.key === 'Home' || event.key === 'End') {
+                commitSliderPage();
+              }
+            }}
+            onBlur={commitSliderPage}
+            disabled={safeTotalPages <= 1}
+            aria-label="Ir a una página del libro"
+            title={`Ir a la página ${isRtl ? sliderMax - pendingSliderPage + 1 : pendingSliderPage + 1} de ${safeTotalPages}`}
+            className="h-1.5 w-full cursor-pointer accent-indigo-600 disabled:cursor-default disabled:opacity-40"
+          />
+        </div>
+
         {/* Navigation buttons & Page Indicator */}
         <div className="flex items-center justify-between gap-1.5 sm:gap-3">
           {/* Chapter Jump Back */}
@@ -117,7 +158,7 @@ export const ReaderFooter: React.FC<Props> = ({
           {/* Center Info */}
           <div className="flex-1 flex flex-col items-center justify-center px-1 text-center">
             <div className="text-xs font-bold text-zinc-800 dark:text-zinc-200">
-              Página {displayPage + 1} de {safeTotalPages}
+              Página {safeDisplayPage + 1} de {safeTotalPages}
               <span className="text-[10px] font-normal text-zinc-500 ml-1">
                 ({progressPercent}%)
               </span>

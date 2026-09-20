@@ -594,6 +594,24 @@ export const EpubReader: React.FC<Props> = ({
   const handleNextPage = useCallback(() => doNextRef.current(), []);
   const handlePrevPage = useCallback(() => doPrevRef.current(), []);
 
+  const handleSeekPage = useCallback((requestedPage: number) => {
+    if (!isBookPaginationReady || !bookTotalPages) return;
+    const targetPage = Math.min(Math.max(0, Math.round(requestedPage)), bookTotalPages - 1);
+    let targetSpineIndex = 0;
+    for (let index = 0; index < bookPageOffsetsRef.current.length; index += 1) {
+      if (bookPageOffsetsRef.current[index] <= targetPage) targetSpineIndex = index;
+      else break;
+    }
+    const targetLocalPage = targetPage - (bookPageOffsetsRef.current[targetSpineIndex] || 0);
+    if (targetSpineIndex === currentSpineRef.current) {
+      currentPageRef.current = targetLocalPage;
+      setCurrentPage(targetLocalPage);
+      updatePagination();
+      return;
+    }
+    loadChapter(targetSpineIndex, targetLocalPage);
+  }, [bookTotalPages, isBookPaginationReady, loadChapter, updatePagination]);
+
   // Reload chapter on style settings change
   const hasMountedRef = useRef(false);
   useEffect(() => {
@@ -862,6 +880,7 @@ export const EpubReader: React.FC<Props> = ({
         isVertical={isVertical}
         onPrevPage={handlePrevPage}
         onNextPage={handleNextPage}
+        onSeekPage={handleSeekPage}
         onPrevChapter={handlePrevChapter}
         onNextChapter={handleNextChapter}
         isBookmarked={
