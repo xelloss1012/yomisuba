@@ -7,7 +7,7 @@ import { ReaderSettings } from './ReaderSettings';
 import { ReaderToc } from './ReaderToc';
 import { TextSelectionMenu, SelectionPosition } from './TextSelectionMenu';
 import { TranslationModal } from './TranslationModal';
-import { Loader2, Menu, X } from 'lucide-react';
+import { Loader2, Menu, X, Minus, Plus, RotateCcw } from 'lucide-react';
 
 interface ReadingPosition {
   spineIndex: number;
@@ -32,6 +32,7 @@ export const EpubReader: React.FC<Props> = ({
   const [totalPages, setTotalPages] = useState(1);
   const [bookTotalPages, setBookTotalPages] = useState(1);
   const [chapterPageCounts, setChapterPageCounts] = useState<number[]>([]);
+  const [isBookPaginationReady, setIsBookPaginationReady] = useState(false);
   const [isLoadingChapter, setIsLoadingChapter] = useState(true);
   const [showUi, setShowUi] = useState(false);
   const [isTocOpen, setIsTocOpen] = useState(false);
@@ -62,6 +63,9 @@ export const EpubReader: React.FC<Props> = ({
   const [selectionPos, setSelectionPos] = useState<SelectionPosition | null>(null);
   const [isTranslateOpen, setIsTranslateOpen] = useState(false);
   const [aiTranslationProvider, setAiTranslationProvider] = useState<AiProvider | undefined>();
+  const [imageViewerSrc, setImageViewerSrc] = useState<string | null>(null);
+  const [imageViewerScale, setImageViewerScale] = useState(1);
+  const [imageViewerOffset, setImageViewerOffset] = useState({ x: 0, y: 0 });
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -70,6 +74,9 @@ export const EpubReader: React.FC<Props> = ({
   const totalPagesRef = useRef(1);
   const currentSpineRef = useRef(0);
   const chapterPageCountsRef = useRef<number[]>([]);
+  const bookPageOffsetsRef = useRef<number[]>([]);
+  const measurementVersionRef = useRef(0);
+  const imageDragRef = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null);
 
   const isVertical = settings.writingMode === 'vertical-rl';
   const isRtl = isVertical || settings.progressionDirection === 'rtl';
@@ -87,9 +94,7 @@ export const EpubReader: React.FC<Props> = ({
   }, [displayChapterCount, epub.spine, epub.toc]);
 
   const getGlobalPage = useCallback((spineIndex: number, page: number) => {
-    const counts = chapterPageCountsRef.current;
-    const precedingPages = counts.slice(0, spineIndex).reduce((sum, count) => sum + Math.max(1, count), 0);
-    return precedingPages + page;
+    return (bookPageOffsetsRef.current[spineIndex] || 0) + page;
   }, []);
 
   const saveReadingPosition = useCallback((position: ReadingPosition) => {
@@ -171,16 +176,6 @@ export const EpubReader: React.FC<Props> = ({
     const pages = Math.max(1, Math.ceil(totalWidth / vw));
     setTotalPages(pages);
     totalPagesRef.current = pages;
-    if (!chapterPageCountsRef.current[ currentSpineRef.current ] ||
-        chapterPageCountsRef.current[currentSpineRef.current] !== pages) {
-      const nextCounts = [...chapterPageCountsRef.current];
-      nextCounts[currentSpineRef.current] = pages;
-      chapterPageCountsRef.current = nextCounts;
-      setChapterPageCounts(nextCounts);
-      const knownTotal = nextCounts.reduce((sum, count) => sum + Math.max(1, count || 0), 0);
-      setBookTotalPages(Math.max(knownTotal, pages));
-    }
-
     const page = currentPageRef.current;
 
     if (isVertical) {
@@ -194,9 +189,12 @@ export const EpubReader: React.FC<Props> = ({
   const measureBookPages = useCallback(async () => {
     const host = iframeRef.current;
     if (!host || !epub.spine.length) return;
+    const measurementVersion = measurementVersionRef.current + 1;
+    measurementVersionRef.current = measurementVersion;
     const frame = document.createElement('iframe');
     const vw = host.clientWidth || window.innerWidth;
-    frame.style.cssText = 'position:fixed;left:-10000px;top:0;width:100vw;height:100vh;visibility:hidden;pointer-events:none;border:0;';
+    const vh = host.clientHeight || window.innerHeight;
+    frame.style.cssText = `position:fixed;left:-10000px;top:0;width:${vw}px;height:${vh}px;visibility:hidden;pointer-events:none;border:0;`;
     document.body.appendChild(frame);
     const counts: number[] = [];
     try {
@@ -208,26 +206,50 @@ export const EpubReader: React.FC<Props> = ({
         const fontSize = mobile ? Math.min(settings.fontSize, 18) : settings.fontSize;
         const content = new DOMParser().parseFromString(rawHtml, 'text/html').body.innerHTML;
         const css = isVertical
-          ? `position:absolute;top:0;right:0;height:100%;width:max-content;writing-mode:vertical-rl;direction:ltr;column-width:100vw;column-gap:0;column-fill:auto;padding:${pad};font-family:${getFontFamilyCss(settings.fontFamily)};font-size:${fontSize}px;line-height:${settings.lineHeight};letter-spacing:${settings.letterSpacing}em;`
-          : `position:absolute;top:0;left:0;height:100%;width:max-content;writing-mode:horizontal-tb;direction:ltr;column-width:100vw;column-gap:0;column-fill:auto;padding:${pad};font-family:${getFontFamilyCss(settings.fontFamily)};font-size:${fontSize}px;line-height:${settings.lineHeight};letter-spacing:${settings.letterSpacing}em;`;
+          ? `position:absolute;top:0;right:0;height:100%;width:max-content;writing-mode:vertical-rl;direction:ltr;column-width:${vw}px;column-gap:0;column-fill:auto;padding:${pad};font-family:${getFontFamilyCss(settings.fontFamily)};font-size:${fontSize}px;line-height:${settings.lineHeight};letter-spacing:${settings.letterSpacing}em;`
+          : `position:absolute;top:0;left:0;height:100%;width:max-content;writing-mode:horizontal-tb;direction:ltr;column-width:${vw}px;column-gap:0;column-fill:auto;padding:${pad};font-family:${getFontFamilyCss(settings.fontFamily)};font-size:${fontSize}px;line-height:${settings.lineHeight};letter-spacing:${settings.letterSpacing}em;`;
         const doc = frame.contentDocument;
         if (!doc) break;
         doc.open();
-        doc.write(`<style>*{box-sizing:border-box}html,body{margin:0;width:100vw;height:100%;overflow:hidden}#reader-scroller{${css}}img,svg{max-width:calc(100vw - 32px);max-height:calc(100% - 32px);object-fit:contain;break-inside:avoid;page-break-inside:avoid;display:block}p,h1,h2,h3,h4{break-inside:auto}</style><div id="reader-scroller">${content}</div>`);
+        doc.write(`<style>*{box-sizing:border-box}html,body{margin:0;width:${vw}px;height:${vh}px;overflow:hidden}#reader-scroller{${css};overflow-wrap:normal;text-orientation:mixed}img,svg{max-width:calc(100vw - 32px);max-height:calc(100% - 32px);object-fit:contain;break-inside:avoid-column;page-break-inside:avoid;display:inline-block;vertical-align:top}p,h1,h2,h3,h4{break-inside:auto}</style><div id="reader-scroller">${content}</div>`);
         doc.close();
-        await new Promise<void>((resolve) => window.setTimeout(resolve, 80));
+        await doc.fonts?.ready;
+        const images = Array.from(doc.images);
+        await Promise.race([
+          Promise.all(images.map((image) => image.complete
+            ? Promise.resolve()
+            : new Promise<void>((resolve) => {
+              image.addEventListener('load', () => resolve(), { once: true });
+              image.addEventListener('error', () => resolve(), { once: true });
+            }))),
+          new Promise<void>((resolve) => window.setTimeout(resolve, 500)),
+        ]);
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 40));
         const scroller = doc.getElementById('reader-scroller');
         const range = doc.createRange();
         if (scroller) {
           range.selectNodeContents(scroller);
-          counts[index] = Math.max(1, Math.ceil(Math.max(scroller.scrollWidth, Math.abs(range.getBoundingClientRect().width), vw) / vw));
+          counts[index] = Math.max(1, Math.ceil(Math.max(
+            scroller.scrollWidth,
+            Math.abs(range.getBoundingClientRect().width),
+            vw,
+          ) / vw));
         } else {
           counts[index] = 1;
         }
       }
+      if (measurementVersion !== measurementVersionRef.current) return;
+      const offsets: number[] = [];
+      let offset = 0;
+      counts.forEach((count, index) => {
+        offsets[index] = offset;
+        offset += Math.max(1, count || 1);
+      });
       chapterPageCountsRef.current = counts;
+      bookPageOffsetsRef.current = offsets;
       setChapterPageCounts(counts);
-      setBookTotalPages(counts.reduce((sum, count) => sum + Math.max(1, count), 0));
+      setBookTotalPages(offset);
+      setIsBookPaginationReady(true);
     } finally {
       frame.remove();
     }
@@ -259,7 +281,7 @@ export const EpubReader: React.FC<Props> = ({
   const doNextPage = useCallback(() => {
     const page = currentPageRef.current;
     const spine = currentSpineRef.current;
-    const pages = chapterPageCountsRef.current[spine] || totalPagesRef.current;
+    const pages = totalPagesRef.current;
 
     if (page < pages - 1) {
       currentPageRef.current = page + 1;
@@ -280,7 +302,9 @@ export const EpubReader: React.FC<Props> = ({
       setCurrentPage(page - 1);
       updatePagination();
     } else if (spine > 0) {
-      loadChapter(spine - 1, 0);
+      // Going back from the first page opens the end of the previous chapter,
+      // not its first page.
+      loadChapter(spine - 1, -1);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [updatePagination]);
@@ -399,18 +423,17 @@ export const EpubReader: React.FC<Props> = ({
       line-break: strict;
       -webkit-line-break: strict;
       word-break: normal;
-      overflow-wrap: anywhere;
+      overflow-wrap: normal;
       text-align: justify;
       text-justify: inter-ideograph;
     }
     ::selection { background: #818cf8; color: #fff; }
     img, svg { max-height: ${imgMaxH}; max-width: ${imgMaxW}; object-fit: contain;
-      break-inside: avoid; page-break-inside: avoid; break-before: auto; break-after: auto;
-      margin: 0.4rem auto; display: block; cursor: zoom-in; }
-    img.reader-image-zoomed, svg.reader-image-zoomed {
-      max-width: none; max-height: none; width: auto; height: auto;
-      transform: scale(2); transform-origin: center center; cursor: zoom-out;
-      position: relative; z-index: 10;
+      break-inside: avoid-column; page-break-inside: avoid;
+      margin: 0.4rem auto; display: inline-block; vertical-align: top; }
+    .vertical-punctuation {
+      text-orientation: upright; -webkit-text-orientation: upright;
+      display: inline-block; line-height: 1;
     }
     p  { margin: 0 0 ${isVertical ? '0 0.5rem' : '0.5rem 0'}; }
     h1,h2,h3,h4 { font-weight:700; break-after:avoid; }
@@ -431,15 +454,38 @@ export const EpubReader: React.FC<Props> = ({
         doc.write(fullHtml);
         doc.close();
 
+        // Force common Japanese ellipsis glyphs upright in vertical writing.
+        if (isVertical) {
+          const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+          const textNodes: Text[] = [];
+          let node: Node | null;
+          while ((node = walker.nextNode())) {
+            if (node.parentElement?.closest('style, script, .vertical-punctuation')) continue;
+            if (/[…⋯︙]/.test(node.nodeValue || '')) textNodes.push(node as Text);
+          }
+          textNodes.forEach((textNode) => {
+            const parts = (textNode.nodeValue || '').split(/([…⋯︙])/g);
+            const fragment = doc.createDocumentFragment();
+            parts.forEach((part) => {
+              if (!part) return;
+              if (/^[…⋯︙]$/.test(part)) {
+                const span = doc.createElement('span');
+                span.className = 'vertical-punctuation';
+                span.textContent = part;
+                fragment.appendChild(span);
+              } else {
+                fragment.appendChild(doc.createTextNode(part));
+              }
+            });
+            textNode.parentNode?.replaceChild(fragment, textNode);
+          });
+        }
+
         // ── Gesture & tap handlers attached inside the iframe ──
         let sx = 0, sy = 0, st = 0, moved = false;
-        let imageTarget: Element | null = null;
 
-        const onStart = (cx: number, cy: number, target?: EventTarget | null) => {
+        const onStart = (cx: number, cy: number) => {
           sx = cx; sy = cy; st = Date.now(); moved = false;
-          imageTarget = target && typeof (target as Element).closest === 'function'
-            ? (target as Element).closest('img, svg')
-            : null;
         };
         const onMove = (cx: number, cy: number) => {
           if (Math.abs(cx - sx) > 20 || Math.abs(cy - sy) > 20) moved = true;
@@ -449,11 +495,6 @@ export const EpubReader: React.FC<Props> = ({
           const dx = cx - sx;
 
           setTimeout(() => {
-            if (!moved && imageTarget) {
-              imageTarget.classList.toggle('reader-image-zoomed');
-              imageTarget = null;
-              return;
-            }
             const sel = iframe.contentWindow?.getSelection()?.toString().trim();
             if (sel) { handleSelection(); return; }
 
@@ -482,20 +523,39 @@ export const EpubReader: React.FC<Props> = ({
         };
 
         doc.addEventListener('selectionchange', handleSelection);
-        doc.addEventListener('mousedown',  (e) => onStart(e.clientX, e.clientY, e.target));
+        doc.addEventListener('mousedown',  (e) => onStart(e.clientX, e.clientY));
         doc.addEventListener('mousemove',  (e) => onMove(e.clientX, e.clientY));
         doc.addEventListener('mouseup',    (e) => onEnd(e.clientX));
-        doc.addEventListener('touchstart', (e) => { if (e.touches[0]) onStart(e.touches[0].clientX, e.touches[0].clientY, e.target); }, { passive: true });
+        doc.addEventListener('dblclick', (e) => {
+          const target = (e.target as Element | null)?.closest('img, svg');
+          const source = target?.getAttribute('src') || target?.getAttribute('href');
+          if (source) {
+            e.preventDefault();
+            setImageViewerSrc(source);
+            setImageViewerScale(1);
+            setImageViewerOffset({ x: 0, y: 0 });
+          }
+        });
+        doc.addEventListener('touchstart', (e) => { if (e.touches[0]) onStart(e.touches[0].clientX, e.touches[0].clientY); }, { passive: true });
         doc.addEventListener('touchmove',  (e) => { if (e.touches[0]) onMove(e.touches[0].clientX, e.touches[0].clientY); }, { passive: true });
         doc.addEventListener('touchend',   (e) => { if (e.changedTouches[0]) onEnd(e.changedTouches[0].clientX); }, { passive: true });
 
         // ── Trigger pagination once content is laid out ──
         const triggerUpdate = () => {
-          currentPageRef.current = targetPage;
           currentSpineRef.current = spineIndex;
           setCurrentSpineIndex(spineIndex);
-          setCurrentPage(targetPage);
+          currentPageRef.current = targetPage === -1 ? 0 : targetPage;
+          setCurrentPage(currentPageRef.current);
           updatePagination();
+
+          // A negative target means "last page". Resolve it only after the
+          // current chapter has been measured.
+          if (targetPage === -1) {
+            const lastPage = Math.max(0, totalPagesRef.current - 1);
+            currentPageRef.current = lastPage;
+            setCurrentPage(lastPage);
+            updatePagination();
+          }
           setIsLoadingChapter(false);
         };
 
@@ -569,13 +629,11 @@ export const EpubReader: React.FC<Props> = ({
     } catch {
       // Ignore malformed or unavailable persisted position.
     }
-    loadChapter(position.spineIndex, position.page);
+    void (async () => {
+      await measureBookPages();
+      loadChapter(position.spineIndex, position.page);
+    })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => { void measureBookPages(); }, 700);
-    return () => window.clearTimeout(timer);
   }, [measureBookPages]);
 
   // Re-apply transform when page changes from React state
@@ -590,10 +648,13 @@ export const EpubReader: React.FC<Props> = ({
 
   // Resize
   useEffect(() => {
-    const onResize = () => updatePagination();
+    const onResize = () => {
+      updatePagination();
+      void measureBookPages();
+    };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
-  }, [updatePagination]);
+  }, [measureBookPages, updatePagination]);
 
   const handleNextChapter = () => {
     if (currentSpineRef.current < epub.spine.length - 1) {
@@ -626,7 +687,8 @@ export const EpubReader: React.FC<Props> = ({
       else if (e.key === 'Escape') {
         setSelectedText('');
         setSelectionPos(null);
-        if (isSettingsOpen) setIsSettingsOpen(false);
+        if (imageViewerSrc) setImageViewerSrc(null);
+        else if (isSettingsOpen) setIsSettingsOpen(false);
         else if (isTocOpen) setIsTocOpen(false);
         else if (isTranslateOpen) setIsTranslateOpen(false);
         else onCloseBook();
@@ -634,13 +696,15 @@ export const EpubReader: React.FC<Props> = ({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isRtl, isSettingsOpen, isTocOpen, isTranslateOpen, handleNextPage, handlePrevPage, onCloseBook]);
+  }, [imageViewerSrc, isRtl, isSettingsOpen, isTocOpen, isTranslateOpen, handleNextPage, handlePrevPage, onCloseBook]);
 
   useEffect(() => {
     let cancelled = false;
     let removeListener: (() => Promise<void>) | undefined;
     void CapacitorApp.addListener('backButton', () => {
-      if (!cancelled) onCloseBook();
+      if (cancelled) return;
+      if (imageViewerSrc) setImageViewerSrc(null);
+      else onCloseBook();
     }).then((listener) => {
       removeListener = () => listener.remove();
     });
@@ -648,7 +712,37 @@ export const EpubReader: React.FC<Props> = ({
       cancelled = true;
       if (removeListener) void removeListener();
     };
-  }, [onCloseBook]);
+  }, [imageViewerSrc, onCloseBook]);
+
+  const closeImageViewer = () => {
+    setImageViewerSrc(null);
+    setImageViewerScale(1);
+    setImageViewerOffset({ x: 0, y: 0 });
+    imageDragRef.current = null;
+  };
+
+  const handleImagePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    imageDragRef.current = {
+      x: imageViewerOffset.x,
+      y: imageViewerOffset.y,
+      startX: event.clientX,
+      startY: event.clientY,
+    };
+  };
+
+  const handleImagePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = imageDragRef.current;
+    if (!drag) return;
+    setImageViewerOffset({
+      x: drag.x + event.clientX - drag.startX,
+      y: drag.y + event.clientY - drag.startY,
+    });
+  };
+
+  const handleImagePointerUp = () => {
+    imageDragRef.current = null;
+  };
 
   const currentChapterPages = chapterPageCounts[currentSpineIndex] || totalPages;
   const globalPage = getGlobalPage(currentSpineIndex, currentPage);
@@ -682,7 +776,9 @@ export const EpubReader: React.FC<Props> = ({
         }`}
         aria-live="polite"
       >
-        {globalPage + 1}/{Math.max(1, bookTotalPages)} · C{displayChapter}/{displayChapterCount}
+        {isBookPaginationReady
+          ? `${globalPage + 1}/${Math.max(1, bookTotalPages)} · C${displayChapter}/${displayChapterCount}`
+          : 'Calculando paginación…'}
       </div>
 
       {/* Keep the toggle in the bottom chrome instead of over the text header area. */}
@@ -754,6 +850,7 @@ export const EpubReader: React.FC<Props> = ({
       <ReaderFooter
         isVisible={showUi}
         currentPage={currentPage}
+        displayPage={globalPage}
         totalPages={bookTotalPages}
         currentChapterPage={currentPage}
         currentChapterTotalPages={currentChapterPages}
@@ -773,6 +870,60 @@ export const EpubReader: React.FC<Props> = ({
         }
         onToggleBookmark={handleToggleBookmark}
       />
+
+      {imageViewerSrc && (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/90 touch-none"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) closeImageViewer();
+          }}
+          onPointerDown={handleImagePointerDown}
+          onPointerMove={handleImagePointerMove}
+          onPointerUp={handleImagePointerUp}
+          onPointerCancel={handleImagePointerUp}
+        >
+          <img
+            src={imageViewerSrc}
+            alt="Imagen ampliada"
+            draggable={false}
+            className="max-w-[92vw] max-h-[82vh] select-none object-contain"
+            style={{
+              transform: `translate(${imageViewerOffset.x}px, ${imageViewerOffset.y}px) scale(${imageViewerScale})`,
+              transformOrigin: 'center center',
+            }}
+          />
+          <div className="absolute bottom-5 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-2xl bg-zinc-900/90 px-3 py-2 text-white shadow-xl">
+            <button
+              onClick={() => setImageViewerScale((scale) => Math.max(1, scale - 0.25))}
+              className="rounded-lg p-2 hover:bg-white/10"
+              aria-label="Reducir zoom"
+            >
+              <Minus className="h-4 w-4" />
+            </button>
+            <span className="min-w-12 text-center text-xs">{Math.round(imageViewerScale * 100)}%</span>
+            <button
+              onClick={() => setImageViewerScale((scale) => Math.min(4, scale + 0.25))}
+              className="rounded-lg p-2 hover:bg-white/10"
+              aria-label="Aumentar zoom"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => {
+                setImageViewerScale(1);
+                setImageViewerOffset({ x: 0, y: 0 });
+              }}
+              className="rounded-lg p-2 hover:bg-white/10"
+              aria-label="Restablecer imagen"
+            >
+              <RotateCcw className="h-4 w-4" />
+            </button>
+            <button onClick={closeImageViewer} className="rounded-lg p-2 hover:bg-white/10" aria-label="Cerrar imagen">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       <ReaderToc
         isOpen={isTocOpen}

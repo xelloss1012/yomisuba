@@ -5,6 +5,7 @@ import { ProgressionDirection } from '../types/epub';
 interface Props {
   isVisible: boolean;
   currentPage: number;
+  displayPage?: number;
   totalPages: number;
   currentChapterPage?: number;
   currentChapterTotalPages?: number;
@@ -25,6 +26,7 @@ interface Props {
 export const ReaderFooter: React.FC<Props> = ({
   isVisible,
   currentPage,
+  displayPage = currentPage,
   totalPages,
   currentChapterPage = currentPage,
   currentChapterTotalPages = totalPages,
@@ -44,7 +46,7 @@ export const ReaderFooter: React.FC<Props> = ({
   const isRtl = direction === 'rtl' || isVertical;
   const safeTotalPages = Math.max(1, totalPages);
   const safeChapterPages = Math.max(1, currentChapterTotalPages);
-  const progressPercent = Math.round(((currentPage + 1) / safeTotalPages) * 100);
+  const progressPercent = Math.round(((displayPage + 1) / safeTotalPages) * 100);
   const bookProgressPercent =
     displayChapterCount > 0 ? Math.round((displayChapter / displayChapterCount) * 100) : 0;
 
@@ -115,7 +117,7 @@ export const ReaderFooter: React.FC<Props> = ({
           {/* Center Info */}
           <div className="flex-1 flex flex-col items-center justify-center px-1 text-center">
             <div className="text-xs font-bold text-zinc-800 dark:text-zinc-200">
-              Página {currentPage + 1} de {safeTotalPages}
+              Página {displayPage + 1} de {safeTotalPages}
               <span className="text-[10px] font-normal text-zinc-500 ml-1">
                 ({progressPercent}%)
               </span>
