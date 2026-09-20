@@ -6,7 +6,7 @@ import { ReaderSettings } from './ReaderSettings';
 import { ReaderToc } from './ReaderToc';
 import { TextSelectionMenu, SelectionPosition } from './TextSelectionMenu';
 import { TranslationModal } from './TranslationModal';
-import { Loader2, Menu } from 'lucide-react';
+import { Loader2, Menu, X } from 'lucide-react';
 
 interface ReadingPosition {
   spineIndex: number;
@@ -257,7 +257,6 @@ export const EpubReader: React.FC<Props> = ({
           /* Anchor to the right so column 0 aligns with viewport right edge */
           right: 0;
           height: 100%;
-          height: 100dvh;
           width: max-content;   /* expand leftwards as many columns as needed */
           writing-mode: vertical-rl;
           -webkit-writing-mode: vertical-rl;
@@ -280,7 +279,6 @@ export const EpubReader: React.FC<Props> = ({
           top: 0;
           left: 0;
           height: 100%;
-          height: 100dvh;
           width: max-content;
           writing-mode: horizontal-tb;
           -webkit-writing-mode: horizontal-tb;
@@ -305,7 +303,7 @@ export const EpubReader: React.FC<Props> = ({
     * { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
     html, body {
       margin: 0; padding: 0;
-      width: 100vw; height: 100%; height: 100dvh;
+      width: 100vw; height: 100%;
       overflow: hidden;
       background: ${themeColors.bg};
       color: ${themeColors.text};
@@ -315,7 +313,7 @@ export const EpubReader: React.FC<Props> = ({
     #reader-viewport {
       position: relative;
       width: 100vw;
-      height: 100%; height: 100dvh;
+      height: 100%;
       overflow: hidden;
     }
     #reader-scroller {
@@ -490,6 +488,12 @@ export const EpubReader: React.FC<Props> = ({
   // Re-apply transform when page changes from React state
   useEffect(() => { updatePagination(); }, [currentPage, updatePagination]);
 
+  // The visible header/footer change the iframe viewport height.
+  useEffect(() => {
+    const timer = window.setTimeout(updatePagination, 220);
+    return () => window.clearTimeout(timer);
+  }, [showUi, updatePagination]);
+
   // Resize
   useEffect(() => {
     const onResize = () => updatePagination();
@@ -552,19 +556,28 @@ export const EpubReader: React.FC<Props> = ({
         onUpdateSettings={onUpdateSettings}
       />
 
-      {/* Floating menu button – visible on mobile when UI is hidden */}
-      {!showUi && (
-        <button
-          onClick={() => setShowUi(true)}
-          className="fixed top-3 right-3 z-30 sm:hidden p-2 rounded-full bg-zinc-900/40 backdrop-blur-md text-white/80 shadow-md"
-          title="Mostrar menú"
-        >
-          <Menu className="w-4 h-4" />
-        </button>
-      )}
+      {/* Explicit UI toggle, especially important on mobile where the header overlays the reader. */}
+      <button
+        onClick={() => setShowUi((visible) => !visible)}
+        className={`fixed top-3 right-3 z-[55] p-2 rounded-full backdrop-blur-md shadow-md transition-colors ${
+          showUi
+            ? 'bg-white/90 text-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-200'
+            : 'bg-zinc-900/40 text-white/80'
+        }`}
+        title={showUi ? 'Ocultar menú' : 'Mostrar menú'}
+        aria-label={showUi ? 'Ocultar menú' : 'Mostrar menú'}
+      >
+        {showUi ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+      </button>
 
       {/* Reader Viewport */}
-      <div className="w-full h-full relative overflow-hidden">
+      <div
+        className="absolute left-0 right-0 overflow-hidden transition-[top,bottom] duration-200"
+        style={{
+          top: showUi ? '64px' : 0,
+          bottom: showUi ? '108px' : 0,
+        }}
+      >
         <iframe
           ref={iframeRef}
           title="EPUB Page View"
