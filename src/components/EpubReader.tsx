@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { ParsedEpub, ReaderSettingsState } from '../types/epub';
+import { AiProvider, ParsedEpub, ReaderSettingsState } from '../types/epub';
 import { ReaderNavbar } from './ReaderNavbar';
 import { ReaderFooter } from './ReaderFooter';
 import { ReaderSettings } from './ReaderSettings';
@@ -58,6 +58,7 @@ export const EpubReader: React.FC<Props> = ({
   const [selectedText, setSelectedText] = useState('');
   const [selectionPos, setSelectionPos] = useState<SelectionPosition | null>(null);
   const [isTranslateOpen, setIsTranslateOpen] = useState(false);
+  const [aiTranslationProvider, setAiTranslationProvider] = useState<AiProvider | undefined>();
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -584,13 +585,25 @@ export const EpubReader: React.FC<Props> = ({
         selectedText={selectedText}
         position={selectionPos}
         onClose={() => { setSelectedText(''); setSelectionPos(null); }}
-        onOpenTranslate={() => setIsTranslateOpen(true)}
+        onOpenTranslate={() => {
+          setAiTranslationProvider(undefined);
+          setIsTranslateOpen(true);
+        }}
+        aiProviders={(['gemini', 'openai', 'deepseek'] as AiProvider[]).filter(
+          (provider) => Boolean(settings.aiApiKeys[provider]?.trim())
+        )}
+        onOpenAiTranslate={(provider) => {
+          setAiTranslationProvider(provider);
+          setIsTranslateOpen(true);
+        }}
       />
 
       <TranslationModal
         isOpen={isTranslateOpen}
         onClose={() => setIsTranslateOpen(false)}
         selectedText={selectedText}
+        aiProvider={aiTranslationProvider}
+        aiApiKey={aiTranslationProvider ? settings.aiApiKeys[aiTranslationProvider] : undefined}
       />
 
       <ReaderFooter

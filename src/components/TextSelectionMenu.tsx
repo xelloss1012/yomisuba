@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Copy, Languages, Volume2, Search, BookOpen, Check, X } from 'lucide-react';
+import { AiProvider } from '../types/epub';
+import { AI_PROVIDER_LABELS } from '../utils/aiTranslation';
 
 export interface SelectionPosition {
   x: number;
@@ -13,6 +15,8 @@ interface Props {
   position: SelectionPosition | null;
   onClose: () => void;
   onOpenTranslate: () => void;
+  aiProviders: AiProvider[];
+  onOpenAiTranslate: (provider: AiProvider) => void;
 }
 
 export const TextSelectionMenu: React.FC<Props> = ({
@@ -20,6 +24,8 @@ export const TextSelectionMenu: React.FC<Props> = ({
   position,
   onClose,
   onOpenTranslate,
+  aiProviders,
+  onOpenAiTranslate,
 }) => {
   const [copied, setCopied] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -111,6 +117,20 @@ export const TextSelectionMenu: React.FC<Props> = ({
             >
               <X className="w-3.5 h-3.5" />
             </button>
+
+            {aiProviders.map((provider) => (
+              <button
+                key={provider}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenAiTranslate(provider);
+                }}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl hover:bg-zinc-800 active:scale-95 text-xs font-medium transition-all text-amber-300 hover:text-white"
+                title={`Traducir con ${AI_PROVIDER_LABELS[provider]}`}
+              >
+                <span>IA {AI_PROVIDER_LABELS[provider]}</span>
+              </button>
+            ))}
           </div>
         )}
 

@@ -1,13 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { X, Volume2, ExternalLink, Languages, BookOpen, Loader2 } from 'lucide-react';
+import { AiProvider } from '../types/epub';
+import { AI_PROVIDER_LABELS, translateWithAi } from '../utils/aiTranslation';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   selectedText: string;
+  aiProvider?: AiProvider;
+  aiApiKey?: string;
 }
 
-export const TranslationModal: React.FC<Props> = ({ isOpen, onClose, selectedText }) => {
+export const TranslationModal: React.FC<Props> = ({ isOpen, onClose, selectedText, aiProvider, aiApiKey }) => {
   const [translatedText, setTranslatedText] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -18,27 +22,27 @@ export const TranslationModal: React.FC<Props> = ({ isOpen, onClose, selectedTex
     const translate = async () => {
       setIsLoading(true);
       try {
-        // Free Google Translate client API endpoint
-        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=es&dt=t&q=${encodeURIComponent(
-          selectedText
-        )}`;
-        const res = await fetch(url);
-        const data = await res.json();
-        if (data && data[0]) {
-          const result = data[0].map((item: any) => item[0]).join('');
-          setTranslatedText(result);
+        if (aiProvider && aiApiKey) {
+          setTranslatedText(await translateWithAi(aiProvider, aiApiKey, selectedText));
         } else {
-          setTranslatedText('No se pudo traducir el texto.');
+          const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=es&dt=t&q=${encodeURIComponent(selectedText)}`;
+          const res = await fetch(url);
+          const data = await res.json();
+          if (data && data[0]) {
+            setTranslatedText(data[0].map((item: [string]) => item[0]).join(''));
+          } else {
+            setTranslatedText('No se pudo traducir el texto.');
+          }
         }
       } catch (err) {
-        setTranslatedText('Traducción no disponible sin conexión.');
+        setTranslatedText(err instanceof Error ? err.message : 'Traducción no disponible.');
       } finally {
         setIsLoading(false);
       }
     };
 
     translate();
-  }, [isOpen, selectedText]);
+  }, [aiApiKey, aiProvider, isOpen, selectedText]);
 
   if (!isOpen) return null;
 
@@ -113,7 +117,7 @@ export const TranslationModal: React.FC<Props> = ({ isOpen, onClose, selectedTex
           {/* Translation */}
           <div className="bg-indigo-50/40 dark:bg-indigo-950/20 rounded-xl p-3.5 border border-indigo-100 dark:border-indigo-900/40">
             <div className="text-[11px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 mb-1.5">
-              Traducción al Español
+              {aiProvider ? `Traducción con ${AI_PROVIDER_LABELS[aiProvider]}` : 'Traducción al Español'}
             </div>
             {isLoading ? (
               <div className="flex items-center gap-2 py-2 text-xs text-zinc-500">

@@ -1,5 +1,5 @@
 import React from 'react';
-import { FontFamily, ReaderSettingsState, ReaderTheme } from '../types/epub';
+import { AiProvider, FontFamily, ReaderSettingsState, ReaderTheme } from '../types/epub';
 import { X, Type, AlignLeft, Sun, BookOpen, Compass } from 'lucide-react';
 
 interface Props {
@@ -29,6 +29,11 @@ export const ReaderSettings: React.FC<Props> = ({
     { id: 'gothic', label: 'Gothic (ゴシック体)', sample: '美しい日本語', family: '"Noto Sans JP", sans-serif' },
     { id: 'serif', label: 'Serif Occidental', sample: 'Typography', family: 'Georgia, serif' },
     { id: 'sans', label: 'Sans-serif', sample: 'Typography', family: 'system-ui, sans-serif' },
+  ];
+  const aiProviders: { id: AiProvider; label: string; hint: string }[] = [
+    { id: 'gemini', label: 'Google Gemini', hint: 'AIza...' },
+    { id: 'openai', label: 'ChatGPT / OpenAI', hint: 'sk-...' },
+    { id: 'deepseek', label: 'DeepSeek', hint: 'sk-...' },
   ];
 
   return (
@@ -194,6 +199,40 @@ export const ReaderSettings: React.FC<Props> = ({
                   {lh.label}
                 </button>
               ))}
+            </div>
+
+            {/* Traducción con IA */}
+            <div>
+              <label className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2 flex items-center gap-1.5">
+                <span className="text-sm">✦</span> Traducción con IA
+              </label>
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mb-3">
+                Las claves se guardan solo en este navegador. Se envían directamente al proveedor elegido.
+              </p>
+              <div className="space-y-2">
+                {aiProviders.map((provider) => (
+                  <label key={provider.id} className="block">
+                    <span className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+                      {provider.label}
+                    </span>
+                    <input
+                      type="password"
+                      value={settings.aiApiKeys[provider.id] || ''}
+                      onChange={(event) =>
+                        onUpdateSettings({
+                          aiApiKeys: {
+                            ...settings.aiApiKeys,
+                            [provider.id]: event.target.value,
+                          },
+                        })
+                      }
+                      placeholder={provider.hint}
+                      autoComplete="off"
+                      className="w-full rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-2 text-xs text-zinc-800 dark:text-zinc-200 outline-none focus:border-indigo-500"
+                    />
+                  </label>
+                ))}
+              </div>
             </div>
           </div>
         </div>

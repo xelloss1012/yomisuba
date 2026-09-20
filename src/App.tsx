@@ -15,6 +15,7 @@ const DEFAULT_SETTINGS: ReaderSettingsState = {
   fontFamily: 'mincho',
   theme: 'paper',
   letterSpacing: 0.05,
+  aiApiKeys: {},
 };
 
 export const App: React.FC = () => {
