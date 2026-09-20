@@ -315,8 +315,9 @@ export const EpubReader: React.FC<Props> = ({
             if (sel) { handleSelection(); return; }
 
             if (Math.abs(dx) > 30) {
-              // Swipe: left = next (Japanese RTL), right = prev
-              if (dx < 0) doNextRef.current(); else doPrevRef.current();
+              // Swipe follows the same physical direction as the page controls:
+              // moving right advances and moving left goes back.
+              if (dx > 0) doNextRef.current(); else doPrevRef.current();
               return;
             }
 
