@@ -51,6 +51,42 @@ npm run dev
 
 La aplicación se abrirá automáticamente en tu navegador (por defecto en `http://localhost:3000`).
 
+### Aplicación Android
+
+La misma aplicación puede empaquetarse como una aplicación Android mediante
+Capacitor. La versión web publicada sigue siendo independiente y conserva su
+build actual.
+
+Requisitos para compilar localmente:
+
+- Node.js 22 o superior.
+- Android Studio con un JDK 21 o superior (el JDK incluido por Android Studio
+  suele ser válido).
+- Android SDK Platform 36 y Build-Tools 36 instalados desde el SDK Manager.
+
+```bash
+# Generar/sincronizar el proyecto Android
+npm run android:sync
+
+# Abrirlo en Android Studio
+npm run android:open
+
+# Generar un APK debug desde la raíz del proyecto
+npm run android:build:debug
+```
+
+El APK se genera en
+`dist/android/ereader-japanese-vertical-debug.apk`. El `dist/index.html` de la
+versión web se mantiene en paralelo. También se puede abrir `android/`
+directamente en Android Studio y ejecutar el módulo `app`.
+
+La aplicación Android carga el build React local dentro de un WebView, por lo
+que mantiene la persistencia de libros recientes, posiciones, marcadores y
+caché de traducciones. Las traducciones IA siguen necesitando conexión a
+Internet. El workflow `.github/workflows/build.yml` es opcional y solo sirve
+para automatización; no es necesario para compilar ni usar la aplicación
+localmente.
+
 ---
 
 ## 📁 Estructura del Proyecto

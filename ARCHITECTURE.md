@@ -22,6 +22,7 @@ Crear una aplicación web tipo Kindle moderna, rápida y local que permita:
 - **Parser de EPUB**: `JSZip` (descompresión client-side) + DOMParser de navegador.
 - **Iconos**: `lucide-react`.
 - **Bundler Single-File**: `vite-plugin-singlefile` (empaqueta todo el JS, CSS y recursos en un único `dist/index.html`).
+- **Aplicación Android opcional**: Capacitor carga el mismo `dist` dentro de un WebView nativo sin sustituir la versión web.
 
 ---
 
@@ -31,6 +32,8 @@ Crear una aplicación web tipo Kindle moderna, rápida y local que permita:
 EReader/
 ├── index.html                 # HTML principal con meta tags para móvil y fuentes japonesas
 ├── vite.config.ts             # Configuración de Vite con viteSingleFile()
+├── capacitor.config.ts        # Configuración de la distribución Android
+├── android/                   # Proyecto nativo Android generado por Capacitor
 ├── tailwind.config.js         # Temas, fuentes japonesas (Mincho, Gothic) y colores
 ├── package.json               # Dependencias del proyecto
 ├── README.md                  # Instrucciones de uso e instalación
@@ -104,6 +107,7 @@ EReader/
 - ✅ Gestos táctiles (*Swipe*) y maquetación responsive para móviles (`100dvh`).
 - ✅ Modos de color (Blanco, Papel, Sepia, Noche) y tipografías japonesas.
 - ✅ Empaquetado Single-File (`dist/index.html`) ejecutable por doble clic.
+- ✅ Distribución Android opcional mediante Capacitor usando el mismo build web.
 
 ---
 
