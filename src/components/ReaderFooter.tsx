@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronLeft, ChevronRight, SkipBack, SkipForward } from 'lucide-react';
+import { Bookmark, ChevronLeft, ChevronRight, SkipBack, SkipForward } from 'lucide-react';
 import { ProgressionDirection } from '../types/epub';
 
 interface Props {
@@ -14,6 +14,8 @@ interface Props {
   onNextPage: () => void;
   onPrevChapter: () => void;
   onNextChapter: () => void;
+  isBookmarked: boolean;
+  onToggleBookmark: () => void;
 }
 
 export const ReaderFooter: React.FC<Props> = ({
@@ -28,6 +30,8 @@ export const ReaderFooter: React.FC<Props> = ({
   onNextPage,
   onPrevChapter,
   onNextChapter,
+  isBookmarked,
+  onToggleBookmark,
 }) => {
   const isRtl = direction === 'rtl' || isVertical;
   const safeTotalPages = Math.max(1, totalPages);
@@ -84,6 +88,19 @@ export const ReaderFooter: React.FC<Props> = ({
           >
             <ChevronLeft className="w-4 h-4" />
             <span>{leftLabel}</span>
+          </button>
+
+          <button
+            onClick={onToggleBookmark}
+            title={isBookmarked ? 'Quitar marcador' : 'Marcar esta página'}
+            aria-label={isBookmarked ? 'Quitar marcador' : 'Marcar esta página'}
+            className={`p-2 rounded-xl transition-colors ${
+              isBookmarked
+                ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300'
+                : 'text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800'
+            }`}
+          >
+            <Bookmark className="w-4 h-4" fill={isBookmarked ? 'currentColor' : 'none'} />
           </button>
 
           {/* Center Info */}

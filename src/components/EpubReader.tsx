@@ -8,6 +8,11 @@ import { TextSelectionMenu, SelectionPosition } from './TextSelectionMenu';
 import { TranslationModal } from './TranslationModal';
 import { Loader2, Menu } from 'lucide-react';
 
+interface ReadingPosition {
+  spineIndex: number;
+  page: number;
+}
+
 interface Props {
   epub: ParsedEpub;
   onCloseBook: () => void;
@@ -28,6 +33,27 @@ export const EpubReader: React.FC<Props> = ({
   const [showUi, setShowUi] = useState(false);
   const [isTocOpen, setIsTocOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const bookStorageKey = `ereader_book_${encodeURIComponent(`${epub.metadata.title}|${epub.metadata.creator}`)}`;
+  const [bookmark, setBookmark] = useState<ReadingPosition | null>(() => {
+    try {
+      const saved = localStorage.getItem(`${bookStorageKey}_bookmark`);
+      if (!saved) return null;
+      const parsed = JSON.parse(saved) as Partial<ReadingPosition>;
+      if (
+        typeof parsed.spineIndex === 'number' &&
+        typeof parsed.page === 'number' &&
+        Number.isInteger(parsed.spineIndex) &&
+        Number.isInteger(parsed.page) &&
+        parsed.spineIndex >= 0 &&
+        parsed.page >= 0
+      ) {
+        return { spineIndex: parsed.spineIndex, page: parsed.page };
+      }
+    } catch {
+      // Ignore malformed or unavailable persisted bookmark.
+    }
+    return null;
+  });
 
   const [selectedText, setSelectedText] = useState('');
   const [selectionPos, setSelectionPos] = useState<SelectionPosition | null>(null);
@@ -45,6 +71,36 @@ export const EpubReader: React.FC<Props> = ({
 
   const currentSpineItem = epub.spine[currentSpineIndex];
   const spineHrefs = epub.spine.map((s) => s.href);
+
+  const saveReadingPosition = useCallback((position: ReadingPosition) => {
+    try {
+      localStorage.setItem(`${bookStorageKey}_position`, JSON.stringify(position));
+    } catch {
+      // Persistence is optional when storage is unavailable.
+    }
+  }, [bookStorageKey]);
+
+  const handleToggleBookmark = useCallback(() => {
+    const currentPosition = {
+      spineIndex: currentSpineRef.current,
+      page: currentPageRef.current,
+    };
+    const isCurrentBookmark =
+      bookmark?.spineIndex === currentPosition.spineIndex &&
+      bookmark.page === currentPosition.page;
+    const nextBookmark = isCurrentBookmark ? null : currentPosition;
+
+    try {
+      if (nextBookmark) {
+        localStorage.setItem(`${bookStorageKey}_bookmark`, JSON.stringify(nextBookmark));
+      } else {
+        localStorage.removeItem(`${bookStorageKey}_bookmark`);
+      }
+    } catch {
+      // Persistence is optional when storage is unavailable.
+    }
+    setBookmark(nextBookmark);
+  }, [bookStorageKey, bookmark]);
 
   const themeColors = {
     light: { bg: '#ffffff', text: '#18181b' },
@@ -381,19 +437,54 @@ export const EpubReader: React.FC<Props> = ({
   useEffect(() => { currentPageRef.current = currentPage; }, [currentPage]);
   useEffect(() => { totalPagesRef.current = totalPages; }, [totalPages]);
   useEffect(() => { currentSpineRef.current = currentSpineIndex; }, [currentSpineIndex]);
+  useEffect(() => {
+    if (!isLoadingChapter) {
+      saveReadingPosition({ spineIndex: currentSpineIndex, page: currentPage });
+    }
+  }, [currentPage, currentSpineIndex, isLoadingChapter, saveReadingPosition]);
 
   // Expose page-turn handlers to React world (footer buttons, keyboard)
   const handleNextPage = useCallback(() => doNextRef.current(), []);
   const handlePrevPage = useCallback(() => doPrevRef.current(), []);
 
   // Reload chapter on style settings change
+  const hasMountedRef = useRef(false);
   useEffect(() => {
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true;
+      return;
+    }
     loadChapter(currentSpineRef.current, 0);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.writingMode, settings.fontFamily, settings.fontSize, settings.lineHeight, settings.theme]);
 
   // Initial load
-  useEffect(() => { loadChapter(0, 0); }, []); // eslint-disable-line
+  useEffect(() => {
+    let position: ReadingPosition = { spineIndex: 0, page: 0 };
+    try {
+      const saved = localStorage.getItem(`${bookStorageKey}_position`);
+      if (saved) {
+        const parsed = JSON.parse(saved) as Partial<ReadingPosition>;
+        const savedSpineIndex = parsed.spineIndex;
+        const savedPage = parsed.page;
+        if (
+          typeof savedSpineIndex === 'number' &&
+          typeof savedPage === 'number' &&
+          Number.isInteger(savedSpineIndex) &&
+          Number.isInteger(savedPage) &&
+          savedSpineIndex >= 0 &&
+          savedSpineIndex < epub.spine.length &&
+          savedPage >= 0
+        ) {
+          position = { spineIndex: savedSpineIndex, page: savedPage };
+        }
+      }
+    } catch {
+      // Ignore malformed or unavailable persisted position.
+    }
+    loadChapter(position.spineIndex, position.page);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Re-apply transform when page changes from React state
   useEffect(() => { updatePagination(); }, [currentPage, updatePagination]);
@@ -514,6 +605,11 @@ export const EpubReader: React.FC<Props> = ({
         onNextPage={handleNextPage}
         onPrevChapter={handlePrevChapter}
         onNextChapter={handleNextChapter}
+        isBookmarked={
+          bookmark?.spineIndex === currentSpineIndex &&
+          bookmark.page === currentPage
+        }
+        onToggleBookmark={handleToggleBookmark}
       />
 
       <ReaderToc

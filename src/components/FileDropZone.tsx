@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
-import { UploadCloud, BookOpen, Sparkles, FileText, CheckCircle2 } from 'lucide-react';
+import { UploadCloud, BookOpen, Sparkles, FileText, CheckCircle2, Clock3 } from 'lucide-react';
 import { createSampleJapaneseEpub } from '../utils/sampleBook';
+import { RecentBook } from '../utils/recentBooks';
 
 interface Props {
   onFileLoaded: (file: File | Blob) => void;
+  onOpenRecent: (book: RecentBook) => void;
+  recentBooks: RecentBook[];
   isLoading: boolean;
 }
 
-export const FileDropZone: React.FC<Props> = ({ onFileLoaded, isLoading }) => {
+export const FileDropZone: React.FC<Props> = ({ onFileLoaded, onOpenRecent, recentBooks, isLoading }) => {
   const [isDragOver, setIsDragOver] = useState(false);
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -114,6 +117,34 @@ export const FileDropZone: React.FC<Props> = ({ onFileLoaded, isLoading }) => {
             <span>Cargar libro de prueba japonés</span>
           </button>
         </div>
+
+        {recentBooks.length > 0 && (
+          <div className="mt-8 pt-6 border-t border-zinc-200 dark:border-zinc-800 text-left">
+            <div className="flex items-center gap-2 mb-3">
+              <Clock3 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">Libros recientes</h2>
+            </div>
+            <div className="space-y-2">
+              {recentBooks.map((book) => (
+                <button
+                  key={book.id}
+                  type="button"
+                  onClick={() => onOpenRecent(book)}
+                  disabled={isLoading}
+                  className="w-full rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white/70 dark:bg-zinc-800/60 px-3 py-2.5 text-left hover:border-indigo-400 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/30 transition-colors disabled:opacity-50"
+                >
+                  <div className="flex items-center gap-3">
+                    <BookOpen className="w-4 h-4 shrink-0 text-indigo-600 dark:text-indigo-400" />
+                    <span className="min-w-0">
+                      <span className="block truncate text-xs font-semibold text-zinc-800 dark:text-zinc-200">{book.title}</span>
+                      <span className="block truncate text-[11px] text-zinc-500 dark:text-zinc-400">{book.creator} · {book.name}</span>
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Features Checklist */}
         <div className="mt-8 grid grid-cols-2 sm:grid-cols-3 gap-3 text-left text-xs text-zinc-600 dark:text-zinc-400">
