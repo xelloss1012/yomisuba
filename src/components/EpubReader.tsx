@@ -166,6 +166,7 @@ export const EpubReader: React.FC<Props> = ({
     if (!scroller) return;
 
     const vw = iframe.clientWidth || window.innerWidth;
+    const sidePad = window.innerWidth < 640 ? 16 : 44;
 
     // Use the widest measured value because vertical writing can report a
     // smaller scrollWidth while the multi-column content is still laying out.
@@ -180,9 +181,9 @@ export const EpubReader: React.FC<Props> = ({
 
     if (isVertical) {
       // RTL multi-column: column 0 is rightmost. Each page moves +X to reveal columns further left.
-      scroller.style.transform = `translateX(${page * vw}px)`;
+      scroller.style.transform = `translateX(${page * vw - sidePad}px)`;
     } else {
-      scroller.style.transform = `translateX(${-page * vw}px)`;
+      scroller.style.transform = `translateX(${-page * vw + sidePad}px)`;
     }
   }, [isVertical]);
 
@@ -202,12 +203,14 @@ export const EpubReader: React.FC<Props> = ({
         const rawHtml = await epub.getChapterContent(epub.spine[index].href);
         const mobile = window.innerWidth < 640;
         const sidePad = mobile ? 16 : 44;
-        const pad = `${mobile ? 18 : 32}px ${sidePad}px ${mobile ? 52 : 40}px`;
+        const pageColumnWidth = `calc(100vw - ${sidePad * 2}px)`;
+        const pageColumnGap = `${sidePad * 2}px`;
+        const pad = `${mobile ? 18 : 32}px 0 ${mobile ? 52 : 40}px`;
         const fontSize = mobile ? Math.min(settings.fontSize, 18) : settings.fontSize;
         const content = new DOMParser().parseFromString(rawHtml, 'text/html').body.innerHTML;
         const css = isVertical
-          ? `position:absolute;top:0;right:0;height:100%;width:max-content;writing-mode:vertical-rl;direction:ltr;column-width:${vw}px;column-gap:0;column-fill:auto;padding:${pad};font-family:${getFontFamilyCss(settings.fontFamily)};font-size:${fontSize}px;line-height:${settings.lineHeight};letter-spacing:${settings.letterSpacing}em;`
-          : `position:absolute;top:0;left:0;height:100%;width:max-content;writing-mode:horizontal-tb;direction:ltr;column-width:${vw}px;column-gap:0;column-fill:auto;padding:${pad};font-family:${getFontFamilyCss(settings.fontFamily)};font-size:${fontSize}px;line-height:${settings.lineHeight};letter-spacing:${settings.letterSpacing}em;`;
+          ? `position:absolute;top:0;right:0;height:100%;width:max-content;writing-mode:vertical-rl;direction:ltr;column-width:${pageColumnWidth};column-gap:${pageColumnGap};column-fill:auto;padding:${pad};font-family:${getFontFamilyCss(settings.fontFamily)};font-size:${fontSize}px;line-height:${settings.lineHeight};letter-spacing:${settings.letterSpacing}em;`
+          : `position:absolute;top:0;left:0;height:100%;width:max-content;writing-mode:horizontal-tb;direction:ltr;column-width:${pageColumnWidth};column-gap:${pageColumnGap};column-fill:auto;padding:${pad};font-family:${getFontFamilyCss(settings.fontFamily)};font-size:${fontSize}px;line-height:${settings.lineHeight};letter-spacing:${settings.letterSpacing}em;`;
         const doc = frame.contentDocument;
         if (!doc) break;
         doc.open();
@@ -338,10 +341,11 @@ export const EpubReader: React.FC<Props> = ({
         const sidePad = mobile ? 16 : 44;
         // Keep only a small permanent margin. The outer reader viewport
         // reserves the larger header/footer areas only while the UI is open.
-        const pad = `${mobile ? 18 : 32}px ${sidePad}px ${mobile ? 52 : 40}px`;
+        const pageColumnWidth = `calc(100vw - ${sidePad * 2}px)`;
+        const pageColumnGap = `${sidePad * 2}px`;
+        const pad = `${mobile ? 18 : 32}px 0 ${mobile ? 52 : 40}px`;
         const imgMaxH = 'calc(100% - 32px)';
         const imgMaxW = mobile ? 'calc(100vw - 28px)' : 'calc(100vw - 88px)';
-        const colGap = '0px';
         const fontSize = mobile ? Math.min(settings.fontSize, 18) : settings.fontSize;
 
         // For vertical-rl multi-column we MUST set height on the scroller
@@ -362,9 +366,9 @@ export const EpubReader: React.FC<Props> = ({
           -webkit-text-orientation: mixed;
           font-feature-settings: "vert" 1, "vrt2" 1, "palt" 1;
           -webkit-font-feature-settings: "vert" 1, "vrt2" 1, "palt" 1;
-          /* Keep one complete viewport per column on narrow screens too. */
-          column-width: 100vw;
-          column-gap: ${colGap};
+          /* Column width plus gap equals one page, preserving the page grid. */
+          column-width: ${pageColumnWidth};
+          column-gap: ${pageColumnGap};
           column-fill: auto;
           padding: ${pad};
           /* transition applied by JS */
@@ -380,8 +384,8 @@ export const EpubReader: React.FC<Props> = ({
           writing-mode: horizontal-tb;
           -webkit-writing-mode: horizontal-tb;
           direction: ltr;
-          column-width: 100vw;
-          column-gap: ${colGap};
+          column-width: ${pageColumnWidth};
+          column-gap: ${pageColumnGap};
           column-fill: auto;
           padding: ${pad};
           will-change: transform;
@@ -482,15 +486,88 @@ export const EpubReader: React.FC<Props> = ({
         }
 
         // ── Gesture & tap handlers attached inside the iframe ──
-        let sx = 0, sy = 0, st = 0, moved = false;
+        let sx = 0, sy = 0, st = 0, moved = false, selecting = false;
+        let selectionTurnTimer: number | undefined;
+        let selectionSignature = '';
+
+        const stopSelectionPaging = () => {
+          if (selectionTurnTimer !== undefined) {
+            window.clearInterval(selectionTurnTimer);
+            selectionTurnTimer = undefined;
+          }
+        };
+
+        const getSelectionSignature = (selection: Selection, range: Range) =>
+          `${selection.toString()}|${range.startOffset}|${range.endOffset}`;
+
+        const turnSelectionPageAtEdge = () => {
+          const selection = iframe.contentWindow?.getSelection();
+          if (!selection?.rangeCount || !selection.toString()) {
+            stopSelectionPaging();
+            return;
+          }
+
+          const focusNode = selection.focusNode;
+          if (!focusNode) {
+            stopSelectionPaging();
+            return;
+          }
+          const focusRange = doc.createRange();
+          focusRange.setStart(focusNode, selection.focusOffset);
+          focusRange.collapse(true);
+          const focusRect = focusRange.getBoundingClientRect();
+          const pageWidth = iframe.clientWidth || window.innerWidth;
+          const edge = Math.min(48, pageWidth * 0.12);
+          const nextEdge = isRtl
+            ? focusRect.left <= edge
+            : focusRect.right >= pageWidth - edge;
+          const previousEdge = isRtl
+            ? focusRect.right >= pageWidth - edge
+            : focusRect.left <= edge;
+
+          if (nextEdge && currentPageRef.current < totalPagesRef.current - 1) {
+            doNextRef.current();
+          } else if (previousEdge && currentPageRef.current > 0) {
+            doPrevRef.current();
+          } else {
+            stopSelectionPaging();
+          }
+        };
+
+        const handleIframeSelectionChange = () => {
+          handleSelection();
+          const selection = iframe.contentWindow?.getSelection();
+          if (!selection?.rangeCount || !selection.toString()) {
+            selectionSignature = '';
+            stopSelectionPaging();
+            return;
+          }
+
+          const range = selection.getRangeAt(0);
+          const nextSignature = getSelectionSignature(selection, range);
+          if (!selectionSignature) {
+            selectionSignature = nextSignature;
+            return;
+          }
+          if (nextSignature === selectionSignature) return;
+          selectionSignature = nextSignature;
+          stopSelectionPaging();
+          selectionTurnTimer = window.setTimeout(turnSelectionPageAtEdge, 300);
+        };
 
         const onStart = (cx: number, cy: number) => {
-          sx = cx; sy = cy; st = Date.now(); moved = false;
+          stopSelectionPaging();
+          sx = cx; sy = cy; st = Date.now(); moved = false; selecting = false;
         };
         const onMove = (cx: number, cy: number) => {
           if (Math.abs(cx - sx) > 20 || Math.abs(cy - sy) > 20) moved = true;
+
+          const selection = iframe.contentWindow?.getSelection();
+          if (!selection?.rangeCount || !selection.toString()) return;
+          selecting = true;
         };
-        const onEnd = (cx: number) => {
+        const onEnd = (cx: number, allowTapNavigation = true) => {
+          stopSelectionPaging();
           const dt = Date.now() - st;
           const dx = cx - sx;
 
@@ -498,14 +575,14 @@ export const EpubReader: React.FC<Props> = ({
             const sel = iframe.contentWindow?.getSelection()?.toString().trim();
             if (sel) { handleSelection(); return; }
 
-            if (Math.abs(dx) > 30) {
+            if (!selecting && Math.abs(dx) > 30) {
               // Swipe follows the same physical direction as the page controls:
               // moving right advances and moving left goes back.
               if (dx > 0) doNextRef.current(); else doPrevRef.current();
               return;
             }
 
-            if (!moved && dt < 300) {
+            if (allowTapNavigation && !moved && dt < 300) {
               if (Date.now() - lastSelectionTime.current < 400) return;
               const vw = iframe.clientWidth || window.innerWidth;
               const ratio = cx / vw;
@@ -522,7 +599,8 @@ export const EpubReader: React.FC<Props> = ({
           }, 40);
         };
 
-        doc.addEventListener('selectionchange', handleSelection);
+        doc.addEventListener('selectionchange', handleIframeSelectionChange);
+        doc.addEventListener('contextmenu', (e) => e.preventDefault());
         doc.addEventListener('mousedown',  (e) => onStart(e.clientX, e.clientY));
         doc.addEventListener('mousemove',  (e) => onMove(e.clientX, e.clientY));
         doc.addEventListener('mouseup',    (e) => onEnd(e.clientX));
@@ -536,9 +614,18 @@ export const EpubReader: React.FC<Props> = ({
             setImageViewerOffset({ x: 0, y: 0 });
           }
         });
-        doc.addEventListener('touchstart', (e) => { if (e.touches[0]) onStart(e.touches[0].clientX, e.touches[0].clientY); }, { passive: true });
-        doc.addEventListener('touchmove',  (e) => { if (e.touches[0]) onMove(e.touches[0].clientX, e.touches[0].clientY); }, { passive: true });
-        doc.addEventListener('touchend',   (e) => { if (e.changedTouches[0]) onEnd(e.changedTouches[0].clientX); }, { passive: true });
+        // Android WebView routes selection-handle drags outside the document's
+        // touch event stream. selectionchange handles those interactions while
+        // touch gestures remain available for regular page swipes.
+        doc.addEventListener('touchstart', (e) => {
+          if (e.touches[0]) onStart(e.touches[0].clientX, e.touches[0].clientY);
+        }, { passive: true });
+        doc.addEventListener('touchmove', (e) => {
+          if (e.touches[0]) onMove(e.touches[0].clientX, e.touches[0].clientY);
+        }, { passive: true });
+        doc.addEventListener('touchend', (e) => {
+          if (e.changedTouches[0]) onEnd(e.changedTouches[0].clientX, false);
+        }, { passive: true });
 
         // ── Trigger pagination once content is laid out ──
         const triggerUpdate = () => {

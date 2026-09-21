@@ -71,7 +71,7 @@ EReader/
 
 ### 2. Motor de Lectura e IFrame (`src/components/EpubReader.tsx`)
 - **Aislamiento**: Renderiza el capítulo actual dentro de un `<iframe>` para aislar completamente los estilos del libro de la interfaz global.
-- **Anclaje Vertical Determinista**: Aplica `position: absolute; top: 0; right: 0; writing-mode: vertical-rl; direction: rtl; text-orientation: mixed;`. Al anclar el inicio a la derecha (`right: 0`), la página 0 se alinea de forma determinista con el borde derecho de la pantalla y el texto fluye de derecha a izquierda hacia números negativos de X.
+- **Anclaje Vertical Determinista**: Aplica `position: absolute; top: 0; right: 0; writing-mode: vertical-rl; direction: ltr; text-orientation: mixed;`. Al anclar el inicio a la derecha (`right: 0`), la página 0 se alinea de forma determinista con el borde derecho de la pantalla y el texto fluye de derecha a izquierda hacia números negativos de X.
 - **Tipografía Japonesa y Kinsoku Shori (JLReq / EPUB 3)**:
   - `text-orientation: mixed`: Crucial para la rotación correcta de la puntuación ideográfica (`。`, `、`, `「」`).
   - `line-break: strict`: Evita que signos de puntuación de cierre o kanas pequeños queden al inicio de una línea vertical.
@@ -79,10 +79,13 @@ EReader/
   - `text-align: justify; text-justify: inter-ideograph`: Retícula justificada de caracteres kanji y kana.
 - **Viewport Fijo (`fixed inset-0` y `100dvh`)**: Evita el desbordamiento de las barras de dirección dinámicas de Safari y Chrome en iOS/Android.
 - **Cálculo de Páginas mediante DOM Range**: Mide el ancho total exacto del texto renderizado utilizando `Range.selectNodeContents(wrapper).getBoundingClientRect().width` junto con `scrollWidth`, garantizando un conteo fiable de páginas (`totalPages`).
+- **Retícula de Columnas y Márgenes**: Una columna mide `100vw - 2 × margen lateral`; su `column-gap` mide exactamente `2 × margen lateral`. Por tanto, el paso de columna siempre es `100vw`, que es el mismo paso empleado por `translateX` y por el cálculo de páginas. Los márgenes se aplican mediante el desplazamiento visual del `scroller`, no mediante `padding` horizontal: añadir relleno horizontal rompería esa retícula y dejaría columnas a caballo entre páginas. El margen es de 16px en móvil y 44px en escritorio.
 - **Navegación Táctil Coherente**:
-  - Deslizar a la izquierda (*Swipe Left*) o pulsar en la zona izquierda / botón `[< Siguiente]` avanza hacia la página de la izquierda (progresión natural japonesa RTL).
-  - Deslizar a la derecha (*Swipe Right*) o pulsar en la zona derecha / botón `[Anterior >]` retrocede hacia la página de la derecha.
-  - Tocar en el centro (con umbral de tolerancia de 25px para evitar falsos arrastres) o pulsar el botón flotante superior muestra/oculta el menú de navegación del libro.
+  - Deslizar a la izquierda (*Swipe Left*) o usar el botón `[< Siguiente]` avanza hacia la página de la izquierda (progresión natural japonesa RTL).
+  - Deslizar a la derecha (*Swipe Right*) o usar el botón `[Anterior >]` retrocede hacia la página de la derecha.
+  - En Android, los toques simples dentro del EPUB no cambian de página para no interferir con la pulsación prolongada y los tiradores nativos de selección. Los *swipes* sin texto seleccionado siguen paginando; los controles de interfaz permiten toda la navegación alternativa.
+  - En escritorio, tocar/hacer clic en el centro (con umbral de tolerancia de 25px para evitar falsos arrastres) o pulsar el botón flotante superior muestra/oculta el menú de navegación del libro.
+- **Selección entre Páginas en Android**: El WebView no entrega de forma fiable `touchmove` cuando se arrastran los tiradores nativos de selección. La extensión de selección se detecta mediante `selectionchange`: después de que una selección existente cambie, se comprueba su extremo (`Selection.focusNode` / `focusOffset`) y, si queda en el borde de la página, se pasa a la página contigua. No sustituir este mecanismo por la escucha directa de eventos táctiles. El `contextmenu` del documento del iframe se cancela para no superponer el menú nativo al menú de selección de la aplicación.
 - **Selección Móvil Tipo Kindle**: En teléfonos móviles, el menú de herramientas de selección se acopla a 85px del borde inferior (`max(env(safe-area-inset-bottom) + 85px, 92px)`), flotando nítidamente por encima de la barra de búsqueda y navegación del navegador móvil.
 
 ### 3. Selección de Texto y Menú Contextual (`src/components/TextSelectionMenu.tsx` / `TranslationModal.tsx`)
