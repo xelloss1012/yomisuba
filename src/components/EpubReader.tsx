@@ -166,8 +166,6 @@ export const EpubReader: React.FC<Props> = ({
     if (!scroller) return;
 
     const vw = iframe.clientWidth || window.innerWidth;
-    const sidePad = window.innerWidth < 640 ? 16 : 44;
-
     // Use the widest measured value because vertical writing can report a
     // smaller scrollWidth while the multi-column content is still laying out.
     const range = doc.createRange();
@@ -181,9 +179,9 @@ export const EpubReader: React.FC<Props> = ({
 
     if (isVertical) {
       // RTL multi-column: column 0 is rightmost. Each page moves +X to reveal columns further left.
-      scroller.style.transform = `translateX(${page * vw - sidePad}px)`;
+      scroller.style.transform = `translateX(${page * vw}px)`;
     } else {
-      scroller.style.transform = `translateX(${-page * vw + sidePad}px)`;
+      scroller.style.transform = `translateX(${-page * vw}px)`;
     }
   }, [isVertical]);
 
@@ -214,7 +212,7 @@ export const EpubReader: React.FC<Props> = ({
         const doc = frame.contentDocument;
         if (!doc) break;
         doc.open();
-        doc.write(`<style>*{box-sizing:border-box}html,body{margin:0;width:${vw}px;height:${vh}px;overflow:hidden}#reader-scroller{${css};overflow-wrap:normal;text-orientation:mixed}img,svg{max-width:calc(100vw - 32px);max-height:calc(100% - 32px);object-fit:contain;break-inside:avoid-column;page-break-inside:avoid;display:inline-block;vertical-align:top}p,h1,h2,h3,h4{break-inside:auto}</style><div id="reader-scroller">${content}</div>`);
+        doc.write(`<style>*{box-sizing:border-box}html,body{margin:0;width:${vw}px;height:${vh}px;overflow:hidden}#reader-scroller{${css};overflow-wrap:normal;text-orientation:mixed}ruby{break-inside:avoid;page-break-inside:avoid;-webkit-column-break-inside:avoid}ruby rt{user-select:none;-webkit-user-select:none;pointer-events:none}img,svg{max-width:calc(100vw - 32px);max-height:calc(100% - 32px);object-fit:contain;break-inside:avoid-column;page-break-inside:avoid;display:inline-block;vertical-align:top}p,h1,h2,h3,h4{break-inside:auto}</style><div id="reader-scroller">${content}</div>`);
         doc.close();
         await doc.fonts?.ready;
         const images = Array.from(doc.images);
@@ -441,7 +439,20 @@ export const EpubReader: React.FC<Props> = ({
     }
     p  { margin: 0 0 ${isVertical ? '0 0.5rem' : '0.5rem 0'}; }
     h1,h2,h3,h4 { font-weight:700; break-after:avoid; }
-    ruby rt { font-size: 0.52em; line-height:1; opacity:0.85; font-weight:400; }
+    ruby {
+      break-inside: avoid;
+      page-break-inside: avoid;
+      -webkit-column-break-inside: avoid;
+    }
+    ruby rt {
+      font-size: 0.52em;
+      line-height: 1;
+      opacity: 0.85;
+      font-weight: 400;
+      user-select: none;
+      -webkit-user-select: none;
+      pointer-events: none;
+    }
     .tate-chu-yoko, [class*="tcy"], [class*="tate-ch"] {
       text-combine-upright: all; -webkit-text-combine: horizontal; }
     a { color: inherit; text-decoration: none; }
