@@ -29,6 +29,7 @@ export const EpubReader: React.FC<Props> = ({
 }) => {
   const [currentSpineIndex, setCurrentSpineIndex] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
+  const [pageNudge, setPageNudge] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [bookTotalPages, setBookTotalPages] = useState(1);
   const [chapterPageCounts, setChapterPageCounts] = useState<number[]>([]);
@@ -71,6 +72,7 @@ export const EpubReader: React.FC<Props> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const lastSelectionTime = useRef<number>(0);
   const currentPageRef = useRef(0);
+  const pageNudgeRef = useRef(0);
   const totalPagesRef = useRef(1);
   const currentSpineRef = useRef(0);
   const chapterPageCountsRef = useRef<number[]>([]);
@@ -176,12 +178,13 @@ export const EpubReader: React.FC<Props> = ({
     setTotalPages(pages);
     totalPagesRef.current = pages;
     const page = currentPageRef.current;
+    const offset = pageNudgeRef.current;
 
     if (isVertical) {
       // RTL multi-column: column 0 is rightmost. Each page moves +X to reveal columns further left.
-      scroller.style.transform = `translateX(${page * vw}px)`;
+      scroller.style.transform = `translateX(${page * vw + offset}px)`;
     } else {
-      scroller.style.transform = `translateX(${-page * vw}px)`;
+      scroller.style.transform = `translateX(${-page * vw + offset}px)`;
     }
   }, [isVertical]);
 
@@ -285,6 +288,8 @@ export const EpubReader: React.FC<Props> = ({
     const pages = totalPagesRef.current;
 
     if (page < pages - 1) {
+      pageNudgeRef.current = 0;
+      setPageNudge(0);
       currentPageRef.current = page + 1;
       setCurrentPage(page + 1);
       updatePagination();
@@ -299,6 +304,8 @@ export const EpubReader: React.FC<Props> = ({
     const spine = currentSpineRef.current;
 
     if (page > 0) {
+      pageNudgeRef.current = 0;
+      setPageNudge(0);
       currentPageRef.current = page - 1;
       setCurrentPage(page - 1);
       updatePagination();
@@ -498,6 +505,7 @@ export const EpubReader: React.FC<Props> = ({
 
         // ── Gesture & tap handlers attached inside the iframe ──
         let sx = 0, sy = 0, st = 0, moved = false, selecting = false;
+        let gestureNudgeStart = 0;
         let selectionTurnTimer: number | undefined;
         let selectionSignature = '';
 
@@ -528,7 +536,7 @@ export const EpubReader: React.FC<Props> = ({
           focusRange.collapse(true);
           const focusRect = focusRange.getBoundingClientRect();
           const pageWidth = iframe.clientWidth || window.innerWidth;
-          const edge = Math.min(48, pageWidth * 0.12);
+          const edge = Math.min(24, pageWidth * 0.06);
           const nextEdge = isRtl
             ? focusRect.left <= edge
             : focusRect.right >= pageWidth - edge;
@@ -551,6 +559,8 @@ export const EpubReader: React.FC<Props> = ({
           if (!selection?.rangeCount || !selection.toString()) {
             selectionSignature = '';
             stopSelectionPaging();
+            setSelectedText('');
+            setSelectionPos(null);
             return;
           }
 
@@ -563,24 +573,44 @@ export const EpubReader: React.FC<Props> = ({
           if (nextSignature === selectionSignature) return;
           selectionSignature = nextSignature;
           stopSelectionPaging();
-          selectionTurnTimer = window.setTimeout(turnSelectionPageAtEdge, 300);
+          selectionTurnTimer = window.setTimeout(turnSelectionPageAtEdge, 700);
         };
 
         const onStart = (cx: number, cy: number) => {
           stopSelectionPaging();
           sx = cx; sy = cy; st = Date.now(); moved = false; selecting = false;
+          gestureNudgeStart = pageNudgeRef.current;
         };
         const onMove = (cx: number, cy: number) => {
-          if (Math.abs(cx - sx) > 20 || Math.abs(cy - sy) > 20) moved = true;
+          const dx = cx - sx;
+          const dy = cy - sy;
+          if (Math.abs(dx) > 8 || Math.abs(dy) > 8) moved = true;
 
           const selection = iframe.contentWindow?.getSelection();
-          if (!selection?.rangeCount || !selection.toString()) return;
+          const hasSelection = Boolean(selection?.rangeCount && selection.toString());
+
+          if (!hasSelection && !selecting && Math.abs(dx) > 8 && Math.abs(dx) <= 30 && Math.abs(dx) > Math.abs(dy)) {
+            const nudge = Math.max(-192, Math.min(192, gestureNudgeStart + dx));
+            pageNudgeRef.current = nudge;
+            const page = currentPageRef.current;
+            const vw = iframe.clientWidth || window.innerWidth;
+            const base = isVertical ? page * vw : -page * vw;
+            const scroller = doc.getElementById('reader-scroller');
+            if (scroller) scroller.style.transform = `translateX(${base + nudge}px)`;
+          }
+
+          if (!hasSelection) return;
           selecting = true;
         };
         const onEnd = (cx: number, allowTapNavigation = true) => {
           stopSelectionPaging();
           const dt = Date.now() - st;
           const dx = cx - sx;
+
+          if (moved && Math.abs(dx) <= 30) {
+            setPageNudge(pageNudgeRef.current);
+            return;
+          }
 
           setTimeout(() => {
             const sel = iframe.contentWindow?.getSelection()?.toString().trim();
@@ -641,6 +671,8 @@ export const EpubReader: React.FC<Props> = ({
         // ── Trigger pagination once content is laid out ──
         const triggerUpdate = () => {
           currentSpineRef.current = spineIndex;
+          pageNudgeRef.current = 0;
+          setPageNudge(0);
           setCurrentSpineIndex(spineIndex);
           currentPageRef.current = targetPage === -1 ? 0 : targetPage;
           setCurrentPage(currentPageRef.current);
@@ -691,6 +723,17 @@ export const EpubReader: React.FC<Props> = ({
   // Expose page-turn handlers to React world (footer buttons, keyboard)
   const handleNextPage = useCallback(() => doNextRef.current(), []);
   const handlePrevPage = useCallback(() => doPrevRef.current(), []);
+  const handleNudgePage = useCallback((delta: number) => {
+    const next = Math.max(-192, Math.min(192, pageNudgeRef.current + delta));
+    pageNudgeRef.current = next;
+    setPageNudge(next);
+    updatePagination();
+  }, [updatePagination]);
+  const handleResetNudge = useCallback(() => {
+    pageNudgeRef.current = 0;
+    setPageNudge(0);
+    updatePagination();
+  }, [updatePagination]);
 
   const handleSeekPage = useCallback((requestedPage: number) => {
     if (!isBookPaginationReady || !bookTotalPages) return;
@@ -967,6 +1010,9 @@ export const EpubReader: React.FC<Props> = ({
         onPrevPage={handlePrevPage}
         onNextPage={handleNextPage}
         onSeekPage={handleSeekPage}
+        onNudgePage={handleNudgePage}
+        onResetNudge={handleResetNudge}
+        pageNudge={pageNudge}
         onPrevChapter={handlePrevChapter}
         onNextChapter={handleNextChapter}
         isBookmarked={

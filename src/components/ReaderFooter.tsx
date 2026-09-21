@@ -18,6 +18,9 @@ interface Props {
   onPrevPage: () => void;
   onNextPage: () => void;
   onSeekPage: (page: number) => void;
+  onNudgePage: (delta: number) => void;
+  onResetNudge: () => void;
+  pageNudge: number;
   onPrevChapter: () => void;
   onNextChapter: () => void;
   isBookmarked: boolean;
@@ -40,6 +43,9 @@ export const ReaderFooter: React.FC<Props> = ({
   onPrevPage,
   onNextPage,
   onSeekPage,
+  onNudgePage,
+  onResetNudge,
+  pageNudge,
   onPrevChapter,
   onNextChapter,
   isBookmarked,
@@ -113,6 +119,32 @@ export const ReaderFooter: React.FC<Props> = ({
             title={`Ir a la página ${isRtl ? sliderMax - pendingSliderPage + 1 : pendingSliderPage + 1} de ${safeTotalPages}`}
             className="h-1.5 w-full cursor-pointer accent-indigo-600 disabled:cursor-default disabled:opacity-40"
           />
+        </div>
+        <div className="mb-2 flex items-center justify-center gap-2 text-[10px] text-zinc-500 dark:text-zinc-400">
+          <button
+            onClick={() => onNudgePage(48)}
+            className="rounded-lg px-2 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-40"
+            disabled={pageNudge <= -192}
+            title="Desplazar la vista hacia la izquierda"
+          >
+            ◀ Ajustar
+          </button>
+          <button
+            onClick={onResetNudge}
+            className="rounded-lg px-2 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-40"
+            disabled={pageNudge === 0}
+            title="Restablecer el alineado de la página"
+          >
+            {pageNudge === 0 ? 'Alineado' : 'Restablecer'}
+          </button>
+          <button
+            onClick={() => onNudgePage(-48)}
+            className="rounded-lg px-2 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-40"
+            disabled={pageNudge >= 192}
+            title="Desplazar la vista hacia la derecha"
+          >
+            Ajustar ▶
+          </button>
         </div>
 
         {/* Navigation buttons & Page Indicator */}
