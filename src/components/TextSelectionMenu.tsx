@@ -13,6 +13,14 @@ export interface SelectionPosition {
 interface Props {
   selectedText: string;
   position: SelectionPosition | null;
+  /**
+   * True while the selection is still being dragged. On mobile the menu is
+   * docked across the full width near the bottom, which is exactly where a
+   * vertical-rl page ends (bottom-left): keeping it interactive there would
+   * swallow the touches meant for the text and block the selection handles
+   * from reaching the edge of the page.
+   */
+  isAdjusting?: boolean;
   onClose: () => void;
   onOpenTranslate: () => void;
   aiProviders: AiProvider[];
@@ -22,6 +30,7 @@ interface Props {
 export const TextSelectionMenu: React.FC<Props> = ({
   selectedText,
   position,
+  isAdjusting = false,
   onClose,
   onOpenTranslate,
   aiProviders,
@@ -38,8 +47,26 @@ export const TextSelectionMenu: React.FC<Props> = ({
       await navigator.clipboard.writeText(selectedText);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
+      return;
     } catch {
-      // fallback
+      // The Clipboard API is unavailable or not permitted in this frame.
+    }
+    try {
+      const scratch = document.createElement('textarea');
+      scratch.value = selectedText;
+      scratch.setAttribute('readonly', '');
+      scratch.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none;';
+      document.body.appendChild(scratch);
+      scratch.select();
+      scratch.setSelectionRange(0, selectedText.length);
+      const copied = document.execCommand('copy');
+      scratch.remove();
+      if (copied) {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }
+    } catch {
+      // Nothing else can be done without clipboard access.
     }
   };
 
@@ -98,9 +125,9 @@ export const TextSelectionMenu: React.FC<Props> = ({
   return (
     <div
       style={style}
-      className={`z-[60] select-none pointer-events-auto transition-all duration-200 animate-fade-in ${
-        isMobile ? 'max-w-md mx-auto shadow-2xl' : 'shadow-2xl'
-      }`}
+      className={`z-[60] select-none transition-all duration-200 animate-fade-in ${
+        isAdjusting ? 'opacity-0 pointer-events-none' : 'pointer-events-auto'
+      } ${isMobile ? 'max-w-md mx-auto shadow-2xl' : 'shadow-2xl'}`}
       onClick={(e) => e.stopPropagation()}
     >
       <div className="bg-zinc-900/95 dark:bg-zinc-800/95 text-white rounded-2xl p-2 shadow-2xl backdrop-blur-xl border border-zinc-700/80 flex flex-col gap-1.5">

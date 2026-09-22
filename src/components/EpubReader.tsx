@@ -14,6 +14,27 @@ interface ReadingPosition {
   page: number;
 }
 
+interface PaginationCacheEntry {
+  counts: number[];
+  savedAt: number;
+}
+
+// Bumped only for changes in how the measurement itself works. Changes to the
+// reader's CSS do not need it: the cache key carries a signature of the
+// rendered document, so restyling invalidates the cache on its own.
+const PAGINATION_CACHE_VERSION = 1;
+// Keep a handful of entries so rotating the device, or resizing the window,
+// does not throw away the measurement for the previous geometry.
+const PAGINATION_CACHE_ENTRIES = 6;
+
+const hashString = (value: string) => {
+  let hash = 5381;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash << 5) + hash + value.charCodeAt(index)) >>> 0;
+  }
+  return hash.toString(36);
+};
+
 interface Props {
   epub: ParsedEpub;
   onCloseBook: () => void;
@@ -34,9 +55,13 @@ export const EpubReader: React.FC<Props> = ({
   const [bookTotalPages, setBookTotalPages] = useState(1);
   const [chapterPageCounts, setChapterPageCounts] = useState<number[]>([]);
   const [isBookPaginationReady, setIsBookPaginationReady] = useState(false);
+  // The global page number is offset(spineIndex) + page, so it is only
+  // meaningful once the reader has actually been placed on its chapter.
+  const [isReaderPositioned, setIsReaderPositioned] = useState(false);
   const [isLoadingChapter, setIsLoadingChapter] = useState(true);
   const [showUi, setShowUi] = useState(false);
   const [isTocOpen, setIsTocOpen] = useState(false);
+  const [tocError, setTocError] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const bookStorageKey = `ereader_book_${encodeURIComponent(`${epub.metadata.title}|${epub.metadata.creator}`)}`;
   const [bookmark, setBookmark] = useState<ReadingPosition | null>(() => {
@@ -61,6 +86,11 @@ export const EpubReader: React.FC<Props> = ({
   });
 
   const [selectedText, setSelectedText] = useState('');
+  const [isSelectionAdjusting, setIsSelectionAdjusting] = useState(false);
+  const selectionSettleRef = useRef<number | undefined>(undefined);
+  // Set from the iframe's pointer events: the menu must wait for the finger to
+  // leave the screen, not merely for the selection to pause.
+  const pointerActiveRef = useRef(false);
   const [selectionPos, setSelectionPos] = useState<SelectionPosition | null>(null);
   const [isTranslateOpen, setIsTranslateOpen] = useState(false);
   const [aiTranslationProvider, setAiTranslationProvider] = useState<AiProvider | undefined>();
@@ -79,21 +109,61 @@ export const EpubReader: React.FC<Props> = ({
   const bookPageOffsetsRef = useRef<number[]>([]);
   const measurementVersionRef = useRef(0);
   const imageDragRef = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null);
+  const selectedTextRef = useRef('');
+  const openOverlayRef = useRef(false);
+  // Opt-in on-screen trace (append ?debug or #debug to the URL) for diagnosing
+  // selection and paging on a real touch device, where no tooling is available.
+  const [debugEnabled, setDebugEnabled] = useState(
+    () => typeof window !== 'undefined' && /debug/i.test(window.location.search + window.location.hash)
+  );
+  const [debugLines, setDebugLines] = useState<string[]>([]);
+  const [debugCopied, setDebugCopied] = useState(false);
+  const logDebugRef = useRef<(line: string) => void>(() => {});
+  const countDebugRef = useRef<(key: string) => void>(() => {});
+  const debugBufferRef = useRef<string[]>([]);
+  const debugCountsRef = useRef<Record<string, number>>({});
 
   const isVertical = settings.writingMode === 'vertical-rl';
   const isRtl = isVertical || settings.progressionDirection === 'rtl';
 
-  const currentSpineItem = epub.spine[currentSpineIndex];
+  const normalizeHref = useCallback((value: string) => {
+    let path = value.split('#')[0];
+    try {
+      path = decodeURIComponent(path);
+    } catch {
+      // Keep the raw value when it is not valid percent-encoding.
+    }
+    return path
+      .replace(/\\/g, '/')
+      .replace(/^\.\//, '')
+      .replace(/^\//, '')
+      .toLowerCase();
+  }, []);
+
+  const resolveSpineIndex = useCallback((href: string) => {
+    const target = normalizeHref(href);
+    if (!target) return -1;
+    const paths = epub.spine.map((item) => normalizeHref(item.href));
+    const exact = paths.indexOf(target);
+    if (exact !== -1) return exact;
+    // Same file name, whatever directory prefix each side carries.
+    const targetFile = target.split('/').pop() || target;
+    const byFile = paths.findIndex((path) => (path.split('/').pop() || path) === targetFile);
+    if (byFile !== -1) return byFile;
+    // Otherwise one must be a whole-segment suffix of the other.
+    return paths.findIndex(
+      (path) => path.endsWith(`/${target}`) || target.endsWith(`/${path}`)
+    );
+  }, [epub.spine, normalizeHref]);
+
   const spineHrefs = epub.spine.map((s) => s.href);
   const displayChapterCount = Math.max(1, epub.toc.length || epub.spine.length);
   const getDisplayChapter = useCallback((spineIndex: number) => {
-    const href = epub.spine[spineIndex]?.href || '';
-    const topLevelIndex = epub.toc.findIndex((item) => {
-      const clean = item.href.split('#')[0];
-      return href.endsWith(clean) || clean.endsWith(href);
-    });
+    const topLevelIndex = epub.toc.findIndex(
+      (item) => resolveSpineIndex(item.href) === spineIndex
+    );
     return topLevelIndex >= 0 ? topLevelIndex + 1 : Math.min(spineIndex + 1, displayChapterCount);
-  }, [displayChapterCount, epub.spine, epub.toc]);
+  }, [displayChapterCount, epub.toc, resolveSpineIndex]);
 
   const getGlobalPage = useCallback((spineIndex: number, page: number) => {
     return (bookPageOffsetsRef.current[spineIndex] || 0) + page;
@@ -150,254 +220,72 @@ export const EpubReader: React.FC<Props> = ({
     }
   }, []);
 
-  // ─── PAGINATION ───────────────────────────────────────────────────────────────
-  // Both vertical and horizontal use CSS multi-column.
-  // In vertical-rl the columns stack left-to-right from right edge (RTL progression).
-  // The translate moves opposite columns into the viewport.
-  //
-  // Vertical RTL:  page 0 = right column (translateX = 0)
-  //                page 1 = next column to the left → translateX = +viewportWidth
-  // Horizontal:    page 0 = left column (translateX = 0)
-  //                page 1 = next column to the right → translateX = -viewportWidth
-  const updatePagination = useCallback(() => {
-    const iframe = iframeRef.current;
-    if (!iframe || !iframe.contentDocument) return;
+  // The reader document is built here and ONLY here. The offline measurement
+  // used its own, slightly different copy of this CSS — no web fonts, other
+  // letter-spacing, no ruby sizing, other image limits — so its page counts
+  // disagreed with what the reader actually rendered, which showed up as the
+  // page number jumping when crossing a chapter boundary. Sharing one builder
+  // keeps them from drifting apart again.
+  const buildChapterDocument = useCallback((rawHtml: string) => {
+    const parsed = new DOMParser().parseFromString(rawHtml, 'text/html');
+    const bodyContent = parsed.body.innerHTML;
+    const fontCss = getFontFamilyCss(settings.fontFamily);
+    const mobile = window.innerWidth < 640;
+    const sidePad = mobile ? 16 : 44;
+    // Keep only a small permanent margin. The outer reader viewport
+    // reserves the larger header/footer areas only while the UI is open.
+    const pageColumnWidth = `calc(100vw - ${sidePad * 2}px)`;
+    const pageColumnGap = `${sidePad * 2}px`;
+    const pad = `${mobile ? 18 : 32}px 0 ${mobile ? 52 : 40}px`;
+    const imgMaxH = 'calc(100% - 32px)';
+    const imgMaxW = mobile ? 'calc(100vw - 28px)' : 'calc(100vw - 88px)';
+    const fontSize = mobile ? Math.min(settings.fontSize, 18) : settings.fontSize;
 
-    const doc = iframe.contentDocument;
-    const scroller = doc.getElementById('reader-scroller');
-    if (!scroller) return;
+    // For vertical-rl multi-column we MUST set height on the scroller
+    // and let the browser compute the columns for us.
+    // For horizontal-tb we set column-width to viewport width so we get 1 column per page.
+    const scrollerCss = isVertical ? `
+      /* Vertical RTL multi-column – browser creates columns going left */
+      position: absolute;
+      top: 0;
+      /* Anchor to the right so column 0 aligns with viewport right edge */
+      right: 0;
+      height: 100%;
+      width: max-content;   /* expand leftwards as many columns as needed */
+      writing-mode: vertical-rl;
+      -webkit-writing-mode: vertical-rl;
+      direction: ltr;
+      text-orientation: mixed;
+      -webkit-text-orientation: mixed;
+      font-feature-settings: "vert" 1, "vrt2" 1, "palt" 1;
+      -webkit-font-feature-settings: "vert" 1, "vrt2" 1, "palt" 1;
+      /* Column width plus gap equals one page, preserving the page grid. */
+      column-width: ${pageColumnWidth};
+      column-gap: ${pageColumnGap};
+      column-fill: auto;
+      padding: ${pad};
+      /* transition applied by JS */
+      will-change: transform;
+      transition: transform 0.22s cubic-bezier(0.25, 1, 0.5, 1);
+    ` : `
+      /* Horizontal LTR multi-column */
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      width: max-content;
+      writing-mode: horizontal-tb;
+      -webkit-writing-mode: horizontal-tb;
+      direction: ltr;
+      column-width: ${pageColumnWidth};
+      column-gap: ${pageColumnGap};
+      column-fill: auto;
+      padding: ${pad};
+      will-change: transform;
+      transition: transform 0.22s cubic-bezier(0.25, 1, 0.5, 1);
+    `;
 
-    const vw = iframe.clientWidth || window.innerWidth;
-    // Use the widest measured value because vertical writing can report a
-    // smaller scrollWidth while the multi-column content is still laying out.
-    const range = doc.createRange();
-    range.selectNodeContents(scroller);
-    const contentWidth = Math.abs(range.getBoundingClientRect().width);
-    const totalWidth = Math.max(scroller.scrollWidth, contentWidth, vw);
-    const pages = Math.max(1, Math.ceil(totalWidth / vw));
-    setTotalPages(pages);
-    totalPagesRef.current = pages;
-    const page = currentPageRef.current;
-    const offset = pageNudgeRef.current;
-
-    if (isVertical) {
-      // RTL multi-column: column 0 is rightmost. Each page moves +X to reveal columns further left.
-      scroller.style.transform = `translateX(${page * vw + offset}px)`;
-    } else {
-      scroller.style.transform = `translateX(${-page * vw + offset}px)`;
-    }
-  }, [isVertical]);
-
-  const measureBookPages = useCallback(async () => {
-    const host = iframeRef.current;
-    if (!host || !epub.spine.length) return;
-    const measurementVersion = measurementVersionRef.current + 1;
-    measurementVersionRef.current = measurementVersion;
-    const frame = document.createElement('iframe');
-    const vw = host.clientWidth || window.innerWidth;
-    const vh = host.clientHeight || window.innerHeight;
-    frame.style.cssText = `position:fixed;left:-10000px;top:0;width:${vw}px;height:${vh}px;visibility:hidden;pointer-events:none;border:0;`;
-    document.body.appendChild(frame);
-    const counts: number[] = [];
-    try {
-      for (let index = 0; index < epub.spine.length; index += 1) {
-        const rawHtml = await epub.getChapterContent(epub.spine[index].href);
-        const mobile = window.innerWidth < 640;
-        const sidePad = mobile ? 16 : 44;
-        const pageColumnWidth = `calc(100vw - ${sidePad * 2}px)`;
-        const pageColumnGap = `${sidePad * 2}px`;
-        const pad = `${mobile ? 18 : 32}px 0 ${mobile ? 52 : 40}px`;
-        const fontSize = mobile ? Math.min(settings.fontSize, 18) : settings.fontSize;
-        const content = new DOMParser().parseFromString(rawHtml, 'text/html').body.innerHTML;
-        const css = isVertical
-          ? `position:absolute;top:0;right:0;height:100%;width:max-content;writing-mode:vertical-rl;direction:ltr;column-width:${pageColumnWidth};column-gap:${pageColumnGap};column-fill:auto;padding:${pad};font-family:${getFontFamilyCss(settings.fontFamily)};font-size:${fontSize}px;line-height:${settings.lineHeight};letter-spacing:${settings.letterSpacing}em;`
-          : `position:absolute;top:0;left:0;height:100%;width:max-content;writing-mode:horizontal-tb;direction:ltr;column-width:${pageColumnWidth};column-gap:${pageColumnGap};column-fill:auto;padding:${pad};font-family:${getFontFamilyCss(settings.fontFamily)};font-size:${fontSize}px;line-height:${settings.lineHeight};letter-spacing:${settings.letterSpacing}em;`;
-        const doc = frame.contentDocument;
-        if (!doc) break;
-        doc.open();
-        doc.write(`<style>*{box-sizing:border-box}html,body{margin:0;width:${vw}px;height:${vh}px;overflow:hidden}#reader-scroller{${css};overflow-wrap:normal;text-orientation:mixed}ruby{break-inside:avoid;page-break-inside:avoid;-webkit-column-break-inside:avoid}ruby rt{user-select:none;-webkit-user-select:none;pointer-events:none}img,svg{max-width:calc(100vw - 32px);max-height:calc(100% - 32px);object-fit:contain;break-inside:avoid-column;page-break-inside:avoid;display:inline-block;vertical-align:top}p,h1,h2,h3,h4{break-inside:auto}</style><div id="reader-scroller">${content}</div>`);
-        doc.close();
-        await doc.fonts?.ready;
-        const images = Array.from(doc.images);
-        await Promise.race([
-          Promise.all(images.map((image) => image.complete
-            ? Promise.resolve()
-            : new Promise<void>((resolve) => {
-              image.addEventListener('load', () => resolve(), { once: true });
-              image.addEventListener('error', () => resolve(), { once: true });
-            }))),
-          new Promise<void>((resolve) => window.setTimeout(resolve, 500)),
-        ]);
-        await new Promise<void>((resolve) => window.setTimeout(resolve, 40));
-        const scroller = doc.getElementById('reader-scroller');
-        const range = doc.createRange();
-        if (scroller) {
-          range.selectNodeContents(scroller);
-          counts[index] = Math.max(1, Math.ceil(Math.max(
-            scroller.scrollWidth,
-            Math.abs(range.getBoundingClientRect().width),
-            vw,
-          ) / vw));
-        } else {
-          counts[index] = 1;
-        }
-      }
-      if (measurementVersion !== measurementVersionRef.current) return;
-      const offsets: number[] = [];
-      let offset = 0;
-      counts.forEach((count, index) => {
-        offsets[index] = offset;
-        offset += Math.max(1, count || 1);
-      });
-      chapterPageCountsRef.current = counts;
-      bookPageOffsetsRef.current = offsets;
-      setChapterPageCounts(counts);
-      setBookTotalPages(offset);
-      setIsBookPaginationReady(true);
-    } finally {
-      frame.remove();
-    }
-  }, [epub, getFontFamilyCss, isVertical, settings]);
-
-  // ─── SELECTION ────────────────────────────────────────────────────────────────
-  const handleSelection = useCallback(() => {
-    const iframe = iframeRef.current;
-    if (!iframe || !iframe.contentDocument) return;
-    const sel = iframe.contentWindow?.getSelection();
-    if (!sel || sel.rangeCount === 0 || !sel.toString().trim()) return;
-
-    const text = sel.toString().trim();
-    const rect = sel.getRangeAt(0).getBoundingClientRect();
-    const iRect = iframe.getBoundingClientRect();
-
-    lastSelectionTime.current = Date.now();
-    setSelectedText(text);
-    setSelectionPos({
-      x: iRect.left + rect.left,
-      y: iRect.top + rect.top,
-      width: rect.width,
-      height: rect.height,
-    });
-  }, []);
-
-  // ─── PAGE ACTIONS ─────────────────────────────────────────────────────────────
-  // We use refs so that callbacks registered inside the iframe closure stay fresh.
-  const doNextPage = useCallback(() => {
-    const page = currentPageRef.current;
-    const spine = currentSpineRef.current;
-    const pages = totalPagesRef.current;
-
-    if (page < pages - 1) {
-      pageNudgeRef.current = 0;
-      setPageNudge(0);
-      currentPageRef.current = page + 1;
-      setCurrentPage(page + 1);
-      updatePagination();
-    } else if (spine < epub.spine.length - 1) {
-      loadChapter(spine + 1, 0);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [epub.spine.length, updatePagination]);
-
-  const doPrevPage = useCallback(() => {
-    const page = currentPageRef.current;
-    const spine = currentSpineRef.current;
-
-    if (page > 0) {
-      pageNudgeRef.current = 0;
-      setPageNudge(0);
-      currentPageRef.current = page - 1;
-      setCurrentPage(page - 1);
-      updatePagination();
-    } else if (spine > 0) {
-      // Going back from the first page opens the end of the previous chapter,
-      // not its first page.
-      loadChapter(spine - 1, -1);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [updatePagination]);
-
-  const doNextRef = useRef(doNextPage);
-  const doPrevRef = useRef(doPrevPage);
-  useEffect(() => { doNextRef.current = doNextPage; }, [doNextPage]);
-  useEffect(() => { doPrevRef.current = doPrevPage; }, [doPrevPage]);
-
-  // ─── LOAD CHAPTER ─────────────────────────────────────────────────────────────
-  const loadChapter = useCallback(
-    async (spineIndex: number, targetPage = 0) => {
-      if (spineIndex < 0 || spineIndex >= epub.spine.length) return;
-      setIsLoadingChapter(true);
-      setSelectedText('');
-      setSelectionPos(null);
-
-      try {
-        const item = epub.spine[spineIndex];
-        const rawHtml = await epub.getChapterContent(item.href);
-
-        const iframe = iframeRef.current;
-        if (!iframe) return;
-        const doc = iframe.contentDocument || iframe.contentWindow?.document;
-        if (!doc) return;
-
-        const parsed = new DOMParser().parseFromString(rawHtml, 'text/html');
-        const bodyContent = parsed.body.innerHTML;
-        const fontCss = getFontFamilyCss(settings.fontFamily);
-        const mobile = window.innerWidth < 640;
-        const sidePad = mobile ? 16 : 44;
-        // Keep only a small permanent margin. The outer reader viewport
-        // reserves the larger header/footer areas only while the UI is open.
-        const pageColumnWidth = `calc(100vw - ${sidePad * 2}px)`;
-        const pageColumnGap = `${sidePad * 2}px`;
-        const pad = `${mobile ? 18 : 32}px 0 ${mobile ? 52 : 40}px`;
-        const imgMaxH = 'calc(100% - 32px)';
-        const imgMaxW = mobile ? 'calc(100vw - 28px)' : 'calc(100vw - 88px)';
-        const fontSize = mobile ? Math.min(settings.fontSize, 18) : settings.fontSize;
-
-        // For vertical-rl multi-column we MUST set height on the scroller
-        // and let the browser compute the columns for us.
-        // For horizontal-tb we set column-width to viewport width so we get 1 column per page.
-        const scrollerCss = isVertical ? `
-          /* Vertical RTL multi-column – browser creates columns going left */
-          position: absolute;
-          top: 0;
-          /* Anchor to the right so column 0 aligns with viewport right edge */
-          right: 0;
-          height: 100%;
-          width: max-content;   /* expand leftwards as many columns as needed */
-          writing-mode: vertical-rl;
-          -webkit-writing-mode: vertical-rl;
-          direction: ltr;
-          text-orientation: mixed;
-          -webkit-text-orientation: mixed;
-          font-feature-settings: "vert" 1, "vrt2" 1, "palt" 1;
-          -webkit-font-feature-settings: "vert" 1, "vrt2" 1, "palt" 1;
-          /* Column width plus gap equals one page, preserving the page grid. */
-          column-width: ${pageColumnWidth};
-          column-gap: ${pageColumnGap};
-          column-fill: auto;
-          padding: ${pad};
-          /* transition applied by JS */
-          will-change: transform;
-          transition: transform 0.22s cubic-bezier(0.25, 1, 0.5, 1);
-        ` : `
-          /* Horizontal LTR multi-column */
-          position: absolute;
-          top: 0;
-          left: 0;
-          height: 100%;
-          width: max-content;
-          writing-mode: horizontal-tb;
-          -webkit-writing-mode: horizontal-tb;
-          direction: ltr;
-          column-width: ${pageColumnWidth};
-          column-gap: ${pageColumnGap};
-          column-fill: auto;
-          padding: ${pad};
-          will-change: transform;
-          transition: transform 0.22s cubic-bezier(0.25, 1, 0.5, 1);
-        `;
-
-        const fullHtml = `<!DOCTYPE html>
+    const html = `<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="utf-8"/>
@@ -471,6 +359,282 @@ export const EpubReader: React.FC<Props> = ({
   </div>
 </body>
 </html>`;
+    return { html, sidePad, fontSize };
+  }, [getFontFamilyCss, isVertical, settings, themeColors]);
+
+  // The key covers everything that can change the page count: the rendered
+  // document itself (fonts, sizes, spacing, column geometry — minus the theme
+  // colours, which cannot move text), the viewport it was measured at, and the
+  // number of chapters. Height is rounded because mobile browsers nudge it by
+  // a few pixels as their toolbars come and go, and that must not count as a
+  // different layout.
+  const paginationCacheKey = useCallback((viewportWidth: number, viewportHeight: number) => {
+    const layout = buildChapterDocument('').html
+      .split(themeColors.bg).join('#bg')
+      .split(themeColors.text).join('#fg');
+    return [
+      PAGINATION_CACHE_VERSION,
+      hashString(layout),
+      viewportWidth,
+      Math.round(viewportHeight / 20) * 20,
+      epub.spine.length,
+    ].join(':');
+  }, [buildChapterDocument, epub.spine.length, themeColors]);
+
+  const paginationCacheStore = `${bookStorageKey}_pagination`;
+
+  const readPaginationCache = useCallback((key: string) => {
+    try {
+      const raw = localStorage.getItem(paginationCacheStore);
+      if (!raw) return null;
+      const store = JSON.parse(raw) as Record<string, PaginationCacheEntry>;
+      const entry = store?.[key];
+      if (!entry || !Array.isArray(entry.counts)) return null;
+      if (!entry.counts.every((count) => Number.isInteger(count) && count > 0)) return null;
+      return entry.counts;
+    } catch {
+      return null;
+    }
+  }, [paginationCacheStore]);
+
+  const writePaginationCache = useCallback((key: string, counts: number[]) => {
+    try {
+      const raw = localStorage.getItem(paginationCacheStore);
+      const store = (raw ? JSON.parse(raw) : {}) as Record<string, PaginationCacheEntry>;
+      store[key] = { counts, savedAt: Date.now() };
+      const trimmed = Object.entries(store)
+        .sort(([, a], [, b]) => (b?.savedAt || 0) - (a?.savedAt || 0))
+        .slice(0, PAGINATION_CACHE_ENTRIES);
+      localStorage.setItem(paginationCacheStore, JSON.stringify(Object.fromEntries(trimmed)));
+    } catch {
+      // Caching is an optimisation; never let it break pagination.
+    }
+  }, [paginationCacheStore]);
+
+  const applyChapterCounts = useCallback((counts: number[]) => {
+    const offsets: number[] = [];
+    let offset = 0;
+    counts.forEach((count, index) => {
+      offsets[index] = offset;
+      offset += Math.max(1, count || 1);
+    });
+    chapterPageCountsRef.current = counts;
+    bookPageOffsetsRef.current = offsets;
+    setChapterPageCounts(counts);
+    setBookTotalPages(offset);
+    setIsBookPaginationReady(true);
+  }, []);
+
+  // ─── PAGINATION ───────────────────────────────────────────────────────────────
+  // Both vertical and horizontal use CSS multi-column.
+  // In vertical-rl the columns stack left-to-right from right edge (RTL progression).
+  // The translate moves opposite columns into the viewport.
+  //
+  // Vertical RTL:  page 0 = right column (translateX = 0)
+  //                page 1 = next column to the left → translateX = +viewportWidth
+  // Horizontal:    page 0 = left column (translateX = 0)
+  //                page 1 = next column to the right → translateX = -viewportWidth
+  const updatePagination = useCallback(() => {
+    const iframe = iframeRef.current;
+    if (!iframe || !iframe.contentDocument) return;
+
+    const doc = iframe.contentDocument;
+    const scroller = doc.getElementById('reader-scroller');
+    if (!scroller) return;
+
+    const vw = iframe.clientWidth || window.innerWidth;
+    // Use the widest measured value because vertical writing can report a
+    // smaller scrollWidth while the multi-column content is still laying out.
+    const range = doc.createRange();
+    range.selectNodeContents(scroller);
+    const contentWidth = Math.abs(range.getBoundingClientRect().width);
+    const totalWidth = Math.max(scroller.scrollWidth, contentWidth, vw);
+    const pages = Math.max(1, Math.ceil(totalWidth / vw));
+    setTotalPages(pages);
+    totalPagesRef.current = pages;
+    const page = currentPageRef.current;
+    const offset = pageNudgeRef.current;
+
+    if (isVertical) {
+      // RTL multi-column: column 0 is rightmost. Each page moves +X to reveal columns further left.
+      scroller.style.transform = `translateX(${page * vw + offset}px)`;
+    } else {
+      scroller.style.transform = `translateX(${-page * vw + offset}px)`;
+    }
+  }, [isVertical]);
+
+  const measureBookPages = useCallback(async () => {
+    const host = iframeRef.current;
+    if (!host || !epub.spine.length) return;
+    const measurementVersion = measurementVersionRef.current + 1;
+    measurementVersionRef.current = measurementVersion;
+    const vw = host.clientWidth || window.innerWidth;
+    const vh = host.clientHeight || window.innerHeight;
+    const cacheKey = paginationCacheKey(vw, vh);
+    const cached = readPaginationCache(cacheKey);
+    if (cached && cached.length === epub.spine.length) {
+      applyChapterCounts(cached);
+      return;
+    }
+    const frame = document.createElement('iframe');
+    frame.style.cssText = `position:fixed;left:-10000px;top:0;width:${vw}px;height:${vh}px;visibility:hidden;pointer-events:none;border:0;`;
+    document.body.appendChild(frame);
+    const counts: number[] = [];
+    try {
+      for (let index = 0; index < epub.spine.length; index += 1) {
+        const rawHtml = await epub.getChapterContent(epub.spine[index].href);
+        const doc = frame.contentDocument;
+        if (!doc) break;
+        doc.open();
+        doc.write(buildChapterDocument(rawHtml).html);
+        doc.close();
+        await doc.fonts?.ready;
+        const images = Array.from(doc.images);
+        await Promise.race([
+          Promise.all(images.map((image) => image.complete
+            ? Promise.resolve()
+            : new Promise<void>((resolve) => {
+              image.addEventListener('load', () => resolve(), { once: true });
+              image.addEventListener('error', () => resolve(), { once: true });
+            }))),
+          new Promise<void>((resolve) => window.setTimeout(resolve, 1200)),
+        ]);
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 40));
+        const scroller = doc.getElementById('reader-scroller');
+        const range = doc.createRange();
+        if (scroller) {
+          range.selectNodeContents(scroller);
+          counts[index] = Math.max(1, Math.ceil(Math.max(
+            scroller.scrollWidth,
+            Math.abs(range.getBoundingClientRect().width),
+            vw,
+          ) / vw));
+        } else {
+          counts[index] = 1;
+        }
+      }
+      if (measurementVersion !== measurementVersionRef.current) return;
+      applyChapterCounts(counts);
+      if (counts.length === epub.spine.length) writePaginationCache(cacheKey, counts);
+    } finally {
+      frame.remove();
+    }
+  }, [
+    applyChapterCounts,
+    buildChapterDocument,
+    epub,
+    paginationCacheKey,
+    readPaginationCache,
+    writePaginationCache,
+  ]);
+
+  const measureBookPagesRef = useRef(measureBookPages);
+  useEffect(() => { measureBookPagesRef.current = measureBookPages; }, [measureBookPages]);
+
+  // ─── SELECTION ────────────────────────────────────────────────────────────────
+  const handleSelection = useCallback(() => {
+    const iframe = iframeRef.current;
+    if (!iframe || !iframe.contentDocument) return;
+    const sel = iframe.contentWindow?.getSelection();
+    if (!sel || sel.rangeCount === 0 || !sel.toString().trim()) return;
+
+    const text = sel.toString().trim();
+    const rect = sel.getRangeAt(0).getBoundingClientRect();
+    const iRect = iframe.getBoundingClientRect();
+
+    lastSelectionTime.current = Date.now();
+    // Fold the menu away while the selection is being made, and only bring it
+    // back once the finger is off the screen and the selection has settled.
+    // A time-only rule revealed the menu in the pause between the long-press
+    // and grabbing a handle, which is exactly when it gets in the way.
+    setIsSelectionAdjusting(true);
+    if (selectionSettleRef.current !== undefined) window.clearTimeout(selectionSettleRef.current);
+    const revealWhenReleased = (waited: number) => {
+      // Handles do not always deliver a matching pointerup, so give up waiting
+      // after a while rather than hiding the menu for good.
+      if (!pointerActiveRef.current || waited >= 2500) {
+        setIsSelectionAdjusting(false);
+        return;
+      }
+      selectionSettleRef.current = window.setTimeout(() => revealWhenReleased(waited + 250), 250);
+    };
+    selectionSettleRef.current = window.setTimeout(() => revealWhenReleased(300), 300);
+    setSelectedText(text);
+    setSelectionPos({
+      x: iRect.left + rect.left,
+      y: iRect.top + rect.top,
+      width: rect.width,
+      height: rect.height,
+    });
+  }, []);
+
+  // ─── PAGE ACTIONS ─────────────────────────────────────────────────────────────
+  // We use refs so that callbacks registered inside the iframe closure stay fresh.
+  const doNextPage = useCallback(() => {
+    const page = currentPageRef.current;
+    const spine = currentSpineRef.current;
+    const pages = totalPagesRef.current;
+
+    if (page < pages - 1) {
+      pageNudgeRef.current = 0;
+      setPageNudge(0);
+      currentPageRef.current = page + 1;
+      setCurrentPage(page + 1);
+      updatePagination();
+    } else if (spine < epub.spine.length - 1) {
+      loadChapter(spine + 1, 0);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [epub.spine.length, updatePagination]);
+
+  const doPrevPage = useCallback(() => {
+    const page = currentPageRef.current;
+    const spine = currentSpineRef.current;
+
+    if (page > 0) {
+      pageNudgeRef.current = 0;
+      setPageNudge(0);
+      currentPageRef.current = page - 1;
+      setCurrentPage(page - 1);
+      updatePagination();
+    } else if (spine > 0) {
+      // Going back from the first page opens the end of the previous chapter,
+      // not its first page.
+      loadChapter(spine - 1, -1);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [updatePagination]);
+
+  const doNextRef = useRef(doNextPage);
+  const doPrevRef = useRef(doPrevPage);
+  useEffect(() => { doNextRef.current = doNextPage; }, [doNextPage]);
+  useEffect(() => { doPrevRef.current = doPrevPage; }, [doPrevPage]);
+
+  // ─── LOAD CHAPTER ─────────────────────────────────────────────────────────────
+  const loadChapter = useCallback(
+    async (spineIndex: number, targetPage = 0) => {
+      if (spineIndex < 0 || spineIndex >= epub.spine.length) return;
+      setIsLoadingChapter(true);
+      setSelectedText('');
+      setSelectionPos(null);
+      currentSpineRef.current = spineIndex;
+      setCurrentSpineIndex(spineIndex);
+      if (targetPage >= 0) {
+        currentPageRef.current = targetPage;
+        setCurrentPage(targetPage);
+      }
+      setIsReaderPositioned(true);
+
+      try {
+        const item = epub.spine[spineIndex];
+        const rawHtml = await epub.getChapterContent(item.href);
+
+        const iframe = iframeRef.current;
+        if (!iframe) return;
+        const doc = iframe.contentDocument || iframe.contentWindow?.document;
+        if (!doc) return;
+
+        const { html: fullHtml, sidePad, fontSize } = buildChapterDocument(rawHtml);
 
         doc.open();
         doc.write(fullHtml);
@@ -504,82 +668,310 @@ export const EpubReader: React.FC<Props> = ({
         }
 
         // ── Gesture & tap handlers attached inside the iframe ──
+        const nudgeLimit = 72;
+        const pageSwipeThreshold = 96;
+        // Extra lateral push required once the selection has reached the very end
+        // of the visible page. Reaching the last column must not paginate: only
+        // insisting in the same direction does.
+        const selectionPushDistance = 26;
+        const selectionPushReset = 14;
+        const selectionHoldDelay = 700;
+        const selectionGuardDuration = 650;
+        const selectionResumeDistance = 24;
+        // The reading flow of a page grows towards this side, so the next page
+        // always lives beyond it. vertical-rl is anchored right and grows left.
+        const forwardSide: 'left' | 'right' = isVertical ? 'left' : 'right';
+
         let sx = 0, sy = 0, st = 0, moved = false, selecting = false;
         let gestureNudgeStart = 0;
-        let selectionTurnTimer: number | undefined;
-        let selectionSignature = '';
-
-        const stopSelectionPaging = () => {
-          if (selectionTurnTimer !== undefined) {
-            window.clearInterval(selectionTurnTimer);
-            selectionTurnTimer = undefined;
+        let selectionOrOverlayAtStart = false;
+        let pointerX = 0;
+        let pointerTracked = false;
+        let pointerDrivenSelection = false;
+        let edgePush = 0;
+        let edgePushDirection: 'next' | 'previous' | null = null;
+        let selectionHoldTimer: number | undefined;
+        let selectionHoldDirection: 'next' | 'previous' | null = null;
+        let selectionTurnBusy = false;
+        let selectionGuard:
+          | {
+            node: Node;
+            offset: number;
+            pointerX: number;
+            pushSign: number;
+            direction: 'next' | 'previous';
+            until: number;
           }
+          | null = null;
+
+        const getPageWidth = () => iframe.clientWidth || window.innerWidth;
+
+        const clearSelectionHold = (reason = '') => {
+          if (selectionHoldTimer !== undefined) {
+            window.clearTimeout(selectionHoldTimer);
+            selectionHoldTimer = undefined;
+            logDebugRef.current(`hold cancelled ${reason}`);
+          }
+          selectionHoldDirection = null;
         };
 
-        const getSelectionSignature = (selection: Selection, range: Range) =>
-          `${selection.toString()}|${range.startOffset}|${range.endOffset}`;
+        const isSelectionBackwards = (selection: Selection) => {
+          const { anchorNode, focusNode } = selection;
+          if (!anchorNode || !focusNode) return false;
+          if (anchorNode === focusNode) return selection.focusOffset < selection.anchorOffset;
+          const position = anchorNode.compareDocumentPosition(focusNode);
+          return Boolean(position & Node.DOCUMENT_POSITION_PRECEDING);
+        };
 
-        const turnSelectionPageAtEdge = () => {
+        // Rect of the character immediately after (or before) the caret in
+        // document order. Ruby annotations are skipped because they are not
+        // selectable and would report the position of their base text.
+        const getAdjacentCharRect = (node: Node | null, offset: number, forward: boolean) => {
+          const scroller = doc.getElementById('reader-scroller');
+          if (!node || node.nodeType !== Node.TEXT_NODE || !scroller?.contains(node)) return null;
+          const walker = doc.createTreeWalker(scroller, NodeFilter.SHOW_TEXT, {
+            acceptNode: (candidate: Node) =>
+              (candidate.nodeValue || '').trim() && !(candidate.parentElement?.closest('rt'))
+                ? NodeFilter.FILTER_ACCEPT
+                : NodeFilter.FILTER_REJECT,
+          });
+          walker.currentNode = node;
+          let cursor: Node | null = node;
+          let index = forward ? offset : offset - 1;
+          let guard = 0;
+          while (cursor && guard < 400) {
+            guard += 1;
+            const length = (cursor.nodeValue || '').length;
+            if (forward ? index < length : index >= 0) {
+              const range = doc.createRange();
+              range.setStart(cursor, index);
+              range.setEnd(cursor, index + 1);
+              const rect = range.getBoundingClientRect();
+              if (rect.width || rect.height) return rect;
+              index = forward ? index + 1 : index - 1;
+              continue;
+            }
+            cursor = forward ? walker.nextNode() : walker.previousNode();
+            if (!cursor) return null;
+            index = forward ? 0 : (cursor.nodeValue || '').length - 1;
+          }
+          return null;
+        };
+
+        // Returns a direction when the caret sits on the page boundary: the
+        // next character of the flow is already off-screen.
+        // `tolerant` also accepts a caret standing on the last line of the
+        // page. Native selection handles follow the finger, which cannot
+        // always reach the very last character in the corner, so the handle
+        // path needs the looser test; the pointer path keeps the strict one,
+        // because there insisting with the finger is what confirms the turn.
+        const getSelectionEdgeDirection = (tolerant = false): 'next' | 'previous' | null => {
           const selection = iframe.contentWindow?.getSelection();
-          if (!selection?.rangeCount || !selection.toString()) {
-            stopSelectionPaging();
+          if (!selection?.rangeCount || !selection.toString()) return null;
+          const backwards = isSelectionBackwards(selection);
+          const pageWidth = getPageWidth();
+          const rect = getAdjacentCharRect(selection.focusNode, selection.focusOffset, !backwards);
+          let side: 'left' | 'right' | null = rect
+            ? (rect.right <= 1 ? 'left' : rect.left >= pageWidth - 1 ? 'right' : null)
+            : null;
+          if (!side && tolerant) {
+            const focusRect = getAdjacentCharRect(selection.focusNode, selection.focusOffset, backwards);
+            if (focusRect) {
+              const lastLine = sidePad + fontSize * settings.lineHeight * 1.2;
+              if (focusRect.left <= lastLine) side = 'left';
+              else if (focusRect.right >= pageWidth - lastLine) side = 'right';
+            }
+          }
+          if (!side) return null;
+          if (!backwards) return side === forwardSide ? 'next' : null;
+          return side === forwardSide ? null : 'previous';
+        };
+
+        const canTurnSelectionPage = (direction: 'next' | 'previous') =>
+          direction === 'next'
+            ? currentPageRef.current < totalPagesRef.current - 1
+            : currentPageRef.current > 0;
+
+        // Caret where reading enters the page that is about to become visible.
+        const getPageEntryCaret = (direction: 'next' | 'previous') => {
+          const caretFromPoint = (doc as Document & {
+            caretRangeFromPoint?: (x: number, y: number) => Range | null;
+          }).caretRangeFromPoint;
+          if (!caretFromPoint) return null;
+          const pageWidth = getPageWidth();
+          const pageHeight = iframe.clientHeight || window.innerHeight;
+          // Reading starts on the right in vertical-rl and on the left otherwise;
+          // going back lands on the opposite corner, where the page ends.
+          const startsRight = isVertical;
+          const useRightSide = direction === 'next' ? startsRight : !startsRight;
+          const ys = direction === 'next'
+            ? [pageHeight * 0.06, pageHeight * 0.18, pageHeight * 0.5]
+            : [pageHeight * 0.94, pageHeight * 0.82, pageHeight * 0.5];
+          // Start inside the column: the outer band is the column gap, and a
+          // point there resolves to the neighbouring column, i.e. the page we
+          // just left.
+          const columnStart = sidePad + 6;
+          const columnSpan = Math.max(1, pageWidth - sidePad * 2 - 6);
+          for (const y of ys) {
+            for (let step = 0; step < 12; step += 1) {
+              const inset = columnStart + step * columnSpan * 0.08;
+              const x = useRightSide ? pageWidth - inset : inset;
+              const range = caretFromPoint.call(doc, x, y);
+              const container = range?.startContainer;
+              if (!range || container?.nodeType !== Node.TEXT_NODE) continue;
+              // Reject carets that resolved onto an off-screen column.
+              const probe = doc.createRange();
+              probe.setStart(container, range.startOffset);
+              probe.setEnd(container, Math.min(range.startOffset + 1, (container.nodeValue || '').length));
+              const rect = probe.getBoundingClientRect();
+              if (!rect.width && !rect.height) continue;
+              if (rect.right <= 1 || rect.left >= pageWidth - 1) continue;
+              return { node: container, offset: range.startOffset };
+            }
+          }
+          return null;
+        };
+
+        const turnSelectionPage = (direction: 'next' | 'previous') => {
+          const selection = iframe.contentWindow?.getSelection();
+          if (selectionTurnBusy || !selection?.rangeCount || !canTurnSelectionPage(direction)) {
+            logDebugRef.current(
+              `turn refused busy=${selectionTurnBusy ? 1 : 0} sel=${selection?.rangeCount || 0} can=${canTurnSelectionPage(direction) ? 1 : 0}`
+            );
             return;
           }
+          clearSelectionHold('turning');
+          // Block further boundary checks until the page transition settles,
+          // otherwise the mid-animation layout reports the edge again and the
+          // reader would skip several pages at once.
+          selectionTurnBusy = true;
+          edgePush = 0;
+          edgePushDirection = null;
+          const pushSign = direction === 'next'
+            ? (forwardSide === 'left' ? -1 : 1)
+            : (forwardSide === 'left' ? 1 : -1);
+          logDebugRef.current(`TURN ${direction} from p${currentPageRef.current + 1}`);
+          if (direction === 'next') doNextRef.current();
+          else doPrevRef.current();
 
-          const focusNode = selection.focusNode;
-          if (!focusNode) {
-            stopSelectionPaging();
+          // Once the page transition settles, pin the caret to the edge where
+          // the new page starts. Without this the selection would jump a whole
+          // column at once, because the pointer already rests on the far side.
+          window.setTimeout(() => {
+            selectionTurnBusy = false;
+            if (currentSpineRef.current !== spineIndex) return;
+            const live = iframe.contentWindow?.getSelection();
+            if (!live?.rangeCount || !live.toString()) return;
+            const caret = getPageEntryCaret(direction);
+            if (!caret) return;
+            // Never let the re-anchoring destroy the selection: if the caret
+            // lands on the anchor itself the selection would collapse.
+            const previous = live.getRangeAt(0).cloneRange();
+            const previousLength = live.toString().length;
+            try {
+              live.extend(caret.node, caret.offset);
+            } catch {
+              return;
+            }
+            if (live.toString().length < previousLength) {
+              live.removeAllRanges();
+              live.addRange(previous);
+              return;
+            }
+            selectionGuard = {
+              node: caret.node,
+              offset: caret.offset,
+              pointerX,
+              pushSign,
+              direction,
+              until: Date.now() + selectionGuardDuration,
+            };
+            handleSelection();
+          }, 260);
+        };
+
+        // Android's native selection handles do not emit touch events, so the
+        // boundary is watched through selectionchange and confirmed by holding.
+        const scheduleSelectionHold = (direction: 'next' | 'previous') => {
+          if (selectionHoldTimer !== undefined && selectionHoldDirection === direction) return;
+          clearSelectionHold('rearm');
+          if (!canTurnSelectionPage(direction)) {
+            logDebugRef.current(`hold skipped, cannot turn ${direction}`);
             return;
           }
-          const focusRange = doc.createRange();
-          focusRange.setStart(focusNode, selection.focusOffset);
-          focusRange.collapse(true);
-          const focusRect = focusRange.getBoundingClientRect();
-          const pageWidth = iframe.clientWidth || window.innerWidth;
-          const edge = Math.min(24, pageWidth * 0.06);
-          const nextEdge = isRtl
-            ? focusRect.left <= edge
-            : focusRect.right >= pageWidth - edge;
-          const previousEdge = isRtl
-            ? focusRect.right >= pageWidth - edge
-            : focusRect.left <= edge;
-
-          if (nextEdge && currentPageRef.current < totalPagesRef.current - 1) {
-            doNextRef.current();
-          } else if (previousEdge && currentPageRef.current > 0) {
-            doPrevRef.current();
-          } else {
-            stopSelectionPaging();
-          }
+          selectionHoldDirection = direction;
+          logDebugRef.current(`hold armed ${direction}`);
+          selectionHoldTimer = window.setTimeout(() => {
+            selectionHoldTimer = undefined;
+            selectionHoldDirection = null;
+            logDebugRef.current(`hold fired busy=${selectionTurnBusy ? 1 : 0}`);
+            if (currentSpineRef.current !== spineIndex) {
+              logDebugRef.current('hold dropped (chapter)');
+              return;
+            }
+            if (getSelectionEdgeDirection(true) !== direction) {
+              logDebugRef.current('hold dropped (off edge)');
+              return;
+            }
+            turnSelectionPage(direction);
+          }, selectionHoldDelay);
         };
 
         const handleIframeSelectionChange = () => {
-          handleSelection();
           const selection = iframe.contentWindow?.getSelection();
           if (!selection?.rangeCount || !selection.toString()) {
-            selectionSignature = '';
-            stopSelectionPaging();
+            clearSelectionHold('empty');
+            selectionGuard = null;
+            edgePush = 0;
+            edgePushDirection = null;
             setSelectedText('');
             setSelectionPos(null);
             return;
           }
 
-          const range = selection.getRangeAt(0);
-          const nextSignature = getSelectionSignature(selection, range);
-          if (!selectionSignature) {
-            selectionSignature = nextSignature;
-            return;
+          if (selectionGuard) {
+            if (Date.now() < selectionGuard.until) {
+              if (
+                selection.focusNode !== selectionGuard.node ||
+                selection.focusOffset !== selectionGuard.offset
+              ) {
+                try {
+                  selection.extend(selectionGuard.node, selectionGuard.offset);
+                } catch {
+                  selectionGuard = null;
+                }
+              }
+              handleSelection();
+              return;
+            }
+            selectionGuard = null;
           }
-          if (nextSignature === selectionSignature) return;
-          selectionSignature = nextSignature;
-          stopSelectionPaging();
-          selectionTurnTimer = window.setTimeout(turnSelectionPageAtEdge, 700);
+
+          handleSelection();
+          if (selectionTurnBusy) return;
+          const direction = getSelectionEdgeDirection(true);
+          logDebugRef.current(
+            `sel ${selection.toString().length} edge=${direction || '-'} p${currentPageRef.current + 1}/${totalPagesRef.current} pd=${pointerDrivenSelection ? 1 : 0}`
+          );
+          if (direction) scheduleSelectionHold(direction);
+          else clearSelectionHold('off edge');
         };
 
         const onStart = (cx: number, cy: number) => {
-          stopSelectionPaging();
+          clearSelectionHold('start');
           sx = cx; sy = cy; st = Date.now(); moved = false; selecting = false;
+          pointerX = cx;
+          pointerTracked = true;
+          pointerDrivenSelection = false;
+          selectionGuard = null;
+          edgePush = 0;
+          edgePushDirection = null;
           gestureNudgeStart = pageNudgeRef.current;
+          selectionOrOverlayAtStart = Boolean(
+            selectedTextRef.current.trim() ||
+            openOverlayRef.current ||
+            iframe.contentWindow?.getSelection()?.toString().trim()
+          );
         };
         const onMove = (cx: number, cy: number) => {
           const dx = cx - sx;
@@ -589,8 +981,8 @@ export const EpubReader: React.FC<Props> = ({
           const selection = iframe.contentWindow?.getSelection();
           const hasSelection = Boolean(selection?.rangeCount && selection.toString());
 
-          if (!hasSelection && !selecting && Math.abs(dx) > 8 && Math.abs(dx) <= 30 && Math.abs(dx) > Math.abs(dy)) {
-            const nudge = Math.max(-192, Math.min(192, gestureNudgeStart + dx));
+          if (!hasSelection && !selecting && Math.abs(dx) > 8 && Math.abs(dx) <= nudgeLimit && Math.abs(dx) > Math.abs(dy)) {
+            const nudge = Math.max(-nudgeLimit, Math.min(nudgeLimit, gestureNudgeStart + dx));
             pageNudgeRef.current = nudge;
             const page = currentPageRef.current;
             const vw = iframe.clientWidth || window.innerWidth;
@@ -602,28 +994,101 @@ export const EpubReader: React.FC<Props> = ({
           if (!hasSelection) return;
           selecting = true;
         };
+
+        // Runs on pointermove, which is what the native selection handles
+        // deliver. It only handles pushing the selection past the page edge;
+        // paging gestures stay on the touch/mouse path above.
+        const onSelectionPointerMove = (cx: number) => {
+          const selection = iframe.contentWindow?.getSelection();
+          if (!selection?.rangeCount || !selection.toString()) {
+            pointerTracked = false;
+            return;
+          }
+          pointerDrivenSelection = true;
+          clearSelectionHold('push');
+
+          // A handle drag can arrive with no start event at all, so the first
+          // sample only establishes where the finger is.
+          const step = pointerTracked ? cx - pointerX : 0;
+          pointerX = cx;
+          pointerTracked = true;
+
+          if (selectionGuard) {
+            // Selection resumes freely as soon as the pointer travels back
+            // towards the inside of the page that was just turned to.
+            const inward = (cx - selectionGuard.pointerX) * -selectionGuard.pushSign;
+            if (inward > selectionResumeDistance) {
+              selectionGuard = null;
+              return;
+            }
+            if (Date.now() < selectionGuard.until) return;
+            // Still pushing against the same edge: chain another page keeping
+            // the caret anchored, instead of releasing it onto the far column.
+            const held = selectionGuard;
+            selectionGuard = null;
+            turnSelectionPage(held.direction);
+            return;
+          }
+
+          if (selectionTurnBusy) return;
+          const direction = getSelectionEdgeDirection();
+          if (!direction) {
+            edgePush = 0;
+            edgePushDirection = null;
+            return;
+          }
+          const pushSign = direction === 'next'
+            ? (forwardSide === 'left' ? -1 : 1)
+            : (forwardSide === 'left' ? 1 : -1);
+          if (edgePushDirection !== direction) {
+            edgePushDirection = direction;
+            edgePush = 0;
+          }
+          const advance = step * pushSign;
+          if (advance > 0) edgePush += advance;
+          else if (advance < -selectionPushReset) edgePush = 0;
+          logDebugRef.current(`push ${Math.round(edgePush)} ${direction} x=${Math.round(cx)}`);
+          if (edgePush >= selectionPushDistance) turnSelectionPage(direction);
+        };
         const onEnd = (cx: number, allowTapNavigation = true) => {
-          stopSelectionPaging();
+          // Releasing the gesture also cancels any pending boundary hold, so
+          // finishing a selection at the end of a page never turns it.
+          clearSelectionHold('end');
+          pointerDrivenSelection = false;
+          selectionGuard = null;
+          edgePush = 0;
+          edgePushDirection = null;
           const dt = Date.now() - st;
           const dx = cx - sx;
 
-          if (moved && Math.abs(dx) <= 30) {
+          if (moved && Math.abs(dx) <= nudgeLimit) {
             setPageNudge(pageNudgeRef.current);
             return;
           }
 
           setTimeout(() => {
             const sel = iframe.contentWindow?.getSelection()?.toString().trim();
+            const isTap = allowTapNavigation && !moved && dt < 300;
+            if (isTap && (selectionOrOverlayAtStart || sel || selectedTextRef.current.trim() || openOverlayRef.current)) {
+              iframe.contentWindow?.getSelection()?.removeAllRanges();
+              setSelectedText('');
+              setSelectionPos(null);
+              setIsTocOpen(false);
+              setIsSettingsOpen(false);
+              setIsTranslateOpen(false);
+              setImageViewerSrc(null);
+              return;
+            }
             if (sel) { handleSelection(); return; }
 
-            if (!selecting && Math.abs(dx) > 30) {
+            if (!selecting && !sel && Math.abs(dx) >= pageSwipeThreshold) {
               // Swipe follows the same physical direction as the page controls:
               // moving right advances and moving left goes back.
               if (dx > 0) doNextRef.current(); else doPrevRef.current();
               return;
             }
 
-            if (allowTapNavigation && !moved && dt < 300) {
+            if (isTap) {
               if (Date.now() - lastSelectionTime.current < 400) return;
               const vw = iframe.clientWidth || window.innerWidth;
               const ratio = cx / vw;
@@ -640,11 +1105,38 @@ export const EpubReader: React.FC<Props> = ({
           }, 40);
         };
 
-        doc.addEventListener('selectionchange', handleIframeSelectionChange);
+        logDebugRef.current('listeners ok');
+        doc.addEventListener('selectionchange', () => {
+          countDebugRef.current('selchg');
+          handleIframeSelectionChange();
+        });
+        // The native selection handles report through pointer events, so this is
+        // the stream the selection paging has to run on.
+        doc.addEventListener('pointerdown', () => countDebugRef.current('pdown'), { passive: true });
+        doc.addEventListener('pointermove', (e) => {
+          countDebugRef.current('pmove');
+          onSelectionPointerMove(e.clientX);
+        }, { passive: true });
+        doc.addEventListener('pointerup', () => countDebugRef.current('pup'), { passive: true });
+        // The browser cancels the pointer as soon as a long-press turns into a
+        // native selection. That must not be read as "the finger left the
+        // screen": doing so let the menu pop up mid-selection, and swallowed
+        // the end of swipe gestures.
+        doc.addEventListener('pointercancel', () => {
+          countDebugRef.current('pcancel');
+          pointerTracked = false;
+        }, { passive: true });
+        document.addEventListener('selectionchange', () => countDebugRef.current('selchg-top'));
         doc.addEventListener('contextmenu', (e) => e.preventDefault());
-        doc.addEventListener('mousedown',  (e) => onStart(e.clientX, e.clientY));
-        doc.addEventListener('mousemove',  (e) => onMove(e.clientX, e.clientY));
-        doc.addEventListener('mouseup',    (e) => onEnd(e.clientX));
+        doc.addEventListener('mousedown', (e) => {
+          pointerActiveRef.current = true;
+          onStart(e.clientX, e.clientY);
+        });
+        doc.addEventListener('mousemove', (e) => onMove(e.clientX, e.clientY));
+        doc.addEventListener('mouseup', (e) => {
+          pointerActiveRef.current = false;
+          onEnd(e.clientX);
+        });
         doc.addEventListener('dblclick', (e) => {
           const target = (e.target as Element | null)?.closest('img, svg');
           const source = target?.getAttribute('src') || target?.getAttribute('href');
@@ -659,34 +1151,127 @@ export const EpubReader: React.FC<Props> = ({
         // touch event stream. selectionchange handles those interactions while
         // touch gestures remain available for regular page swipes.
         doc.addEventListener('touchstart', (e) => {
+          countDebugRef.current('tstart');
+          pointerActiveRef.current = true;
           if (e.touches[0]) onStart(e.touches[0].clientX, e.touches[0].clientY);
         }, { passive: true });
         doc.addEventListener('touchmove', (e) => {
+          countDebugRef.current('tmove');
           if (e.touches[0]) onMove(e.touches[0].clientX, e.touches[0].clientY);
         }, { passive: true });
         doc.addEventListener('touchend', (e) => {
+          countDebugRef.current('tend');
+          pointerActiveRef.current = false;
           if (e.changedTouches[0]) onEnd(e.changedTouches[0].clientX, false);
+        }, { passive: true });
+        doc.addEventListener('touchcancel', () => {
+          countDebugRef.current('tcancel');
+          pointerActiveRef.current = false;
         }, { passive: true });
 
         // ── Trigger pagination once content is laid out ──
-        const triggerUpdate = () => {
+        const loadedAt = Date.now();
+        // How long the freshly loaded chapter may still move to its target
+        // page while fonts, images and columns settle.
+        const positionSettleWindow = 700;
+        // After this long without a measurement above one page, accept that the
+        // chapter really is a single page.
+        const lastPageDeadline = 2500;
+        // A negative target means "last page", which cannot be known until the
+        // chapter has been measured for real.
+        const wantsLastPage = targetPage === -1;
+        let lastPageResolved = !wantsLastPage;
+        let targetApplied = false;
+
+        const applyTargetPosition = () => {
           currentSpineRef.current = spineIndex;
           pageNudgeRef.current = 0;
           setPageNudge(0);
           setCurrentSpineIndex(spineIndex);
-          currentPageRef.current = targetPage === -1 ? 0 : targetPage;
-          setCurrentPage(currentPageRef.current);
+          setIsReaderPositioned(true);
+          targetApplied = true;
+          if (wantsLastPage) {
+            // Once resolveLastPage has landed on the real last page, this must
+            // not touch the page again. It used to reset it to 0 on every
+            // trigger inside the settle window, so a target resolved early was
+            // silently undone by the next timeout or resize — and since the
+            // target counts as resolved, nothing ever put it right again.
+            if (!lastPageResolved) currentPageRef.current = 0;
+          } else {
+            currentPageRef.current = targetPage;
+            setCurrentPage(targetPage);
+          }
           updatePagination();
+          if (lastPageResolved) setIsLoadingChapter(false);
+        };
 
-          // A negative target means "last page". Resolve it only after the
-          // current chapter has been measured.
-          if (targetPage === -1) {
-            const lastPage = Math.max(0, totalPagesRef.current - 1);
+        // Resolving "last page" used to happen once, inline, right after
+        // painting page 0: hence the visible flash of the chapter's first page
+        // followed by a jump to the end. Worse, if that single attempt landed
+        // while the columns were still laying out, totalPages read 1, the
+        // target resolved to page 0 and the reader simply stayed there — no
+        // later trigger would try again once the settle window had closed.
+        // It is now retried until a real measurement arrives, and the loading
+        // overlay stays up meanwhile so no intermediate page is shown.
+        const resolveLastPage = () => {
+          if (lastPageResolved || currentSpineRef.current !== spineIndex) return;
+          const measured = totalPagesRef.current;
+          const known = chapterPageCountsRef.current[spineIndex] || 0;
+          // A live measurement above one page is authoritative. The offline
+          // count only stands in while the columns are not laid out yet, and a
+          // later re-measure clamps the page if it overshot; trusting it over a
+          // real measurement is what used to land the reader on blank pages.
+          const total = measured > 1 ? measured : Math.max(measured, known);
+          if (total <= 1 && Date.now() - loadedAt < lastPageDeadline) return;
+          lastPageResolved = true;
+          const lastPage = Math.max(0, total - 1);
+          currentPageRef.current = lastPage;
+          setCurrentPage(lastPage);
+          pageViewport = `${iframe.clientWidth}x${iframe.clientHeight}`;
+          updatePagination();
+          setIsLoadingChapter(false);
+          logDebugRef.current(`last page resolved p${lastPage + 1}/${total}`);
+        };
+
+        let pageViewport = `${iframe.clientWidth}x${iframe.clientHeight}`;
+
+        // Re-measures the chapter WITHOUT touching the reading position.
+        const refreshLayout = () => {
+          currentSpineRef.current = spineIndex;
+          updatePagination();
+          const viewport = `${iframe.clientWidth}x${iframe.clientHeight}`;
+          const viewportChanged = viewport !== pageViewport;
+          pageViewport = viewport;
+          // Never move the reader while a selection is live: that is exactly
+          // when mobile browsers resize the viewport, and it would undo the
+          // page just turned to extend the selection.
+          const selectionLive = Boolean(selectedTextRef.current.trim());
+          const lastPage = Math.max(0, totalPagesRef.current - 1);
+          // A re-measure at the same viewport size that reports fewer pages is
+          // transient layout noise, not a shorter chapter. Acting on it would
+          // drag the reader backwards for no reason.
+          if (lastPageResolved && !selectionLive && viewportChanged && currentPageRef.current > lastPage) {
+            logDebugRef.current(`CLAMP p${currentPageRef.current + 1}->p${lastPage + 1}`);
             currentPageRef.current = lastPage;
             setCurrentPage(lastPage);
             updatePagination();
           }
-          setIsLoadingChapter(false);
+          if (lastPageResolved) setIsLoadingChapter(false);
+        };
+
+        // Layout keeps changing long after the chapter loaded: mobile browsers
+        // show and hide their address bar, the native selection toolbar opens,
+        // images finish decoding. Those must only re-measure — re-applying the
+        // target page would throw the reader back to the start of the chapter
+        // mid-selection, undoing any page turned while selecting.
+        const triggerUpdate = () => {
+          if (!targetApplied) {
+            applyTargetPosition();
+          } else {
+            logDebugRef.current('layout re-measure');
+            refreshLayout();
+          }
+          resolveLastPage();
         };
 
         doc.fonts?.ready?.then(triggerUpdate);
@@ -694,12 +1279,53 @@ export const EpubReader: React.FC<Props> = ({
 
         const wrapper = doc.getElementById('reader-scroller');
         if (wrapper && 'ResizeObserver' in window) {
-          new ResizeObserver(triggerUpdate).observe(wrapper);
+          const browserChromeJitter = 120;
+          let layoutDebounce: number | undefined;
+          let lastWidth = iframe.clientWidth;
+          let lastHeight = iframe.clientHeight;
+          const observer = new ResizeObserver(() => {
+            if (layoutDebounce !== undefined) window.clearTimeout(layoutDebounce);
+            layoutDebounce = window.setTimeout(() => {
+              layoutDebounce = undefined;
+              const width = iframe.clientWidth;
+              const height = iframe.clientHeight;
+              if (Date.now() - loadedAt >= positionSettleWindow) {
+                const widthChanged = width !== lastWidth;
+                const rotated = Math.abs(height - lastHeight) > browserChromeJitter;
+                if (!widthChanged && !rotated) return;
+              }
+              lastWidth = width;
+              lastHeight = height;
+              triggerUpdate();
+            }, 180);
+          });
+          observer.observe(wrapper);
         }
 
         setTimeout(triggerUpdate, 60);
         setTimeout(triggerUpdate, 200);
         setTimeout(triggerUpdate, 500);
+        setTimeout(() => {
+          if (currentSpineRef.current !== spineIndex) return;
+          if (!targetApplied) {
+            logDebugRef.current('target forced');
+            applyTargetPosition();
+          }
+          setIsReaderPositioned(true);
+          setIsLoadingChapter(false);
+        }, 3000);
+
+        // Poll for the measurement instead of relying on layout events, which
+        // may all fire before the columns are ready on a long chapter.
+        if (wantsLastPage) {
+          const retryLastPage = () => {
+            if (lastPageResolved || currentSpineRef.current !== spineIndex) return;
+            updatePagination();
+            resolveLastPage();
+            if (!lastPageResolved) window.setTimeout(retryLastPage, 120);
+          };
+          window.setTimeout(retryLastPage, 80);
+        }
 
       } catch (err) {
         console.error(err);
@@ -710,10 +1336,38 @@ export const EpubReader: React.FC<Props> = ({
     [epub, settings, isVertical, isRtl, themeColors, updatePagination, handleSelection]
   );
 
+  useEffect(() => {
+    logDebugRef.current = (line: string) => {
+      if (!debugEnabled) return;
+      const stamp = new Date().toISOString().slice(17, 23);
+      debugBufferRef.current = [...debugBufferRef.current.slice(-13), `${stamp} ${line}`];
+    };
+    countDebugRef.current = (key: string) => {
+      if (!debugEnabled) return;
+      debugCountsRef.current[key] = (debugCountsRef.current[key] || 0) + 1;
+    };
+  }, [debugEnabled]);
+
+  useEffect(() => {
+    if (!debugEnabled) return;
+    const flush = window.setInterval(() => {
+      const counts = Object.entries(debugCountsRef.current)
+        .map(([key, value]) => `${key}=${value}`)
+        .join(' ');
+      const next = [...debugBufferRef.current, counts || 'sin eventos'];
+      setDebugLines((prev) => (prev.join('|') === next.join('|') ? prev : next));
+    }, 300);
+    return () => window.clearInterval(flush);
+  }, [debugEnabled]);
+
   // Sync state → refs so iframe closures always see latest values
   useEffect(() => { currentPageRef.current = currentPage; }, [currentPage]);
   useEffect(() => { totalPagesRef.current = totalPages; }, [totalPages]);
   useEffect(() => { currentSpineRef.current = currentSpineIndex; }, [currentSpineIndex]);
+  useEffect(() => {
+    selectedTextRef.current = selectedText;
+    openOverlayRef.current = isTocOpen || isSettingsOpen || isTranslateOpen || Boolean(imageViewerSrc);
+  }, [imageViewerSrc, isSettingsOpen, isTocOpen, isTranslateOpen, selectedText]);
   useEffect(() => {
     if (!isLoadingChapter) {
       saveReadingPosition({ spineIndex: currentSpineIndex, page: currentPage });
@@ -753,19 +1407,45 @@ export const EpubReader: React.FC<Props> = ({
     loadChapter(targetSpineIndex, targetLocalPage);
   }, [bookTotalPages, isBookPaginationReady, loadChapter, updatePagination]);
 
-  // Reload chapter on style settings change
-  const hasMountedRef = useRef(false);
+  // Reload the chapter when a style that changes the layout is modified.
+  //
+  // This compares the values rather than tracking whether the effect has run
+  // before. With a "first run" flag, any second execution carrying the SAME
+  // settings reloaded the chapter at page 0 — which is exactly what React's
+  // StrictMode does on mount, since the ref survives the remount. The result
+  // was that opening the book loaded chapter 0 over the restored position,
+  // and the page counter briefly read "1/102" before the real chapter landed.
+  const lastStyleSignatureRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!hasMountedRef.current) {
-      hasMountedRef.current = true;
-      return;
-    }
+    const signature = [
+      settings.writingMode,
+      settings.fontFamily,
+      settings.fontSize,
+      settings.lineHeight,
+      settings.theme,
+    ].join('|');
+    if (lastStyleSignatureRef.current === signature) return;
+    const isFirstRun = lastStyleSignatureRef.current === null;
+    lastStyleSignatureRef.current = signature;
+    if (isFirstRun) return;
     loadChapter(currentSpineRef.current, 0);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.writingMode, settings.fontFamily, settings.fontSize, settings.lineHeight, settings.theme]);
 
-  // Initial load
+  // Initial load. The chapter opens first and the whole-book measurement runs
+  // afterwards, in the background.
+  //
+  // This effect used to depend on measureBookPages, which is rebuilt whenever
+  // any setting changes, and it awaited the measurement before calling
+  // loadChapter with the position read at the start. Measuring a real book
+  // (26 chapters here) takes seconds, so the reader was thrown back to a stale
+  // stored position long after the user had navigated somewhere else: picking
+  // a chapter from the table of contents appeared to do nothing, to open the
+  // wrong chapter, or to land on an arbitrary page.
+  const hasLoadedInitialRef = useRef(false);
   useEffect(() => {
+    if (hasLoadedInitialRef.current) return;
+    hasLoadedInitialRef.current = true;
     let position: ReadingPosition = { spineIndex: 0, page: 0 };
     try {
       const saved = localStorage.getItem(`${bookStorageKey}_position`);
@@ -788,12 +1468,23 @@ export const EpubReader: React.FC<Props> = ({
     } catch {
       // Ignore malformed or unavailable persisted position.
     }
-    void (async () => {
-      await measureBookPages();
-      loadChapter(position.spineIndex, position.page);
-    })();
+    loadChapter(position.spineIndex, position.page);
+    void measureBookPagesRef.current();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [measureBookPages]);
+  }, []);
+
+  // Re-measure the book when a layout setting changes. It must never touch the
+  // reading position; the chapter reload is handled by its own effect above.
+  useEffect(() => {
+    if (!hasLoadedInitialRef.current) return;
+    void measureBookPagesRef.current();
+  }, [
+    settings.writingMode,
+    settings.fontFamily,
+    settings.fontSize,
+    settings.lineHeight,
+    settings.letterSpacing,
+  ]);
 
   // Re-apply transform when page changes from React state
   useEffect(() => { updatePagination(); }, [currentPage, updatePagination]);
@@ -819,9 +1510,18 @@ export const EpubReader: React.FC<Props> = ({
     }
   };
   const handleSelectTocChapter = (href: string) => {
-    const clean = href.split('#')[0];
-    const idx = epub.spine.findIndex(s => s.href.endsWith(clean) || clean.endsWith(s.href));
-    if (idx !== -1) loadChapter(idx, 0);
+    const index = resolveSpineIndex(href);
+    if (index === -1) {
+      // Some books list entries that are not in the spine at all (this one has
+      // a "Cover" pointing at a file the spine never includes). Silently doing
+      // nothing looks like a broken menu, so say what happened.
+      logDebugRef.current(`toc unresolved ${href}`);
+      setTocError('Ese apartado no está disponible en este libro.');
+      window.setTimeout(() => setTocError(null), 3000);
+      return;
+    }
+    setTocError(null);
+    loadChapter(index, 0);
   };
 
   // Keyboard
@@ -866,6 +1566,34 @@ export const EpubReader: React.FC<Props> = ({
     };
   }, [imageViewerSrc, onCloseBook]);
 
+  const handleCopyDebug = async () => {
+    const text = debugLines.join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      setDebugCopied(true);
+      setTimeout(() => setDebugCopied(false), 1500);
+      return;
+    } catch {
+      // Clipboard API unavailable inside this frame; fall back below.
+    }
+    try {
+      const scratch = document.createElement('textarea');
+      scratch.value = text;
+      scratch.style.cssText = 'position:fixed;top:0;left:0;opacity:0;';
+      document.body.appendChild(scratch);
+      scratch.select();
+      scratch.setSelectionRange(0, text.length);
+      const copied = document.execCommand('copy');
+      scratch.remove();
+      if (copied) {
+        setDebugCopied(true);
+        setTimeout(() => setDebugCopied(false), 1500);
+      }
+    } catch {
+      // Nothing else to try without clipboard access.
+    }
+  };
+
   const closeImageViewer = () => {
     setImageViewerSrc(null);
     setImageViewerScale(1);
@@ -901,7 +1629,7 @@ export const EpubReader: React.FC<Props> = ({
   const displayChapter = getDisplayChapter(currentSpineIndex);
 
   const currentChapterToc = epub.toc.find(
-    t => t.href.includes(currentSpineItem?.href) || currentSpineItem?.href.includes(t.href)
+    (item) => resolveSpineIndex(item.href) === currentSpineIndex
   );
 
   return (
@@ -928,14 +1656,21 @@ export const EpubReader: React.FC<Props> = ({
         }`}
         aria-live="polite"
       >
-        {isBookPaginationReady
+        {isBookPaginationReady && isReaderPositioned
           ? `${globalPage + 1}/${Math.max(1, bookTotalPages)} · C${displayChapter}/${displayChapterCount}`
-          : 'Calculando paginación…'}
+          : isReaderPositioned
+            ? 'Calculando paginación…'
+            : 'Abriendo libro…'}
       </div>
 
       {/* Keep the toggle in the bottom chrome instead of over the text header area. */}
       <button
         onClick={() => setShowUi((visible) => !visible)}
+        onContextMenu={(event) => {
+          // Long-press toggles the on-screen diagnostics trace.
+          event.preventDefault();
+          setDebugEnabled((enabled) => !enabled);
+        }}
         className={`fixed right-3 z-[55] p-2 rounded-full backdrop-blur-md shadow-md transition-colors ${
           showUi ? 'bottom-[118px]' : 'bottom-[max(env(safe-area-inset-bottom,8px),8px)]'
         } ${
@@ -969,9 +1704,30 @@ export const EpubReader: React.FC<Props> = ({
         )}
       </div>
 
+      {debugEnabled && (
+        <div className="fixed top-2 left-2 z-[95] max-w-[78vw] rounded-lg bg-black/75 px-2 py-1.5 pointer-events-none">
+          <div className="font-mono text-[9px] leading-[1.35] text-lime-200 whitespace-pre-wrap select-text">
+            {debugLines.length ? debugLines.join('\n') : 'diagnóstico activo · selecciona texto…'}
+          </div>
+          <button
+            onClick={handleCopyDebug}
+            className="pointer-events-auto mt-1 rounded bg-lime-300/90 px-2 py-1 text-[10px] font-semibold text-black"
+          >
+            {debugCopied ? 'copiado ✓' : 'copiar log'}
+          </button>
+        </div>
+      )}
+
+      {tocError && (
+        <div className="fixed bottom-24 left-1/2 z-[85] -translate-x-1/2 rounded-xl bg-zinc-900/90 px-4 py-2 text-xs text-white shadow-lg">
+          {tocError}
+        </div>
+      )}
+
       <TextSelectionMenu
         selectedText={selectedText}
         position={selectionPos}
+        isAdjusting={isSelectionAdjusting}
         onClose={() => { setSelectedText(''); setSelectionPos(null); }}
         onOpenTranslate={() => {
           setAiTranslationProvider(undefined);
