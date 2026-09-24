@@ -132,6 +132,7 @@ export const EpubReader: React.FC<Props> = ({
   const chapterPageCountsRef = useRef<number[]>([]);
   const bookPageOffsetsRef = useRef<number[]>([]);
   const measurementVersionRef = useRef(0);
+  const shownPageRef = useRef<{ spine: number; page: number } | null>(null);
   const imageDragRef = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null);
   const selectedTextRef = useRef('');
   const openOverlayRef = useRef(false);
@@ -308,9 +309,11 @@ export const EpubReader: React.FC<Props> = ({
       column-gap: ${verticalColumnGap};
       column-fill: auto;
       padding: ${padTop}px ${sidePad}px ${padBottom}px;
-      /* transition applied by JS */
       will-change: transform;
-      transition: transform 0.22s cubic-bezier(0.25, 1, 0.5, 1);
+      /* No CSS transition here: pages are stacked downwards, so animating the
+         transform would visibly scroll the text up and down. The page turn is
+         animated sideways from JS instead (see updatePagination). */
+      transition: none;
     ` : `
       /* Horizontal LTR multi-column */
       position: absolute;
@@ -495,9 +498,29 @@ export const EpubReader: React.FC<Props> = ({
     const offset = pageNudgeRef.current;
 
     if (isVertical) {
-      // Pages are stacked downwards: each one moves the column strip up by one
-      // screen height. The nudge offset stays horizontal.
-      scroller.style.transform = `translate(${offset}px, ${-page * vh}px)`;
+      // Pages are stacked downwards, so the strip moves up by one screen height
+      // per page — instantly. What the reader sees is a sideways slide of the
+      // incoming page, the way every e-reader turns pages: in vertical-rl the
+      // reading flow runs right to left, so the next page enters from the left
+      // and the previous one from the right.
+      const target = `translate(${offset}px, ${-page * vh}px)`;
+      scroller.style.transform = target;
+      const shown = shownPageRef.current;
+      const spine = currentSpineRef.current;
+      const turned = shown && shown.spine === spine && shown.page !== page;
+      shownPageRef.current = { spine, page };
+      const reduceMotion = iframe.contentWindow?.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      if (turned && !reduceMotion && typeof scroller.animate === 'function') {
+        const from = (page > shown.page ? -1 : 1) * vw * 0.35;
+        scroller.getAnimations().forEach((animation) => animation.cancel());
+        scroller.animate(
+          [
+            { transform: `translate(${offset + from}px, ${-page * vh}px)`, opacity: 0.35 },
+            { transform: target, opacity: 1 },
+          ],
+          { duration: 220, easing: 'cubic-bezier(0.25, 1, 0.5, 1)' },
+        );
+      }
     } else {
       scroller.style.transform = `translateX(${-page * vw + offset}px)`;
     }
