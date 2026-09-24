@@ -692,6 +692,10 @@ export const EpubReader: React.FC<Props> = ({
         let edgePushDirection: 'next' | 'previous' | null = null;
         let selectionHoldTimer: number | undefined;
         let selectionHoldDirection: 'next' | 'previous' | null = null;
+        let selectionBaseline = '';
+        let selectionBaselineReady = false;
+        let selectionAdjustmentStarted = false;
+        let selectionBaselineTimer: number | undefined;
         let selectionTurnBusy = false;
         let selectionGuard:
           | {
@@ -713,6 +717,20 @@ export const EpubReader: React.FC<Props> = ({
             logDebugRef.current(`hold cancelled ${reason}`);
           }
           selectionHoldDirection = null;
+        };
+
+        const getSelectionSignature = (selection: Selection) =>
+          `${selection.toString()}|${selection.anchorOffset}|${selection.focusOffset}`;
+
+        const resetSelectionTracking = () => {
+          clearSelectionHold('reset');
+          if (selectionBaselineTimer !== undefined) {
+            window.clearTimeout(selectionBaselineTimer);
+            selectionBaselineTimer = undefined;
+          }
+          selectionBaseline = '';
+          selectionBaselineReady = false;
+          selectionAdjustmentStarted = false;
         };
 
         const isSelectionBackwards = (selection: Selection) => {
@@ -841,6 +859,7 @@ export const EpubReader: React.FC<Props> = ({
             return;
           }
           clearSelectionHold('turning');
+          selectionAdjustmentStarted = true;
           // Block further boundary checks until the page transition settles,
           // otherwise the mid-animation layout reports the edge again and the
           // reader would skip several pages at once.
@@ -893,6 +912,13 @@ export const EpubReader: React.FC<Props> = ({
         // Android's native selection handles do not emit touch events, so the
         // boundary is watched through selectionchange and confirmed by holding.
         const scheduleSelectionHold = (direction: 'next' | 'previous') => {
+          // Merely creating a selection at the edge must never turn the page.
+          // The hold is only valid after a later selection change proves that
+          // the user is dragging a handle to extend the selection.
+          if (!selectionAdjustmentStarted) {
+            logDebugRef.current(`hold skipped, selection not adjusting`);
+            return;
+          }
           if (selectionHoldTimer !== undefined && selectionHoldDirection === direction) return;
           clearSelectionHold('rearm');
           if (!canTurnSelectionPage(direction)) {
@@ -920,13 +946,31 @@ export const EpubReader: React.FC<Props> = ({
         const handleIframeSelectionChange = () => {
           const selection = iframe.contentWindow?.getSelection();
           if (!selection?.rangeCount || !selection.toString()) {
-            clearSelectionHold('empty');
+            resetSelectionTracking();
             selectionGuard = null;
             edgePush = 0;
             edgePushDirection = null;
             setSelectedText('');
             setSelectionPos(null);
             return;
+          }
+
+          const signature = getSelectionSignature(selection);
+          if (!selectionBaseline) {
+            selectionBaseline = signature;
+            selectionBaselineReady = false;
+            if (selectionBaselineTimer !== undefined) window.clearTimeout(selectionBaselineTimer);
+            selectionBaselineTimer = window.setTimeout(() => {
+              selectionBaselineReady = true;
+              const current = iframe.contentWindow?.getSelection();
+              if (current?.rangeCount && current.toString()) {
+                selectionBaseline = getSelectionSignature(current);
+              }
+              selectionBaselineTimer = undefined;
+            }, 180);
+          } else if (selectionBaselineReady && signature !== selectionBaseline) {
+            selectionAdjustmentStarted = true;
+            selectionBaseline = signature;
           }
 
           if (selectionGuard) {
@@ -964,6 +1008,7 @@ export const EpubReader: React.FC<Props> = ({
           pointerTracked = true;
           pointerDrivenSelection = false;
           selectionGuard = null;
+          resetSelectionTracking();
           edgePush = 0;
           edgePushDirection = null;
           gestureNudgeStart = pageNudgeRef.current;
@@ -1004,6 +1049,7 @@ export const EpubReader: React.FC<Props> = ({
             pointerTracked = false;
             return;
           }
+          selectionAdjustmentStarted = true;
           pointerDrivenSelection = true;
           clearSelectionHold('push');
 
@@ -1054,6 +1100,10 @@ export const EpubReader: React.FC<Props> = ({
           // Releasing the gesture also cancels any pending boundary hold, so
           // finishing a selection at the end of a page never turns it.
           clearSelectionHold('end');
+          if (selectionBaselineTimer !== undefined) {
+            window.clearTimeout(selectionBaselineTimer);
+            selectionBaselineTimer = undefined;
+          }
           pointerDrivenSelection = false;
           selectionGuard = null;
           edgePush = 0;
