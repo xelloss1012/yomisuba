@@ -935,7 +935,7 @@ export const EpubReader: React.FC<Props> = ({
               logDebugRef.current('hold dropped (chapter)');
               return;
             }
-            if (getSelectionEdgeDirection(true) !== direction) {
+            if (getSelectionEdgeDirection() !== direction) {
               logDebugRef.current('hold dropped (off edge)');
               return;
             }
@@ -993,7 +993,10 @@ export const EpubReader: React.FC<Props> = ({
 
           handleSelection();
           if (selectionTurnBusy) return;
-          const direction = getSelectionEdgeDirection(true);
+          // Do not use the tolerant last-line check here. A selection can
+          // legitimately end in the penultimate column; only an adjacent
+          // character that is actually outside the viewport is a boundary.
+          const direction = getSelectionEdgeDirection();
           logDebugRef.current(
             `sel ${selection.toString().length} edge=${direction || '-'} p${currentPageRef.current + 1}/${totalPagesRef.current} pd=${pointerDrivenSelection ? 1 : 0}`
           );
