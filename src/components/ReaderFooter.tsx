@@ -117,13 +117,13 @@ export const ReaderFooter: React.FC<Props> = ({
             disabled={safeTotalPages <= 1}
             aria-label="Ir a una página del libro"
             title={`Ir a la página ${isRtl ? sliderMax - pendingSliderPage + 1 : pendingSliderPage + 1} de ${safeTotalPages}`}
-            className="h-1.5 w-full cursor-pointer accent-indigo-600 disabled:cursor-default disabled:opacity-40"
+            className="reader-progress w-full cursor-pointer disabled:cursor-default disabled:opacity-40"
           />
         </div>
         <div className="mb-2 flex items-center justify-center gap-2 text-[10px] text-zinc-500 dark:text-zinc-400">
           <button
             onClick={() => onNudgePage(48)}
-            className="rounded-lg px-2 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-40"
+            className="tap-area rounded-lg px-2 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-40"
             disabled={pageNudge <= -192}
             title="Desplazar la vista hacia la izquierda"
           >
@@ -131,7 +131,7 @@ export const ReaderFooter: React.FC<Props> = ({
           </button>
           <button
             onClick={onResetNudge}
-            className="rounded-lg px-2 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-40"
+            className="tap-area rounded-lg px-2 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-40"
             disabled={pageNudge === 0}
             title="Restablecer el alineado de la página"
           >
@@ -139,7 +139,7 @@ export const ReaderFooter: React.FC<Props> = ({
           </button>
           <button
             onClick={() => onNudgePage(-48)}
-            className="rounded-lg px-2 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-40"
+            className="tap-area rounded-lg px-2 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-40"
             disabled={pageNudge >= 192}
             title="Desplazar la vista hacia la derecha"
           >
@@ -154,7 +154,7 @@ export const ReaderFooter: React.FC<Props> = ({
             onClick={isRtl ? onNextChapter : onPrevChapter}
             disabled={isRtl ? currentSpineIndex >= totalSpineCount - 1 : currentSpineIndex === 0}
             title={isRtl ? 'Capítulo siguiente' : 'Capítulo anterior'}
-            className="p-2 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-25 text-zinc-700 dark:text-zinc-300 transition-colors"
+            className="tap-area p-2 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-25 text-zinc-700 dark:text-zinc-300 transition-colors"
           >
             <SkipBack className="w-4 h-4" />
           </button>
@@ -164,7 +164,7 @@ export const ReaderFooter: React.FC<Props> = ({
             onClick={handleLeftClick}
             disabled={isLeftDisabled}
             title={`Página ${leftLabel.toLowerCase()}`}
-            className={`py-2 px-3 rounded-xl transition-all flex items-center gap-1 text-xs font-semibold ${
+            className={`tap-area py-2 px-3 rounded-xl transition-all flex items-center gap-1 text-xs font-semibold ${
               isRtl
                 ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm disabled:opacity-30'
                 : 'bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 disabled:opacity-30'
@@ -178,7 +178,7 @@ export const ReaderFooter: React.FC<Props> = ({
             onClick={onToggleBookmark}
             title={isBookmarked ? 'Quitar marcador' : 'Marcar esta página'}
             aria-label={isBookmarked ? 'Quitar marcador' : 'Marcar esta página'}
-            className={`p-2 rounded-xl transition-colors ${
+            className={`tap-area p-2 rounded-xl transition-colors ${
               isBookmarked
                 ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300'
                 : 'text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800'
@@ -205,7 +205,7 @@ export const ReaderFooter: React.FC<Props> = ({
             onClick={handleRightClick}
             disabled={isRightDisabled}
             title={`Página ${rightLabel.toLowerCase()}`}
-            className={`py-2 px-3 rounded-xl transition-all flex items-center gap-1 text-xs font-semibold ${
+            className={`tap-area py-2 px-3 rounded-xl transition-all flex items-center gap-1 text-xs font-semibold ${
               !isRtl
                 ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm disabled:opacity-30'
                 : 'bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 disabled:opacity-30'
@@ -220,7 +220,7 @@ export const ReaderFooter: React.FC<Props> = ({
             onClick={isRtl ? onPrevChapter : onNextChapter}
             disabled={isRtl ? currentSpineIndex === 0 : currentSpineIndex >= totalSpineCount - 1}
             title={isRtl ? 'Capítulo anterior' : 'Capítulo siguiente'}
-            className="p-2 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-25 text-zinc-700 dark:text-zinc-300 transition-colors"
+            className="tap-area p-2 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-25 text-zinc-700 dark:text-zinc-300 transition-colors"
           >
             <SkipForward className="w-4 h-4" />
           </button>

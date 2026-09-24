@@ -55,7 +55,7 @@ export const ReaderNavbar: React.FC<Props> = ({
           <button
             onClick={onOpenFile}
             title="Abrir otro libro EPUB"
-            className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-200 transition-colors flex items-center gap-1.5 text-xs font-medium"
+            className="tap-area p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-200 transition-colors flex items-center gap-1.5 text-xs font-medium"
           >
             <FolderOpen className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
             <span className="hidden sm:inline">Abrir</span>
@@ -64,7 +64,7 @@ export const ReaderNavbar: React.FC<Props> = ({
           <button
             onClick={onToggleToc}
             title="Tabla de contenidos / Capítulos"
-            className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-200 transition-colors flex items-center gap-1.5 text-xs font-medium"
+            className="tap-area p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-200 transition-colors flex items-center gap-1.5 text-xs font-medium"
           >
             <Menu className="w-4 h-4" />
             <span className="hidden md:inline">Índice</span>
@@ -92,7 +92,7 @@ export const ReaderNavbar: React.FC<Props> = ({
               })
             }
             title={isVertical ? 'Cambiar a lectura horizontal' : 'Cambiar a lectura vertical japonesa'}
-            className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-200 transition-colors flex items-center gap-1 text-xs font-medium"
+            className="tap-area p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-200 transition-colors flex items-center gap-1 text-xs font-medium"
           >
             {isVertical ? (
               <>
@@ -111,7 +111,7 @@ export const ReaderNavbar: React.FC<Props> = ({
           <button
             onClick={onToggleSettings}
             title="Ajustes de fuente y tema"
-            className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-200 transition-colors flex items-center gap-1 text-xs font-medium"
+            className="tap-area p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-200 transition-colors flex items-center gap-1 text-xs font-medium"
           >
             <SlidersHorizontal className="w-4 h-4" />
             <span className="font-serif font-bold text-sm leading-none">Aa</span>
@@ -121,7 +121,7 @@ export const ReaderNavbar: React.FC<Props> = ({
           <button
             onClick={toggleFullscreen}
             title={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
-            className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-200 transition-colors hidden sm:flex"
+            className="tap-area p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-200 transition-colors hidden sm:flex"
           >
             {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
           </button>

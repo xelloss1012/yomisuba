@@ -1732,7 +1732,7 @@ export const EpubReader: React.FC<Props> = ({
           event.preventDefault();
           setDebugEnabled((enabled) => !enabled);
         }}
-        className={`fixed right-3 z-[55] p-2 rounded-full backdrop-blur-md shadow-md transition-colors ${
+        className={`tap-area-free fixed right-3 z-[55] p-2 rounded-full backdrop-blur-md shadow-md transition-colors ${
           showUi ? 'bottom-[118px]' : 'bottom-[max(env(safe-area-inset-bottom,8px),8px)]'
         } ${
           showUi

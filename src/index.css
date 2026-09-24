@@ -46,3 +46,82 @@
 .animate-fade-in {
   animation: fadeIn 0.2s ease-out forwards;
 }
+
+/* ── Áreas táctiles ───────────────────────────────────────────────────────
+   Medidos en un visor de 408x896, todos los controles del lector quedaban
+   entre 22 y 32 px: por debajo de los 44 px recomendados para el dedo. Estas
+   utilidades amplían la zona que responde al toque mediante un pseudo-elemento
+   transparente, sin alterar el aspecto ni la altura de la cabecera y el pie.
+
+   La ampliación es sobre todo vertical porque en las barras los botones sólo
+   están separados 6 px entre sí: crecer a lo ancho haría que un control
+   robase los toques del vecino. */
+.tap-area {
+  position: relative;
+}
+
+.tap-area::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: -3px;
+  right: -3px;
+  height: 44px;
+  transform: translateY(-50%);
+}
+
+/* Para controles aislados, que sí pueden crecer en las dos direcciones. */
+.tap-area-free {
+  position: relative;
+}
+
+.tap-area-free::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+}
+
+/* La barra de progreso del libro medía 6 px de alto: casi imposible de
+   agarrar con el dedo. Se le da altura táctil manteniendo el raíl fino. */
+.reader-progress {
+  height: 44px;
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.reader-progress::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 9999px;
+  background: rgba(120, 120, 130, 0.35);
+}
+
+.reader-progress::-moz-range-track {
+  height: 6px;
+  border-radius: 9999px;
+  background: rgba(120, 120, 130, 0.35);
+}
+
+.reader-progress::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -6px;
+  border-radius: 9999px;
+  background: rgb(79, 70, 229);
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.reader-progress::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  background: rgb(79, 70, 229);
+  border: 2px solid #fff;
+}

@@ -134,7 +134,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
             </span>
             <button
               onClick={onClose}
-              className="p-1 rounded-full text-zinc-400 hover:text-white"
+              className="tap-area p-1 rounded-full text-zinc-400 hover:text-white"
               title="Cerrar menú"
             >
               <X className="w-3.5 h-3.5" />
@@ -147,7 +147,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
                   e.stopPropagation();
                   onOpenAiTranslate(provider);
                 }}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl hover:bg-zinc-800 active:scale-95 text-xs font-medium transition-all text-amber-300 hover:text-white"
+                className="tap-area flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl hover:bg-zinc-800 active:scale-95 text-xs font-medium transition-all text-amber-300 hover:text-white"
                 title={`Traducir con ${AI_PROVIDER_LABELS[provider]}`}
               >
                 <span>IA {AI_PROVIDER_LABELS[provider]}</span>
@@ -161,7 +161,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
           {/* Copiar */}
           <button
             onClick={handleCopy}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl hover:bg-zinc-800 active:scale-95 text-xs font-medium transition-all"
+            className="tap-area flex-1 flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl hover:bg-zinc-800 active:scale-95 text-xs font-medium transition-all"
             title="Copiar texto"
           >
             {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
@@ -174,7 +174,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
               e.stopPropagation();
               onOpenTranslate();
             }}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl hover:bg-zinc-800 active:scale-95 text-xs font-medium transition-all text-indigo-300 hover:text-white"
+            className="tap-area flex-1 flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl hover:bg-zinc-800 active:scale-95 text-xs font-medium transition-all text-indigo-300 hover:text-white"
             title="Traducir texto al español"
           >
             <Languages className="w-3.5 h-3.5" />
@@ -187,7 +187,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
               e.stopPropagation();
               onOpenTranslate();
             }}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl hover:bg-zinc-800 active:scale-95 text-xs font-medium transition-all text-emerald-300 hover:text-white"
+            className="tap-area flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl hover:bg-zinc-800 active:scale-95 text-xs font-medium transition-all text-emerald-300 hover:text-white"
             title="Consultar diccionario JMDict local"
           >
             <BookOpen className="w-3.5 h-3.5" />
@@ -198,7 +198,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
           <button
             onClick={handleSpeak}
             disabled={isSpeaking}
-            className="p-2 rounded-xl hover:bg-zinc-800 active:scale-95 text-xs transition-all text-amber-300 hover:text-white disabled:opacity-50"
+            className="tap-area p-2 rounded-xl hover:bg-zinc-800 active:scale-95 text-xs transition-all text-amber-300 hover:text-white disabled:opacity-50"
             title="Pronunciación en japonés"
           >
             <Volume2 className={`w-4 h-4 ${isSpeaking ? 'animate-pulse text-amber-400' : ''}`} />
@@ -207,7 +207,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
           {/* Buscar en Google */}
           <button
             onClick={handleSearchGoogle}
-            className="p-2 rounded-xl hover:bg-zinc-800 active:scale-95 text-xs transition-all text-zinc-300 hover:text-white"
+            className="tap-area p-2 rounded-xl hover:bg-zinc-800 active:scale-95 text-xs transition-all text-zinc-300 hover:text-white"
             title="Buscar en Google"
           >
             <Search className="w-4 h-4" />
@@ -218,7 +218,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
               <div className="w-px h-4 bg-zinc-700 mx-0.5" />
               <button
                 onClick={onClose}
-                className="p-1.5 rounded-xl hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors"
+                className="tap-area p-1.5 rounded-xl hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors"
                 title="Cerrar"
               >
                 <X className="w-3.5 h-3.5" />
