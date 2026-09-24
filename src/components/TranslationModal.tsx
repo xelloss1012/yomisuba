@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { X, Volume2, ExternalLink, Languages, BookOpen, Loader2 } from 'lucide-react';
+import { X, Volume2, Languages, Loader2 } from 'lucide-react';
 import { AiProvider } from '../types/epub';
 import { AI_PROVIDER_LABELS, translateWithAi } from '../utils/aiTranslation';
 import { getCachedTranslation, saveCachedTranslation } from '../utils/translationCache';
+import { DictionaryEntry, getDictionarySearchTerms } from '../utils/dictionary';
 
 interface Props {
   isOpen: boolean;
@@ -14,11 +15,26 @@ interface Props {
 
 export const TranslationModal: React.FC<Props> = ({ isOpen, onClose, selectedText, aiProvider, aiApiKey }) => {
   const [translatedText, setTranslatedText] = useState<string>('');
+  const [dictionaryTerms, setDictionaryTerms] = useState<{
+    baseForm: string;
+    searchTerms: string[];
+    entries: DictionaryEntry[];
+  } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
 
   useEffect(() => {
     if (!isOpen || !selectedText) return;
+
+    getDictionarySearchTerms(selectedText)
+      .then((lookup) =>
+        setDictionaryTerms({
+          baseForm: lookup.baseForm,
+          searchTerms: lookup.searchTerms,
+          entries: lookup.entries,
+        })
+      )
+      .catch(() => setDictionaryTerms(null));
 
     const translate = async () => {
       setIsLoading(true);
@@ -74,12 +90,6 @@ export const TranslationModal: React.FC<Props> = ({ isOpen, onClose, selectedTex
 
     window.speechSynthesis.speak(utterance);
   };
-
-  const googleTranslateUrl = `https://translate.google.com/?sl=auto&tl=es&text=${encodeURIComponent(
-    selectedText
-  )}&op=translate`;
-
-  const jishoUrl = `https://jisho.org/search/${encodeURIComponent(selectedText)}`;
 
   return (
     <div
@@ -145,30 +155,56 @@ export const TranslationModal: React.FC<Props> = ({ isOpen, onClose, selectedTex
             )}
           </div>
 
-          {/* External Links / Dictionary */}
-          <div className="pt-2 flex flex-wrap gap-2">
-            <a
-              href={jishoUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex-1 min-w-[140px] px-3 py-2 rounded-xl bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 text-xs font-medium flex items-center justify-center gap-1.5 transition-colors"
-            >
-              <BookOpen className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Ver en Jisho (辞書)</span>
-              <ExternalLink className="w-3 h-3 opacity-60" />
-            </a>
-
-            <a
-              href={googleTranslateUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex-1 min-w-[140px] px-3 py-2 rounded-xl bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 text-xs font-medium flex items-center justify-center gap-1.5 transition-colors"
-            >
-              <Languages className="w-3.5 h-3.5 text-blue-600" />
-              <span>Google Traductor</span>
-              <ExternalLink className="w-3 h-3 opacity-60" />
-            </a>
-          </div>
+          {/* Local dictionary */}
+          {dictionaryTerms && (
+            <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/60 dark:bg-emerald-950/20 p-3 text-xs text-emerald-900 dark:text-emerald-200 space-y-3">
+              <div className="text-[10px] font-bold uppercase tracking-[0.12em] mb-1.5 text-emerald-700 dark:text-emerald-300">
+                Diccionario JMDict local
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-emerald-200/80 dark:bg-emerald-900/70 px-2 py-1 font-semibold">
+                  Base: {dictionaryTerms.baseForm}
+                </span>
+                {dictionaryTerms.searchTerms.filter((term) => term !== dictionaryTerms.baseForm).slice(0, 3).map((term) => (
+                  <span key={term} className="rounded-full bg-white/70 dark:bg-zinc-900/70 px-2 py-1 text-[11px]">
+                    {term}
+                  </span>
+                ))}
+              </div>
+              {dictionaryTerms.entries.length === 0 ? (
+                <p className="text-zinc-600 dark:text-zinc-400">
+                  No se encontró una entrada local para esta forma.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {dictionaryTerms.entries.map((entry) => (
+                    <div key={entry.id} className="rounded-lg bg-white/75 dark:bg-zinc-900/60 p-2.5">
+                      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                        <span className="font-semibold text-base text-zinc-900 dark:text-zinc-100">
+                          {entry.kanji.length ? entry.kanji.join(' · ') : entry.kana.join(' · ')}
+                        </span>
+                        {entry.kana.length > 0 && (
+                          <span className="text-zinc-500 dark:text-zinc-400">{entry.kana.join(' · ')}</span>
+                        )}
+                      </div>
+                      <ol className="mt-1.5 space-y-1 list-decimal list-inside text-zinc-700 dark:text-zinc-300">
+                        {entry.senses.map((sense, index) => (
+                          <li key={`${entry.id}-${index}`}>
+                            {sense.partOfSpeech.length > 0 && (
+                              <span className="mr-1 text-[10px] font-semibold uppercase text-emerald-700 dark:text-emerald-300">
+                                [{sense.partOfSpeech.join(', ')}]
+                              </span>
+                            )}
+                            {sense.glosses.join('; ')}
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

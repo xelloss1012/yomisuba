@@ -75,10 +75,22 @@ npm run android:open
 npm run android:build:debug
 ```
 
-El APK se genera en
-`dist/android/ereader-japanese-vertical-debug.apk`. El `dist/index.html` de la
-versión web se mantiene en paralelo. También se puede abrir `android/`
-directamente en Android Studio y ejecutar el módulo `app`.
+Por defecto, el APK se copia en
+`dist/android/ereader-japanese-vertical-debug.apk`. `dist/` está excluido de
+Git, por lo que el binario no se sube al repositorio. El `dist/index.html` de
+la versión web se mantiene en paralelo.
+
+Si quieres conservar los APK en otra carpeta local (por ejemplo, una carpeta
+de artefactos fuera del proyecto), define `EREADER_APK_OUTPUT_DIR` antes de
+compilar. La variable sólo afecta a esa ejecución y no se guarda en Git:
+
+```powershell
+$env:EREADER_APK_OUTPUT_DIR = 'C:\Users\xelloss\Documents\EReader\apks'
+npm run android:build:debug
+```
+
+También se puede abrir `android/` directamente en Android Studio y ejecutar el
+módulo `app`.
 
 La aplicación Android carga el build React local dentro de un WebView, por lo
 que mantiene la persistencia de libros recientes, posiciones, marcadores y

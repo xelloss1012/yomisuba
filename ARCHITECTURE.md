@@ -49,8 +49,8 @@ EReader/
     │   └── sampleBook.ts      # Generador del libro de prueba japonés ("走れメロス")
     └── components/
         ├── EpubReader.tsx     # Visor principal (IFrame aislado, paginación 100dvh, gestos táctiles, selección)
-        ├── TextSelectionMenu.tsx # Menú flotante sobre texto seleccionado (Copiar, Traducir, Jisho, TTS, Buscar)
-        ├── TranslationModal.tsx # Modal de traducción al español y enlace al diccionario Jisho
+        ├── TextSelectionMenu.tsx # Menú flotante sobre texto seleccionado (Copiar, Traducir, Diccionario, TTS, Buscar)
+        ├── TranslationModal.tsx # Modal de traducción al español y consulta local de JMDict
         ├── ReaderNavbar.tsx   # Barra superior (Título, selector modo V/H, Índice, Ajustes)
         ├── ReaderFooter.tsx   # Barra inferior (Progreso de página, capítulos, navegación)
         ├── ReaderSettings.tsx # Drawer de ajustes (Fuentes, tamaño, interlineado, temas de color)
@@ -120,7 +120,7 @@ Se conservan las 6 entradas más recientes, de modo que rotar el dispositivo o c
 - **Herramientas de Selección**:
   - **Copiar**: Copia el texto al portapapeles.
   - **Traducir**: Llama a la API de traducción e integra la respuesta en un modal.
-  - **Jisho**: Abre la búsqueda en el diccionario de kanjis Jisho.org.
+  - **JMDict local**: Muestra dentro del modal las entradas y definiciones en español, usando la forma base obtenida por Kuromoji para verbos conjugados.
   - **Pronunciación TTS**: Utiliza `window.speechSynthesis` con voz `ja-JP`.
   - **Buscar**: Búsqueda en Google.
 
@@ -132,7 +132,7 @@ Se conservan las 6 entradas más recientes, de modo que rotar el dispositivo o c
 - ✅ Renderizado nativo de texto vertical japonés con furigana y *Tate-chū-yoko*.
 - ✅ Alternancia instantánea a modo horizontal.
 - ✅ Paginación multi-columna correcta con cálculo exacto de páginas totales.
-- ✅ Selección de texto nativa con menú flotante contextual y traducción.
+- ✅ Selección de texto nativa con menú flotante contextual, traducción y diccionario JMDict local.
 - ✅ Gestos táctiles (*Swipe*) y maquetación responsive para móviles (`100dvh`).
 - ✅ Modos de color (Blanco, Papel, Sepia, Noche) y tipografías japonesas.
 - ✅ Empaquetado Single-File (`dist/index.html`) ejecutable por doble clic.

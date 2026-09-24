@@ -91,11 +91,6 @@ export const TextSelectionMenu: React.FC<Props> = ({
     window.open(`https://www.google.com/search?q=${encodeURIComponent(selectedText)}`, '_blank');
   };
 
-  const handleSearchJisho = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    window.open(`https://jisho.org/search/${encodeURIComponent(selectedText)}`, '_blank');
-  };
-
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
 
   // On desktop: float near selection.
@@ -186,14 +181,17 @@ export const TextSelectionMenu: React.FC<Props> = ({
             <span>Traducir</span>
           </button>
 
-          {/* Jisho / Diccionario */}
+          {/* Diccionario local */}
           <button
-            onClick={handleSearchJisho}
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenTranslate();
+            }}
             className="flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl hover:bg-zinc-800 active:scale-95 text-xs font-medium transition-all text-emerald-300 hover:text-white"
-            title="Buscar en diccionario Jisho"
+            title="Consultar diccionario JMDict local"
           >
             <BookOpen className="w-3.5 h-3.5" />
-            <span>Jisho</span>
+            <span>Diccionario</span>
           </button>
 
           {/* Pronunciación TTS */}

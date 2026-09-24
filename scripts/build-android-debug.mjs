@@ -23,7 +23,9 @@ if (!existsSync(apkPath)) {
   process.exit(1);
 }
 
-const outputDir = join(root, 'dist', 'android');
+const outputDir = process.env.EREADER_APK_OUTPUT_DIR
+  ? resolve(process.env.EREADER_APK_OUTPUT_DIR)
+  : join(root, 'dist', 'android');
 mkdirSync(outputDir, { recursive: true });
 const outputPath = join(outputDir, 'ereader-japanese-vertical-debug.apk');
 copyFileSync(apkPath, outputPath);
