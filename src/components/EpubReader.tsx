@@ -1788,7 +1788,11 @@ export const EpubReader: React.FC<Props> = ({
       <TextSelectionMenu
         selectedText={selectedText}
         position={selectionPos}
-        isAdjusting={isSelectionAdjusting}
+        // The menu sits at z-60, above the translation modal (z-50), so with a
+        // panel open it covered the bottom of the dictionary result. Fold it
+        // away while any overlay is on screen, as it is already folded away
+        // while the selection is being dragged.
+        isAdjusting={isSelectionAdjusting || isTranslateOpen || isTocOpen || isSettingsOpen || Boolean(imageViewerSrc)}
         onClose={() => { setSelectedText(''); setSelectionPos(null); }}
         onOpenTranslate={() => {
           setAiTranslationProvider(undefined);
