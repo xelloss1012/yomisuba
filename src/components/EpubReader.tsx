@@ -259,10 +259,18 @@ export const EpubReader: React.FC<Props> = ({
       -webkit-text-orientation: mixed;
       font-feature-settings: "vert" 1, "vrt2" 1, "palt" 1;
       -webkit-font-feature-settings: "vert" 1, "vrt2" 1, "palt" 1;
-      /* Column width plus gap equals one page, preserving the page grid. */
-      column-width: ${pageColumnWidth};
-      column-gap: ${pageColumnGap};
-      column-fill: auto;
+      /* NO multi-column here. In vertical-rl the inline axis is the vertical
+         one, so column-width sets the HEIGHT of a column, not the width of a
+         page: with calc(100vw - margins) the text was confined to a band of
+         that height and the rest of the screen stayed empty. It went unnoticed
+         on desktop only because there the value exceeds the viewport height
+         and the browser falls back to a single full-height column. On a phone
+         (376px against 826px available) barely half the screen was used, and
+         the book had ~36% more pages than it needed.
+         Pagination here does not come from columns anyway: it comes from
+         width:max-content plus the translateX step. */
+      column-width: auto;
+      column-count: 1;
       padding: ${pad};
       /* transition applied by JS */
       will-change: transform;
