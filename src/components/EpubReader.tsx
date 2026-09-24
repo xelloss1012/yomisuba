@@ -27,6 +27,30 @@ const PAGINATION_CACHE_VERSION = 1;
 // does not throw away the measurement for the previous geometry.
 const PAGINATION_CACHE_ENTRIES = 6;
 
+// Pages a laid-out chapter spans. Vertical-rl stacks its pages as columns
+// along the inline axis, which is the vertical one, so they are counted by
+// height; horizontal lays them side by side and is counted by width. Both the
+// live reader and the offline book measurement call this, so their counts
+// cannot drift apart.
+const countScrollerPages = (
+  doc: Document,
+  scroller: HTMLElement,
+  vertical: boolean,
+  viewportWidth: number,
+  viewportHeight: number,
+) => {
+  const range = doc.createRange();
+  range.selectNodeContents(scroller);
+  const rect = range.getBoundingClientRect();
+  if (vertical) {
+    const top = scroller.getBoundingClientRect().top;
+    const extent = Math.max(scroller.scrollHeight, rect.bottom - top, viewportHeight);
+    return Math.max(1, Math.ceil((extent - 1) / viewportHeight));
+  }
+  const extent = Math.max(scroller.scrollWidth, Math.abs(rect.width), viewportWidth);
+  return Math.max(1, Math.ceil(extent / viewportWidth));
+};
+
 const hashString = (value: string) => {
   let hash = 5381;
   for (let index = 0; index < value.length; index += 1) {
@@ -236,22 +260,40 @@ export const EpubReader: React.FC<Props> = ({
     // reserves the larger header/footer areas only while the UI is open.
     const pageColumnWidth = `calc(100vw - ${sidePad * 2}px)`;
     const pageColumnGap = `${sidePad * 2}px`;
-    const pad = `${mobile ? 18 : 32}px 0 ${mobile ? 52 : 40}px`;
-    const imgMaxH = 'calc(100% - 32px)';
-    const imgMaxW = mobile ? 'calc(100vw - 28px)' : 'calc(100vw - 88px)';
+    const padTop = mobile ? 18 : 32;
+    const padBottom = mobile ? 52 : 40;
+    const pad = `${padTop}px 0 ${padBottom}px`;
+    // In vertical-rl a page is a column: its inline size is the screen height
+    // minus the top and bottom padding, and the gap between columns equals that
+    // padding, so the column pitch is exactly one screen height.
+    const verticalColumnHeight = `calc(100vh - ${padTop + padBottom}px)`;
+    const verticalColumnGap = `${padTop + padBottom}px`;
+    const imgMaxH = isVertical ? `calc(100vh - ${padTop + padBottom + 8}px)` : 'calc(100% - 32px)';
+    const imgMaxW = isVertical
+      ? `calc(100vw - ${sidePad * 2}px)`
+      : mobile ? 'calc(100vw - 28px)' : 'calc(100vw - 88px)';
     const fontSize = mobile ? Math.min(settings.fontSize, 18) : settings.fontSize;
 
     // For vertical-rl multi-column we MUST set height on the scroller
     // and let the browser compute the columns for us.
     // For horizontal-tb we set column-width to viewport width so we get 1 column per page.
     const scrollerCss = isVertical ? `
-      /* Vertical RTL multi-column – browser creates columns going left */
+      /* Vertical RTL, paginated by the browser's own fragmentation.
+         The previous layout flowed the text as one endless strip and paged it
+         with translateX by the screen width. That width is not a multiple of
+         the line pitch, so every few pages a whole line fell across the edge
+         and could not be read (measured: 28 of 40 pages) — the reason for
+         the manual nudge controls.
+         Here each page is a column of the multicol container. In vertical-rl
+         the inline axis is vertical, so columns stack downwards: the block
+         size is fixed to one screen width, overflow columns are created below,
+         and paging is a translateY by one screen height. Fragmentation never
+         splits a line, so no line can straddle two pages. */
       position: absolute;
       top: 0;
-      /* Anchor to the right so column 0 aligns with viewport right edge */
       right: 0;
+      width: 100vw;
       height: 100%;
-      width: max-content;   /* expand leftwards as many columns as needed */
       writing-mode: vertical-rl;
       -webkit-writing-mode: vertical-rl;
       direction: ltr;
@@ -259,19 +301,13 @@ export const EpubReader: React.FC<Props> = ({
       -webkit-text-orientation: mixed;
       font-feature-settings: "vert" 1, "vrt2" 1, "palt" 1;
       -webkit-font-feature-settings: "vert" 1, "vrt2" 1, "palt" 1;
-      /* NO multi-column here. In vertical-rl the inline axis is the vertical
-         one, so column-width sets the HEIGHT of a column, not the width of a
-         page: with calc(100vw - margins) the text was confined to a band of
-         that height and the rest of the screen stayed empty. It went unnoticed
-         on desktop only because there the value exceeds the viewport height
-         and the browser falls back to a single full-height column. On a phone
-         (376px against 826px available) barely half the screen was used, and
-         the book had ~36% more pages than it needed.
-         Pagination here does not come from columns anyway: it comes from
-         width:max-content plus the translateX step. */
-      column-width: auto;
-      column-count: 1;
-      padding: ${pad};
+      /* column-width is the column HEIGHT here (inline axis). It must match
+         the screen height minus padding: a smaller value confined the text to
+         a band and left half a phone screen empty. */
+      column-width: ${verticalColumnHeight};
+      column-gap: ${verticalColumnGap};
+      column-fill: auto;
+      padding: ${padTop}px ${sidePad}px ${padBottom}px;
       /* transition applied by JS */
       will-change: transform;
       transition: transform 0.22s cubic-bezier(0.25, 1, 0.5, 1);
@@ -451,21 +487,17 @@ export const EpubReader: React.FC<Props> = ({
     if (!scroller) return;
 
     const vw = iframe.clientWidth || window.innerWidth;
-    // Use the widest measured value because vertical writing can report a
-    // smaller scrollWidth while the multi-column content is still laying out.
-    const range = doc.createRange();
-    range.selectNodeContents(scroller);
-    const contentWidth = Math.abs(range.getBoundingClientRect().width);
-    const totalWidth = Math.max(scroller.scrollWidth, contentWidth, vw);
-    const pages = Math.max(1, Math.ceil(totalWidth / vw));
+    const vh = iframe.clientHeight || window.innerHeight;
+    const pages = countScrollerPages(doc, scroller, isVertical, vw, vh);
     setTotalPages(pages);
     totalPagesRef.current = pages;
     const page = currentPageRef.current;
     const offset = pageNudgeRef.current;
 
     if (isVertical) {
-      // RTL multi-column: column 0 is rightmost. Each page moves +X to reveal columns further left.
-      scroller.style.transform = `translateX(${page * vw + offset}px)`;
+      // Pages are stacked downwards: each one moves the column strip up by one
+      // screen height. The nudge offset stays horizontal.
+      scroller.style.transform = `translate(${offset}px, ${-page * vh}px)`;
     } else {
       scroller.style.transform = `translateX(${-page * vw + offset}px)`;
     }
@@ -509,14 +541,8 @@ export const EpubReader: React.FC<Props> = ({
         ]);
         await new Promise<void>((resolve) => window.setTimeout(resolve, 40));
         const scroller = doc.getElementById('reader-scroller');
-        const range = doc.createRange();
         if (scroller) {
-          range.selectNodeContents(scroller);
-          counts[index] = Math.max(1, Math.ceil(Math.max(
-            scroller.scrollWidth,
-            Math.abs(range.getBoundingClientRect().width),
-            vw,
-          ) / vw));
+          counts[index] = countScrollerPages(doc, scroller, isVertical, vw, vh);
         } else {
           counts[index] = 1;
         }
@@ -531,6 +557,7 @@ export const EpubReader: React.FC<Props> = ({
     applyChapterCounts,
     buildChapterDocument,
     epub,
+    isVertical,
     paginationCacheKey,
     readPaginationCache,
     writePaginationCache,
@@ -796,21 +823,34 @@ export const EpubReader: React.FC<Props> = ({
           if (!selection?.rangeCount || !selection.toString()) return null;
           const backwards = isSelectionBackwards(selection);
           const pageWidth = getPageWidth();
+          const pageHeight = iframe.clientHeight || window.innerHeight;
           const rect = getAdjacentCharRect(selection.focusNode, selection.focusOffset, !backwards);
-          let side: 'left' | 'right' | null = rect
-            ? (rect.right <= 1 ? 'left' : rect.left >= pageWidth - 1 ? 'right' : null)
-            : null;
+          // Where the neighbouring character lies relative to the visible page.
+          // Vertical pages are stacked downwards: the following page is below
+          // the screen and the previous one above it.
+          let side: 'forward' | 'backward' | null = null;
+          if (rect) {
+            if (isVertical) {
+              if (rect.top >= pageHeight - 1) side = 'forward';
+              else if (rect.bottom <= 1) side = 'backward';
+            } else if (rect.left >= pageWidth - 1) side = 'forward';
+            else if (rect.right <= 1) side = 'backward';
+          }
           if (!side && tolerant) {
             const focusRect = getAdjacentCharRect(selection.focusNode, selection.focusOffset, backwards);
             if (focusRect) {
+              // A page ends on its last line: the leftmost one in vertical-rl,
+              // the rightmost column edge in horizontal.
               const lastLine = sidePad + fontSize * settings.lineHeight * 1.2;
-              if (focusRect.left <= lastLine) side = 'left';
-              else if (focusRect.right >= pageWidth - lastLine) side = 'right';
+              const nearLeft = focusRect.left <= lastLine;
+              const nearRight = focusRect.right >= pageWidth - lastLine;
+              if (isVertical) side = nearLeft ? 'forward' : nearRight ? 'backward' : null;
+              else side = nearRight ? 'forward' : nearLeft ? 'backward' : null;
             }
           }
           if (!side) return null;
-          if (!backwards) return side === forwardSide ? 'next' : null;
-          return side === forwardSide ? null : 'previous';
+          if (!backwards) return side === 'forward' ? 'next' : null;
+          return side === 'backward' ? 'previous' : null;
         };
 
         const canTurnSelectionPage = (direction: 'next' | 'previous') =>
@@ -852,6 +892,7 @@ export const EpubReader: React.FC<Props> = ({
               const rect = probe.getBoundingClientRect();
               if (!rect.width && !rect.height) continue;
               if (rect.right <= 1 || rect.left >= pageWidth - 1) continue;
+              if (rect.bottom <= 1 || rect.top >= pageHeight - 1) continue;
               return { node: container, offset: range.startOffset };
             }
           }
@@ -1042,9 +1083,13 @@ export const EpubReader: React.FC<Props> = ({
             pageNudgeRef.current = nudge;
             const page = currentPageRef.current;
             const vw = iframe.clientWidth || window.innerWidth;
-            const base = isVertical ? page * vw : -page * vw;
+            const vh = iframe.clientHeight || window.innerHeight;
             const scroller = doc.getElementById('reader-scroller');
-            if (scroller) scroller.style.transform = `translateX(${base + nudge}px)`;
+            if (scroller) {
+              scroller.style.transform = isVertical
+                ? `translate(${nudge}px, ${-page * vh}px)`
+                : `translateX(${-page * vw + nudge}px)`;
+            }
           }
 
           if (!hasSelection) return;
@@ -1237,7 +1282,7 @@ export const EpubReader: React.FC<Props> = ({
         const positionSettleWindow = 700;
         // After this long without a measurement above one page, accept that the
         // chapter really is a single page.
-        const lastPageDeadline = 2500;
+        const lastPageDeadline = 4000;
         // A negative target means "last page", which cannot be known until the
         // chapter has been measured for real.
         const wantsLastPage = targetPage === -1;
@@ -1274,16 +1319,29 @@ export const EpubReader: React.FC<Props> = ({
         // later trigger would try again once the settle window had closed.
         // It is now retried until a real measurement arrives, and the loading
         // overlay stays up meanwhile so no intermediate page is shown.
+        let lastMeasuredPages = -1;
         const resolveLastPage = () => {
           if (lastPageResolved || currentSpineRef.current !== spineIndex) return;
           const measured = totalPagesRef.current;
           const known = chapterPageCountsRef.current[spineIndex] || 0;
-          // A live measurement above one page is authoritative. The offline
-          // count only stands in while the columns are not laid out yet, and a
-          // later re-measure clamps the page if it overshot; trusting it over a
-          // real measurement is what used to land the reader on blank pages.
+          const stable = measured === lastMeasuredPages;
+          lastMeasuredPages = measured;
+          // Only settle on "the last page" once the layout is final. The first
+          // measurement usually arrives before the web fonts, and swapping the
+          // fallback font for the real one reflows the chapter onto more pages:
+          // resolving early landed the reader a few pages short of the end
+          // (page 91 of 95 in testing). So wait for fonts and images, for two
+          // equal readings in a row, and for the live count to catch up with
+          // the offline one, which is measured with everything loaded and the
+          // very same document. The deadline caps the wait either way.
+          if (Date.now() - loadedAt < lastPageDeadline) {
+            const fontsReady = !doc.fonts || doc.fonts.status === 'loaded';
+            const imagesReady = Array.from(doc.images).every((image) => image.complete);
+            if (!fontsReady || !imagesReady || !stable || known > measured) return;
+          }
+          // The live measurement is authoritative; the offline count only stands
+          // in when there is no layout yet.
           const total = measured > 1 ? measured : Math.max(measured, known);
-          if (total <= 1 && Date.now() - loadedAt < lastPageDeadline) return;
           lastPageResolved = true;
           const lastPage = Math.max(0, total - 1);
           currentPageRef.current = lastPage;
@@ -1373,8 +1431,16 @@ export const EpubReader: React.FC<Props> = ({
             applyTargetPosition();
           }
           setIsReaderPositioned(true);
-          setIsLoadingChapter(false);
+          // Resolving "last page" may legitimately take up to its deadline;
+          // lifting the overlay before that would flash an intermediate page.
+          resolveLastPage();
+          if (lastPageResolved) setIsLoadingChapter(false);
         }, 3000);
+        setTimeout(() => {
+          if (currentSpineRef.current !== spineIndex) return;
+          resolveLastPage();
+          setIsLoadingChapter(false);
+        }, lastPageDeadline + 300);
 
         // Poll for the measurement instead of relying on layout events, which
         // may all fire before the columns are ready on a long chapter.
