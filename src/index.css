@@ -56,7 +56,12 @@
    La ampliación es sobre todo vertical porque en las barras los botones sólo
    están separados 6 px entre sí: crecer a lo ancho haría que un control
    robase los toques del vecino. */
-.tap-area {
+/* position va dentro de :where() para tener especificidad cero: estas reglas se
+   declaran despues de las utilidades de Tailwind, y con la misma especificidad
+   anulaban un `fixed` o `absolute` del propio boton (el boton flotante del
+   menu acabo en el flujo normal, arriba de la pantalla). Un elemento ya
+   posicionado sirve igual de ancla para el ::after. */
+:where(.tap-area) {
   position: relative;
 }
 
@@ -71,7 +76,7 @@
 }
 
 /* Para controles aislados, que sí pueden crecer en las dos direcciones. */
-.tap-area-free {
+:where(.tap-area-free) {
   position: relative;
 }
 
