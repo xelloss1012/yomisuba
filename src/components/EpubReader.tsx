@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { App as CapacitorApp } from '@capacitor/app';
 import { AiProvider, ParsedEpub, ReaderSettingsState } from '../types/epub';
 import { ReaderNavbar } from './ReaderNavbar';
@@ -84,6 +84,7 @@ export const EpubReader: React.FC<Props> = ({
   const [isReaderPositioned, setIsReaderPositioned] = useState(false);
   const [isLoadingChapter, setIsLoadingChapter] = useState(true);
   const [showUi, setShowUi] = useState(false);
+  const [readerFit, setReaderFit] = useState({ scale: 1, offsetY: 0 });
   const [isTocOpen, setIsTocOpen] = useState(false);
   const [tocError, setTocError] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -1782,6 +1783,46 @@ export const EpubReader: React.FC<Props> = ({
     (item) => resolveSpineIndex(item.href) === currentSpineIndex
   );
 
+  useLayoutEffect(() => {
+    if (!showUi) {
+      setReaderFit((current) =>
+        current.scale === 1 && current.offsetY === 0
+          ? current
+          : { scale: 1, offsetY: 0 }
+      );
+      return;
+    }
+
+    const container = containerRef.current;
+    const header = container?.querySelector<HTMLElement>('[data-reader-chrome="header"]');
+    const footer = container?.querySelector<HTMLElement>('[data-reader-chrome="footer"]');
+    if (!container || !header || !footer) return;
+
+    const updateFit = () => {
+      const { width, height } = container.getBoundingClientRect();
+      if (width <= 0 || height <= 0) return;
+
+      const margin = 12;
+      const headerHeight = header.getBoundingClientRect().height;
+      const footerHeight = footer.getBoundingClientRect().height;
+      const heightScale = (height - headerHeight - footerHeight - margin * 2) / height;
+      const widthScale = (width - margin * 2) / width;
+      const scale = Math.max(0.1, Math.min(1, heightScale, widthScale));
+      setReaderFit({ scale, offsetY: (headerHeight - footerHeight) / 2 });
+    };
+
+    updateFit();
+    const observer = new ResizeObserver(updateFit);
+    observer.observe(container);
+    observer.observe(header);
+    observer.observe(footer);
+    window.addEventListener('resize', updateFit);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateFit);
+    };
+  }, [showUi]);
+
   return (
     <div
       ref={containerRef}
@@ -1837,6 +1878,15 @@ export const EpubReader: React.FC<Props> = ({
       {/* Keep the viewport fixed so showing the controls never changes pagination. */}
       <div
         className="absolute inset-0 overflow-hidden"
+        style={{
+          transform: showUi
+            ? `translateY(${readerFit.offsetY}px) scale(${readerFit.scale})`
+            : 'none',
+          transformOrigin: 'center center',
+          boxShadow: showUi
+            ? '0 8px 24px rgba(0, 0, 0, 0.28), 0 2px 6px rgba(0, 0, 0, 0.18)'
+            : 'none',
+        }}
       >
         <iframe
           ref={iframeRef}
