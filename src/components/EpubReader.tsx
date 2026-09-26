@@ -9,6 +9,14 @@ import { TextSelectionMenu, SelectionPosition } from './TextSelectionMenu';
 import { TranslationModal } from './TranslationModal';
 import { BookmarksModal, ReaderBookmark } from './BookmarksModal';
 import { Loader2, Menu, X, Minus, Plus, RotateCcw, Bookmark, BookmarkCheck } from 'lucide-react';
+import {
+  applyTextAnnotationToRange,
+  applyTextAnnotations,
+  captureTextAnnotation,
+  readTextAnnotations,
+  removeTextAnnotationMarkup,
+  TextAnnotation,
+} from '../utils/textAnnotations';
 
 type ReadingPosition = ReaderBookmark;
 
@@ -113,11 +121,19 @@ export const EpubReader: React.FC<Props> = ({
   const [tocError, setTocError] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const bookStorageKey = `ereader_book_${encodeURIComponent(`${epub.metadata.title}|${epub.metadata.creator}`)}`;
+  const annotationsStorageKey = `${bookStorageKey}_annotations`;
+  const textAnnotationsRef = useRef<TextAnnotation[]>([]);
+  const [textAnnotations, setTextAnnotations] = useState<TextAnnotation[]>(() => {
+    const stored = readTextAnnotations(annotationsStorageKey);
+    textAnnotationsRef.current = stored;
+    return stored;
+  });
   const [bookmarks, setBookmarks] = useState<ReadingPosition[]>(() =>
     readBookmarks(`${bookStorageKey}_bookmark`, epub.spine.length)
   );
 
   const [selectedText, setSelectedText] = useState('');
+  const [isSelectionUnderlined, setIsSelectionUnderlined] = useState(false);
   const [isSelectionAdjusting, setIsSelectionAdjusting] = useState(false);
   const selectionSettleRef = useRef<number | undefined>(undefined);
   // Set from the iframe's pointer events: the menu must wait for the finger to
@@ -143,6 +159,9 @@ export const EpubReader: React.FC<Props> = ({
   const shownPageRef = useRef<{ spine: number; page: number } | null>(null);
   const imageDragRef = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null);
   const selectedTextRef = useRef('');
+  const selectionRangeRef = useRef<Range | null>(null);
+  const selectionAnnotationRef = useRef<Omit<TextAnnotation, 'id'> | null>(null);
+  const selectedTextAnnotationIdRef = useRef<string | null>(null);
   const openOverlayRef = useRef(false);
   // Opt-in on-screen trace (append ?debug or #debug to the URL) for diagnosing
   // selection and paging on a real touch device, where no tooling is available.
@@ -221,6 +240,19 @@ export const EpubReader: React.FC<Props> = ({
       // Persistence is optional when storage is unavailable.
     }
   }, [bookmarks, bookStorageKey]);
+
+  useEffect(() => {
+    textAnnotationsRef.current = textAnnotations;
+    try {
+      if (textAnnotations.length) {
+        localStorage.setItem(annotationsStorageKey, JSON.stringify(textAnnotations));
+      } else {
+        localStorage.removeItem(annotationsStorageKey);
+      }
+    } catch {
+      // Persistence is optional when storage is unavailable.
+    }
+  }, [annotationsStorageKey, textAnnotations]);
 
   const isCurrentBookmarked = bookmarks.some((item) =>
     item.spineIndex === currentSpineIndex && item.page === currentPage
@@ -623,8 +655,34 @@ export const EpubReader: React.FC<Props> = ({
     const sel = iframe.contentWindow?.getSelection();
     if (!sel || sel.rangeCount === 0 || !sel.toString().trim()) return;
 
+    const range = sel.getRangeAt(0);
+    const scroller = iframe.contentDocument.getElementById('reader-scroller');
+    const anchor = scroller
+      ? captureTextAnnotation(range, scroller, currentSpineRef.current)
+      : null;
+    selectionRangeRef.current = range.cloneRange();
+    selectionAnnotationRef.current = anchor;
+    const matchingAnnotation = anchor && textAnnotationsRef.current.find((annotation) =>
+      annotation.spineIndex === anchor.spineIndex &&
+      annotation.quote === anchor.quote &&
+      annotation.prefix === anchor.prefix &&
+      annotation.suffix === anchor.suffix
+    );
+    const intersectingSpan = matchingAnnotation ? null : Array.from(
+      iframe.contentDocument.querySelectorAll<HTMLElement>('[data-reader-underline]')
+    ).find((span) => {
+      try {
+        return range.intersectsNode(span);
+      } catch {
+        return false;
+      }
+    });
+    const annotationId = matchingAnnotation?.id || intersectingSpan?.dataset.readerUnderline || null;
+    selectedTextAnnotationIdRef.current = annotationId || null;
+    setIsSelectionUnderlined(Boolean(annotationId));
+
     const text = sel.toString().trim();
-    const rect = sel.getRangeAt(0).getBoundingClientRect();
+    const rect = range.getBoundingClientRect();
     const iRect = iframe.getBoundingClientRect();
 
     lastSelectionTime.current = Date.now();
@@ -651,6 +709,44 @@ export const EpubReader: React.FC<Props> = ({
       width: rect.width,
       height: rect.height,
     });
+  }, []);
+
+  const handleToggleUnderline = useCallback(() => {
+    const anchor = selectionAnnotationRef.current;
+    const iframe = iframeRef.current;
+    const scroller = iframe?.contentDocument?.getElementById('reader-scroller');
+    if (!anchor || !scroller) return;
+
+    const existing = textAnnotationsRef.current.find((annotation) =>
+      annotation.id === selectedTextAnnotationIdRef.current
+    ) || textAnnotationsRef.current.find((annotation) =>
+      annotation.spineIndex === anchor.spineIndex &&
+      annotation.quote === anchor.quote &&
+      annotation.prefix === anchor.prefix &&
+      annotation.suffix === anchor.suffix
+    );
+    if (existing) {
+      removeTextAnnotationMarkup(scroller, existing.id);
+      const next = textAnnotationsRef.current.filter((annotation) => annotation.id !== existing.id);
+      textAnnotationsRef.current = next;
+      setTextAnnotations(next);
+      selectedTextAnnotationIdRef.current = null;
+      setIsSelectionUnderlined(false);
+      return;
+    }
+
+    const range = selectionRangeRef.current;
+    if (!range || range.startContainer.ownerDocument !== scroller.ownerDocument) return;
+    const annotation: TextAnnotation = {
+      ...anchor,
+      id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
+    };
+    applyTextAnnotationToRange(range, annotation.id);
+    const next = [...textAnnotationsRef.current, annotation];
+    textAnnotationsRef.current = next;
+    setTextAnnotations(next);
+    selectedTextAnnotationIdRef.current = annotation.id;
+    setIsSelectionUnderlined(true);
   }, []);
 
   // ─── PAGE ACTIONS ─────────────────────────────────────────────────────────────
@@ -702,6 +798,10 @@ export const EpubReader: React.FC<Props> = ({
       setIsLoadingChapter(true);
       setSelectedText('');
       setSelectionPos(null);
+      selectionRangeRef.current = null;
+      selectionAnnotationRef.current = null;
+      selectedTextAnnotationIdRef.current = null;
+      setIsSelectionUnderlined(false);
       currentSpineRef.current = spineIndex;
       setCurrentSpineIndex(spineIndex);
       if (targetPage >= 0) {
@@ -750,6 +850,14 @@ export const EpubReader: React.FC<Props> = ({
             });
             textNode.parentNode?.replaceChild(fragment, textNode);
           });
+        }
+
+        const scroller = doc.getElementById('reader-scroller');
+        if (scroller) {
+          applyTextAnnotations(
+            scroller,
+            textAnnotationsRef.current.filter((annotation) => annotation.spineIndex === spineIndex)
+          );
         }
 
         // ── Gesture & tap handlers attached inside the iframe ──
@@ -1051,6 +1159,10 @@ export const EpubReader: React.FC<Props> = ({
             edgePushDirection = null;
             setSelectedText('');
             setSelectionPos(null);
+            selectionRangeRef.current = null;
+            selectionAnnotationRef.current = null;
+            selectedTextAnnotationIdRef.current = null;
+            setIsSelectionUnderlined(false);
             return;
           }
 
@@ -1229,6 +1341,10 @@ export const EpubReader: React.FC<Props> = ({
               iframe.contentWindow?.getSelection()?.removeAllRanges();
               setSelectedText('');
               setSelectionPos(null);
+              selectionRangeRef.current = null;
+              selectionAnnotationRef.current = null;
+              selectedTextAnnotationIdRef.current = null;
+              setIsSelectionUnderlined(false);
               setIsTocOpen(false);
               setIsSettingsOpen(false);
               setIsTranslateOpen(false);
@@ -1751,6 +1867,10 @@ export const EpubReader: React.FC<Props> = ({
       else if (e.key === 'Escape') {
         setSelectedText('');
         setSelectionPos(null);
+        selectionRangeRef.current = null;
+        selectionAnnotationRef.current = null;
+        selectedTextAnnotationIdRef.current = null;
+        setIsSelectionUnderlined(false);
         if (imageViewerSrc) setImageViewerSrc(null);
         else if (isSettingsOpen) setIsSettingsOpen(false);
         else if (isTocOpen) setIsTocOpen(false);
@@ -2021,7 +2141,16 @@ export const EpubReader: React.FC<Props> = ({
         // away while any overlay is on screen, as it is already folded away
         // while the selection is being dragged.
         isAdjusting={isSelectionAdjusting || isTranslateOpen || isBookmarksOpen || isTocOpen || isSettingsOpen || Boolean(imageViewerSrc)}
-        onClose={() => { setSelectedText(''); setSelectionPos(null); }}
+        isUnderlined={isSelectionUnderlined}
+        onToggleUnderline={handleToggleUnderline}
+        onClose={() => {
+          setSelectedText('');
+          setSelectionPos(null);
+          selectionRangeRef.current = null;
+          selectionAnnotationRef.current = null;
+          selectedTextAnnotationIdRef.current = null;
+          setIsSelectionUnderlined(false);
+        }}
         onOpenTranslate={() => {
           setAiTranslationProvider(undefined);
           setIsTranslateOpen(true);

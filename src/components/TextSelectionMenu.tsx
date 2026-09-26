@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Copy, Languages, Volume2, Search, BookOpen, Check, X } from 'lucide-react';
+import { Copy, Languages, Volume2, Search, BookOpen, Check, X, Underline } from 'lucide-react';
 import { AiProvider } from '../types/epub';
 import { AI_PROVIDER_LABELS } from '../utils/aiTranslation';
 
@@ -23,6 +23,8 @@ interface Props {
   isAdjusting?: boolean;
   onClose: () => void;
   onOpenTranslate: () => void;
+  isUnderlined: boolean;
+  onToggleUnderline: () => void;
   aiProviders: AiProvider[];
   onOpenAiTranslate: (provider: AiProvider) => void;
 }
@@ -33,6 +35,8 @@ export const TextSelectionMenu: React.FC<Props> = ({
   isAdjusting = false,
   onClose,
   onOpenTranslate,
+  isUnderlined,
+  onToggleUnderline,
   aiProviders,
   onOpenAiTranslate,
 }) => {
@@ -165,6 +169,22 @@ export const TextSelectionMenu: React.FC<Props> = ({
 
         {/* Action Buttons */}
         <div className="flex items-center justify-between gap-1">
+          <button
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleUnderline();
+            }}
+            className={`tap-area flex flex-1 items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-xs font-medium transition-all hover:bg-zinc-800 active:scale-95 ${
+              isUnderlined ? 'text-amber-300' : 'text-zinc-100'
+            }`}
+            title={isUnderlined ? 'Quitar subrayado' : 'Subrayar texto'}
+            aria-label={isUnderlined ? 'Quitar subrayado' : 'Subrayar texto'}
+            aria-pressed={isUnderlined}
+          >
+            <Underline className="h-3.5 w-3.5" />
+            <span>{isUnderlined ? 'Quitar subrayado' : 'Subrayar'}</span>
+          </button>
+
           {/* Copiar */}
           <button
             onClick={handleCopy}
