@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { App as CapacitorApp } from '@capacitor/app';
 import { AiProvider, ParsedEpub, ReaderSettingsState } from '../types/epub';
 import { ReaderNavbar } from './ReaderNavbar';
@@ -193,6 +193,12 @@ export const EpubReader: React.FC<Props> = ({
 
   const isVertical = settings.writingMode === 'vertical-rl';
   const isRtl = isVertical || settings.progressionDirection === 'rtl';
+  const configuredAiProviders = useMemo(
+    () => (['gemini', 'openai', 'deepseek'] as AiProvider[]).filter(
+      (provider) => Boolean(settings.aiApiKeys[provider]?.trim())
+    ),
+    [settings.aiApiKeys]
+  );
 
   const normalizeHref = useCallback((value: string) => {
     let path = value.split('#')[0];
@@ -2253,9 +2259,7 @@ export const EpubReader: React.FC<Props> = ({
           setAiTranslationProvider(undefined);
           setIsTranslateOpen(true);
         }}
-        aiProviders={(['gemini', 'openai', 'deepseek'] as AiProvider[]).filter(
-          (provider) => Boolean(settings.aiApiKeys[provider]?.trim())
-        )}
+        aiProviders={configuredAiProviders}
         onOpenAiTranslate={(provider) => {
           setAiTranslationProvider(provider);
           setIsTranslateOpen(true);
@@ -2268,6 +2272,8 @@ export const EpubReader: React.FC<Props> = ({
         selectedText={selectedText}
         aiProvider={aiTranslationProvider}
         aiApiKey={aiTranslationProvider ? settings.aiApiKeys[aiTranslationProvider] : undefined}
+        availableAiProviders={configuredAiProviders}
+        aiApiKeys={settings.aiApiKeys}
         onSaveHistory={handleSaveTranslationHistory}
       />
 

@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { X, Volume2, Languages, Loader2 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Volume2, Languages, Loader2, Sparkles } from 'lucide-react';
 import { AiProvider } from '../types/epub';
-import { AI_PROVIDER_LABELS, translateWithAi } from '../utils/aiTranslation';
+import { AI_PROVIDER_LABELS, explainWithAi, translateWithAi } from '../utils/aiTranslation';
 import { getCachedTranslation, saveCachedTranslation } from '../utils/translationCache';
 import { DictionaryEntry, getDictionarySearchTerms } from '../utils/dictionary';
+import { MarkdownContent } from './MarkdownContent';
 import {
   formatDictionaryHistoryResponse,
   TranslationHistoryKind,
@@ -15,6 +16,8 @@ interface Props {
   selectedText: string;
   aiProvider?: AiProvider;
   aiApiKey?: string;
+  availableAiProviders: AiProvider[];
+  aiApiKeys: Partial<Record<AiProvider, string>>;
   onSaveHistory: (kind: TranslationHistoryKind, query: string, response: string, provider?: AiProvider) => void;
 }
 
@@ -24,6 +27,8 @@ export const TranslationModal: React.FC<Props> = ({
   selectedText,
   aiProvider,
   aiApiKey,
+  availableAiProviders,
+  aiApiKeys,
   onSaveHistory,
 }) => {
   const [translatedText, setTranslatedText] = useState<string>('');
@@ -34,14 +39,28 @@ export const TranslationModal: React.FC<Props> = ({
   } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [explanation, setExplanation] = useState('');
+  const [explanationError, setExplanationError] = useState('');
+  const [isExplaining, setIsExplaining] = useState(false);
+  const [explanationProvider, setExplanationProvider] = useState<AiProvider | ''>('');
+  const explanationRequestRef = useRef(0);
 
   useEffect(() => {
     if (!isOpen || !selectedText) return;
 
     let cancelled = false;
+    explanationRequestRef.current += 1;
     setTranslatedText('');
     setDictionaryTerms(null);
     setIsLoading(true);
+    setExplanation('');
+    setExplanationError('');
+    setIsExplaining(false);
+    setExplanationProvider(
+      aiProvider && availableAiProviders.includes(aiProvider)
+        ? aiProvider
+        : availableAiProviders[0] || ''
+    );
 
     getDictionarySearchTerms(selectedText)
       .then((lookup) => {
@@ -103,7 +122,7 @@ export const TranslationModal: React.FC<Props> = ({
 
     void translate();
     return () => { cancelled = true; };
-  }, [aiApiKey, aiProvider, isOpen, onSaveHistory, selectedText]);
+  }, [aiApiKey, aiProvider, availableAiProviders, isOpen, onSaveHistory, selectedText]);
 
   if (!isOpen) return null;
 
@@ -120,6 +139,34 @@ export const TranslationModal: React.FC<Props> = ({
     utterance.onerror = () => setIsSpeaking(false);
 
     window.speechSynthesis.speak(utterance);
+  };
+
+  const handleExplain = async () => {
+    if (!explanationProvider) {
+      setExplanationError('Configura una IA en Ajustes para solicitar una explicación.');
+      return;
+    }
+    const key = aiApiKeys[explanationProvider] || (aiProvider === explanationProvider ? aiApiKey : '') || '';
+    if (!key) {
+      setExplanationError(`No hay una clave configurada para ${AI_PROVIDER_LABELS[explanationProvider]}.`);
+      return;
+    }
+
+    const requestId = explanationRequestRef.current + 1;
+    explanationRequestRef.current = requestId;
+    setExplanation('');
+    setExplanationError('');
+    setIsExplaining(true);
+    try {
+      const result = await explainWithAi(explanationProvider, key, selectedText, translatedText);
+      if (explanationRequestRef.current === requestId) setExplanation(result);
+    } catch (error) {
+      if (explanationRequestRef.current === requestId) {
+        setExplanationError(error instanceof Error ? error.message : 'No se pudo generar la explicación.');
+      }
+    } finally {
+      if (explanationRequestRef.current === requestId) setIsExplaining(false);
+    }
   };
 
   return (
@@ -184,6 +231,54 @@ export const TranslationModal: React.FC<Props> = ({
                 {translatedText || 'Sin traducción.'}
               </div>
             )}
+            <div className="mt-3 border-t border-indigo-100 pt-3 dark:border-indigo-900/50">
+              <div className="flex flex-wrap items-center gap-2">
+                {availableAiProviders.length > 1 && (
+                  <select
+                    value={explanationProvider}
+                    onChange={(event) => setExplanationProvider(event.target.value as AiProvider)}
+                    className="min-w-0 flex-1 rounded-lg border border-indigo-200 bg-white px-2 py-2 text-xs text-zinc-700 dark:border-indigo-900 dark:bg-zinc-900 dark:text-zinc-200"
+                    aria-label="IA para explicar la traducción"
+                  >
+                    {availableAiProviders.map((provider) => (
+                      <option key={provider} value={provider}>{AI_PROVIDER_LABELS[provider]}</option>
+                    ))}
+                  </select>
+                )}
+                <button
+                  type="button"
+                  onClick={() => void handleExplain()}
+                  disabled={isExplaining || availableAiProviders.length === 0}
+                  className="flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  title={availableAiProviders.length ? 'Solicitar una explicación detallada a la IA' : 'Configura una IA en Ajustes'}
+                >
+                  {isExplaining
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : <Sparkles className="h-3.5 w-3.5" />}
+                  {isExplaining ? 'Explicando…' : 'Explicar con IA'}
+                  {availableAiProviders.length === 1 && (
+                    <span className="font-normal opacity-80">
+                      · {AI_PROVIDER_LABELS[availableAiProviders[0]]}
+                    </span>
+                  )}
+                </button>
+              </div>
+              {explanationError && (
+                <p role="alert" className="mt-2 text-xs text-red-600 dark:text-red-300">
+                  {explanationError}
+                </p>
+              )}
+              {explanation && (
+                <div className="mt-3 max-h-[32vh] overflow-y-auto rounded-lg bg-white/75 p-3 text-sm leading-relaxed text-zinc-800 dark:bg-zinc-900/70 dark:text-zinc-200">
+                  <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-300">
+                    Explicación · {AI_PROVIDER_LABELS[explanationProvider as AiProvider]}
+                  </div>
+                  <div className="break-words select-text">
+                    <MarkdownContent content={explanation} />
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Local dictionary */}

@@ -15,6 +15,23 @@ function translationPrompt(text: string): string {
   ].join('\n');
 }
 
+function explanationPrompt(text: string, translation: string): string {
+  return [
+    'Explica en español la traducción de este texto japonés.',
+    'Describe el sentido general, la gramática y las conjugaciones importantes, y el vocabulario relevante.',
+    'Aclara matices, registro o contexto cultural solo cuando sean útiles.',
+    'No uses romaji ni transliteres japonés al alfabeto latino en las explicaciones de gramática o vocabulario.',
+    'Cuando indiques la lectura o pronunciación de una palabra japonesa, escríbela en hiragana o katakana, según corresponda.',
+    'Estructura la respuesta con apartados breves y viñetas. No inventes información si algo es ambiguo.',
+    '',
+    'Texto japonés:',
+    text,
+    '',
+    'Traducción propuesta:',
+    translation || '(todavía no hay traducción disponible)',
+  ].join('\n');
+}
+
 interface GeminiModel {
   name?: string;
   supportedGenerationMethods?: string[];
@@ -81,12 +98,13 @@ async function parseResponse(response: Response): Promise<string> {
   ).trim();
 }
 
-export async function translateWithAi(
+async function generateWithAi(
   provider: AiProvider,
   apiKey: string,
-  text: string,
+  prompt: string,
+  systemMessage: string,
+  maxOutputTokens: number,
 ): Promise<string> {
-  const prompt = translationPrompt(text);
   let response: Response | undefined;
 
   if (provider === 'gemini') {
@@ -101,7 +119,7 @@ export async function translateWithAi(
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.2, maxOutputTokens: 1024 },
+            generationConfig: { temperature: 0.2, maxOutputTokens },
           }),
         },
       );
@@ -135,7 +153,7 @@ export async function translateWithAi(
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: { temperature: 0.2, maxOutputTokens: 1024 },
+              generationConfig: { temperature: 0.2, maxOutputTokens },
             }),
           },
         );
@@ -164,11 +182,11 @@ export async function translateWithAi(
         body: JSON.stringify({
           model: isDeepSeek ? 'deepseek-chat' : 'gpt-4o-mini',
           messages: [
-            { role: 'system', content: 'Eres un traductor preciso de japonés a español.' },
+            { role: 'system', content: systemMessage },
             { role: 'user', content: prompt },
           ],
           temperature: 0.2,
-          max_tokens: 1024,
+          max_tokens: maxOutputTokens,
         }),
       },
     );
@@ -176,6 +194,35 @@ export async function translateWithAi(
 
   if (!response) throw new Error('El proveedor no devolvió una respuesta.');
   const result = await parseResponse(response);
-  if (!result) throw new Error('El proveedor no devolvió una traducción.');
+  if (!result) throw new Error('El proveedor no devolvió una respuesta.');
   return result;
+}
+
+export async function translateWithAi(
+  provider: AiProvider,
+  apiKey: string,
+  text: string,
+): Promise<string> {
+  return generateWithAi(
+    provider,
+    apiKey,
+    translationPrompt(text),
+    'Eres un traductor preciso de japonés a español.',
+    1024,
+  );
+}
+
+export async function explainWithAi(
+  provider: AiProvider,
+  apiKey: string,
+  text: string,
+  translation: string,
+): Promise<string> {
+  return generateWithAi(
+    provider,
+    apiKey,
+    explanationPrompt(text, translation),
+    'Eres un profesor experto de japonés que explica en español de forma clara y precisa.',
+    2048,
+  );
 }
