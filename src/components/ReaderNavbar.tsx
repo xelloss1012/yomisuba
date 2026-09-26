@@ -8,6 +8,7 @@ import {
   Minimize2,
   Columns,
   Rows,
+  List,
 } from 'lucide-react';
 
 interface Props {
@@ -15,6 +16,8 @@ interface Props {
   chapterTitle?: string;
   isVisible: boolean;
   onToggleToc: () => void;
+  onOpenBookmarks: () => void;
+  bookmarkCount: number;
   onToggleSettings: () => void;
   onOpenFile: () => void;
   settings: ReaderSettingsState;
@@ -26,6 +29,8 @@ export const ReaderNavbar: React.FC<Props> = ({
   chapterTitle,
   isVisible,
   onToggleToc,
+  onOpenBookmarks,
+  bookmarkCount,
   onToggleSettings,
   onOpenFile,
   settings,
@@ -69,6 +74,19 @@ export const ReaderNavbar: React.FC<Props> = ({
           >
             <Menu className="w-4 h-4" />
             <span className="hidden md:inline">Índice</span>
+          </button>
+          <button
+            onClick={onOpenBookmarks}
+            title={`Marcadores (${bookmarkCount})`}
+            aria-label={`Abrir marcadores (${bookmarkCount})`}
+            className="tap-area relative rounded-lg p-2 text-zinc-700 transition-colors hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
+          >
+            <List className="h-4 w-4" />
+            {bookmarkCount > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-400 px-1 text-[9px] font-bold text-amber-950">
+                {bookmarkCount}
+              </span>
+            )}
           </button>
         </div>
 

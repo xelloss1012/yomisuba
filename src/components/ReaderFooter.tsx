@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Bookmark, ChevronLeft, ChevronRight, SkipBack, SkipForward } from 'lucide-react';
+import { ChevronLeft, ChevronRight, SkipBack, SkipForward } from 'lucide-react';
 import { ProgressionDirection } from '../types/epub';
 
 interface Props {
@@ -23,8 +23,7 @@ interface Props {
   pageNudge: number;
   onPrevChapter: () => void;
   onNextChapter: () => void;
-  isBookmarked: boolean;
-  onToggleBookmark: () => void;
+  bookmarkPages: number[];
 }
 
 export const ReaderFooter: React.FC<Props> = ({
@@ -48,8 +47,7 @@ export const ReaderFooter: React.FC<Props> = ({
   pageNudge,
   onPrevChapter,
   onNextChapter,
-  isBookmarked,
-  onToggleBookmark,
+  bookmarkPages,
 }) => {
   const isRtl = direction === 'rtl' || isVertical;
   const safeTotalPages = Math.max(1, totalPages);
@@ -100,7 +98,7 @@ export const ReaderFooter: React.FC<Props> = ({
       onClick={(e) => e.stopPropagation()}
     >
       <div className="bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border-t border-zinc-200/80 dark:border-zinc-800/80 px-3 pt-2.5 pb-[max(calc(env(safe-area-inset-bottom,0px)+12px),18px)] shadow-2xl max-w-2xl mx-auto rounded-t-2xl sm:mb-2 sm:rounded-2xl border">
-        <div className="mb-2 px-1">
+        <div className="relative mb-2 px-1">
           <input
             type="range"
             min={0}
@@ -120,6 +118,29 @@ export const ReaderFooter: React.FC<Props> = ({
             title={`Ir a la página ${isRtl ? sliderMax - pendingSliderPage + 1 : pendingSliderPage + 1} de ${safeTotalPages}`}
             className="reader-progress w-full cursor-pointer disabled:cursor-default disabled:opacity-40"
           />
+          <div className="pointer-events-none absolute inset-x-0 top-1/2 z-10 h-0">
+            {bookmarkPages.map((page) => {
+              const clampedPage = Math.min(Math.max(0, page), sliderMax);
+              const ratio = sliderMax === 0
+                ? 0
+                : (isRtl ? sliderMax - clampedPage : clampedPage) / sliderMax;
+              return (
+                <button
+                  key={page}
+                  type="button"
+                  onClick={() => onSeekPage(clampedPage)}
+                  className="pointer-events-auto absolute top-1/2 flex h-6 w-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-amber-600 drop-shadow dark:text-amber-400"
+                  style={{
+                    left: `calc(9px + ${ratio * 100}% - ${ratio * 18}px)`,
+                  }}
+                  title={`Ir al marcador, página ${clampedPage + 1}`}
+                  aria-label={`Ir al marcador, página ${clampedPage + 1}`}
+                >
+                  <span className="block h-2.5 w-2.5 rounded-full border-2 border-white bg-amber-500 shadow dark:border-zinc-900" />
+                </button>
+              );
+            })}
+          </div>
         </div>
         <div className="mb-2 flex items-center justify-center gap-2 text-[10px] text-zinc-500 dark:text-zinc-400">
           <button
@@ -173,19 +194,6 @@ export const ReaderFooter: React.FC<Props> = ({
           >
             <ChevronLeft className="w-4 h-4" />
             <span>{leftLabel}</span>
-          </button>
-
-          <button
-            onClick={onToggleBookmark}
-            title={isBookmarked ? 'Quitar marcador' : 'Marcar esta página'}
-            aria-label={isBookmarked ? 'Quitar marcador' : 'Marcar esta página'}
-            className={`tap-area p-2 rounded-xl transition-colors ${
-              isBookmarked
-                ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300'
-                : 'text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800'
-            }`}
-          >
-            <Bookmark className="w-4 h-4" fill={isBookmarked ? 'currentColor' : 'none'} />
           </button>
 
           {/* Center Info */}

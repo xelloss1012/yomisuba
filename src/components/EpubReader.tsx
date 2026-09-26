@@ -7,12 +7,35 @@ import { ReaderSettings } from './ReaderSettings';
 import { ReaderToc } from './ReaderToc';
 import { TextSelectionMenu, SelectionPosition } from './TextSelectionMenu';
 import { TranslationModal } from './TranslationModal';
-import { Loader2, Menu, X, Minus, Plus, RotateCcw } from 'lucide-react';
+import { BookmarksModal, ReaderBookmark } from './BookmarksModal';
+import { Loader2, Menu, X, Minus, Plus, RotateCcw, Bookmark, BookmarkCheck } from 'lucide-react';
 
-interface ReadingPosition {
-  spineIndex: number;
-  page: number;
-}
+type ReadingPosition = ReaderBookmark;
+
+const readBookmarks = (storageKey: string, spineLength: number): ReadingPosition[] => {
+  try {
+    const saved = localStorage.getItem(storageKey);
+    if (!saved) return [];
+    const parsed: unknown = JSON.parse(saved);
+    const candidates = Array.isArray(parsed) ? parsed : [parsed];
+    const valid = candidates.filter((value): value is ReadingPosition => {
+      if (!value || typeof value !== 'object') return false;
+      const candidate = value as Partial<ReadingPosition>;
+      return Number.isInteger(candidate.spineIndex)
+        && Number.isInteger(candidate.page)
+        && (candidate.spineIndex as number) >= 0
+        && (candidate.spineIndex as number) < spineLength
+        && (candidate.page as number) >= 0;
+    });
+    return valid.filter((item, index) =>
+      valid.findIndex((candidate) =>
+        candidate.spineIndex === item.spineIndex && candidate.page === item.page
+      ) === index
+    );
+  } catch {
+    return [];
+  }
+};
 
 interface PaginationCacheEntry {
   counts: number[];
@@ -85,30 +108,14 @@ export const EpubReader: React.FC<Props> = ({
   const [isLoadingChapter, setIsLoadingChapter] = useState(true);
   const [showUi, setShowUi] = useState(false);
   const [readerFit, setReaderFit] = useState({ scale: 1, offsetY: 0 });
+  const [isBookmarksOpen, setIsBookmarksOpen] = useState(false);
   const [isTocOpen, setIsTocOpen] = useState(false);
   const [tocError, setTocError] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const bookStorageKey = `ereader_book_${encodeURIComponent(`${epub.metadata.title}|${epub.metadata.creator}`)}`;
-  const [bookmark, setBookmark] = useState<ReadingPosition | null>(() => {
-    try {
-      const saved = localStorage.getItem(`${bookStorageKey}_bookmark`);
-      if (!saved) return null;
-      const parsed = JSON.parse(saved) as Partial<ReadingPosition>;
-      if (
-        typeof parsed.spineIndex === 'number' &&
-        typeof parsed.page === 'number' &&
-        Number.isInteger(parsed.spineIndex) &&
-        Number.isInteger(parsed.page) &&
-        parsed.spineIndex >= 0 &&
-        parsed.page >= 0
-      ) {
-        return { spineIndex: parsed.spineIndex, page: parsed.page };
-      }
-    } catch {
-      // Ignore malformed or unavailable persisted bookmark.
-    }
-    return null;
-  });
+  const [bookmarks, setBookmarks] = useState<ReadingPosition[]>(() =>
+    readBookmarks(`${bookStorageKey}_bookmark`, epub.spine.length)
+  );
 
   const [selectedText, setSelectedText] = useState('');
   const [isSelectionAdjusting, setIsSelectionAdjusting] = useState(false);
@@ -203,27 +210,46 @@ export const EpubReader: React.FC<Props> = ({
     }
   }, [bookStorageKey]);
 
-  const handleToggleBookmark = useCallback(() => {
-    const currentPosition = {
-      spineIndex: currentSpineRef.current,
-      page: currentPageRef.current,
-    };
-    const isCurrentBookmark =
-      bookmark?.spineIndex === currentPosition.spineIndex &&
-      bookmark.page === currentPosition.page;
-    const nextBookmark = isCurrentBookmark ? null : currentPosition;
-
+  useEffect(() => {
     try {
-      if (nextBookmark) {
-        localStorage.setItem(`${bookStorageKey}_bookmark`, JSON.stringify(nextBookmark));
+      if (bookmarks.length) {
+        localStorage.setItem(`${bookStorageKey}_bookmark`, JSON.stringify(bookmarks));
       } else {
         localStorage.removeItem(`${bookStorageKey}_bookmark`);
       }
     } catch {
       // Persistence is optional when storage is unavailable.
     }
-    setBookmark(nextBookmark);
-  }, [bookStorageKey, bookmark]);
+  }, [bookmarks, bookStorageKey]);
+
+  const isCurrentBookmarked = bookmarks.some((item) =>
+    item.spineIndex === currentSpineIndex && item.page === currentPage
+  );
+
+  const handleToggleBookmark = useCallback(() => {
+    const currentPosition = {
+      spineIndex: currentSpineRef.current,
+      page: currentPageRef.current,
+    };
+    setBookmarks((existing) => {
+      const alreadySaved = existing.some((item) =>
+        item.spineIndex === currentPosition.spineIndex && item.page === currentPosition.page
+      );
+      return alreadySaved
+        ? existing.filter((item) =>
+          item.spineIndex !== currentPosition.spineIndex || item.page !== currentPosition.page
+        )
+        : [...existing, currentPosition].sort((a, b) =>
+          a.spineIndex - b.spineIndex || a.page - b.page
+        );
+    });
+  }, []);
+
+  const handleRemoveBookmark = useCallback((position: ReadingPosition) => {
+    setBookmarks((existing) => existing.filter((item) =>
+      item.spineIndex !== position.spineIndex || item.page !== position.page
+    ));
+  }, []);
 
   const themeColors = {
     light: { bg: '#ffffff', text: '#18181b' },
@@ -1517,8 +1543,8 @@ export const EpubReader: React.FC<Props> = ({
   useEffect(() => { currentSpineRef.current = currentSpineIndex; }, [currentSpineIndex]);
   useEffect(() => {
     selectedTextRef.current = selectedText;
-    openOverlayRef.current = isTocOpen || isSettingsOpen || isTranslateOpen || Boolean(imageViewerSrc);
-  }, [imageViewerSrc, isSettingsOpen, isTocOpen, isTranslateOpen, selectedText]);
+    openOverlayRef.current = isBookmarksOpen || isTocOpen || isSettingsOpen || isTranslateOpen || Boolean(imageViewerSrc);
+  }, [imageViewerSrc, isBookmarksOpen, isSettingsOpen, isTocOpen, isTranslateOpen, selectedText]);
   useEffect(() => {
     if (!isLoadingChapter) {
       saveReadingPosition({ spineIndex: currentSpineIndex, page: currentPage });
@@ -1557,6 +1583,37 @@ export const EpubReader: React.FC<Props> = ({
     }
     loadChapter(targetSpineIndex, targetLocalPage);
   }, [bookTotalPages, isBookPaginationReady, loadChapter, updatePagination]);
+
+  const handleSelectBookmark = useCallback((position: ReadingPosition) => {
+    if (position.spineIndex < 0 || position.spineIndex >= epub.spine.length || position.page < 0) return;
+    const maxPage = Math.max(1, chapterPageCountsRef.current[position.spineIndex] || 1) - 1;
+    const targetPage = Math.min(position.page, maxPage);
+    if (position.spineIndex === currentSpineRef.current) {
+      currentPageRef.current = targetPage;
+      setCurrentPage(targetPage);
+      updatePagination();
+    } else {
+      loadChapter(position.spineIndex, targetPage);
+    }
+    setIsBookmarksOpen(false);
+  }, [epub.spine.length, loadChapter, updatePagination]);
+
+  const bookmarkItems = bookmarks.map((position) => {
+    const chapterIndex = epub.toc.findIndex(
+      (item) => resolveSpineIndex(item.href) === position.spineIndex
+    );
+    const chapterLabel = chapterIndex >= 0
+      ? epub.toc[chapterIndex].label
+      : `Capítulo ${getDisplayChapter(position.spineIndex)}`;
+    return {
+      ...position,
+      chapterLabel,
+      bookPage: getGlobalPage(position.spineIndex, position.page) + 1,
+    };
+  });
+  const bookmarkPageMarkers = isBookPaginationReady
+    ? bookmarks.map((position) => getGlobalPage(position.spineIndex, position.page))
+    : [];
 
   // Reload the chapter when a style that changes the layout is modified.
   //
@@ -1679,6 +1736,10 @@ export const EpubReader: React.FC<Props> = ({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isSettingsOpen || isTocOpen || isTranslateOpen) return;
+      if (isBookmarksOpen) {
+        if (e.key === 'Escape') setIsBookmarksOpen(false);
+        return;
+      }
       const next = isRtl
         ? ['ArrowLeft', ' ', 'PageDown', 'j']
         : ['ArrowRight', ' ', 'PageDown', 'j'];
@@ -1699,7 +1760,7 @@ export const EpubReader: React.FC<Props> = ({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [imageViewerSrc, isRtl, isSettingsOpen, isTocOpen, isTranslateOpen, handleNextPage, handlePrevPage, onCloseBook]);
+  }, [imageViewerSrc, isBookmarksOpen, isRtl, isSettingsOpen, isTocOpen, isTranslateOpen, handleNextPage, handlePrevPage, onCloseBook]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1707,6 +1768,7 @@ export const EpubReader: React.FC<Props> = ({
     void CapacitorApp.addListener('backButton', () => {
       if (cancelled) return;
       if (imageViewerSrc) setImageViewerSrc(null);
+      else if (isBookmarksOpen) setIsBookmarksOpen(false);
       else onCloseBook();
     }).then((listener) => {
       removeListener = () => listener.remove();
@@ -1715,7 +1777,7 @@ export const EpubReader: React.FC<Props> = ({
       cancelled = true;
       if (removeListener) void removeListener();
     };
-  }, [imageViewerSrc, onCloseBook]);
+  }, [imageViewerSrc, isBookmarksOpen, onCloseBook]);
 
   const handleCopyDebug = async () => {
     const text = debugLines.join('\n');
@@ -1834,6 +1896,8 @@ export const EpubReader: React.FC<Props> = ({
         chapterTitle={currentChapterToc?.label}
         isVisible={showUi}
         onToggleToc={() => setIsTocOpen(true)}
+        onOpenBookmarks={() => setIsBookmarksOpen(true)}
+        bookmarkCount={bookmarks.length}
         onToggleSettings={() => setIsSettingsOpen(true)}
         onOpenFile={onCloseBook}
         settings={settings}
@@ -1862,8 +1926,10 @@ export const EpubReader: React.FC<Props> = ({
           event.preventDefault();
           setDebugEnabled((enabled) => !enabled);
         }}
-        className={`tap-area-free fixed right-3 z-[55] p-2 rounded-full backdrop-blur-md shadow-md transition-colors ${
-          showUi ? 'bottom-[118px]' : 'bottom-[max(env(safe-area-inset-bottom,8px),8px)]'
+        className={`tap-area-free fixed z-[55] p-2 rounded-full backdrop-blur-md shadow-md transition-colors ${
+          showUi
+            ? 'right-3 bottom-[118px]'
+            : 'left-3 bottom-[max(env(safe-area-inset-bottom,8px),8px)]'
         } ${
           showUi
             ? 'bg-white/90 text-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-200'
@@ -1874,6 +1940,29 @@ export const EpubReader: React.FC<Props> = ({
       >
         {showUi ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
       </button>
+
+      {!showUi && (
+        <button
+          type="button"
+          onClick={handleToggleBookmark}
+          className={`tap-area fixed right-2 z-[55] flex h-8 w-8 items-center justify-center rounded-full backdrop-blur-sm transition-colors ${
+            isCurrentBookmarked
+              ? 'bg-amber-400/55 text-amber-950/80 dark:bg-amber-300/45 dark:text-amber-100/90'
+              : 'bg-black/25 text-white/65 hover:bg-black/45 hover:text-white/90'
+          }`}
+          style={{
+            bottom: 'max(env(safe-area-inset-bottom, 4px), 4px)',
+            right: 'max(env(safe-area-inset-right, 4px), 4px)',
+          }}
+          title={isCurrentBookmarked ? 'Quitar marcador de esta página' : 'Marcar esta página'}
+          aria-label={isCurrentBookmarked ? 'Quitar marcador de esta página' : 'Marcar esta página'}
+          aria-pressed={isCurrentBookmarked}
+        >
+          {isCurrentBookmarked
+            ? <BookmarkCheck className="h-4 w-4" />
+            : <Bookmark className="h-4 w-4" />}
+        </button>
+      )}
 
       {/* Keep the viewport fixed so showing the controls never changes pagination. */}
       <div
@@ -1931,7 +2020,7 @@ export const EpubReader: React.FC<Props> = ({
         // panel open it covered the bottom of the dictionary result. Fold it
         // away while any overlay is on screen, as it is already folded away
         // while the selection is being dragged.
-        isAdjusting={isSelectionAdjusting || isTranslateOpen || isTocOpen || isSettingsOpen || Boolean(imageViewerSrc)}
+        isAdjusting={isSelectionAdjusting || isTranslateOpen || isBookmarksOpen || isTocOpen || isSettingsOpen || Boolean(imageViewerSrc)}
         onClose={() => { setSelectedText(''); setSelectionPos(null); }}
         onOpenTranslate={() => {
           setAiTranslationProvider(undefined);
@@ -1952,6 +2041,14 @@ export const EpubReader: React.FC<Props> = ({
         selectedText={selectedText}
         aiProvider={aiTranslationProvider}
         aiApiKey={aiTranslationProvider ? settings.aiApiKeys[aiTranslationProvider] : undefined}
+      />
+
+      <BookmarksModal
+        isOpen={isBookmarksOpen}
+        bookmarks={bookmarkItems}
+        onClose={() => setIsBookmarksOpen(false)}
+        onSelect={handleSelectBookmark}
+        onRemove={handleRemoveBookmark}
       />
 
       <ReaderFooter
@@ -1975,11 +2072,7 @@ export const EpubReader: React.FC<Props> = ({
         pageNudge={pageNudge}
         onPrevChapter={handlePrevChapter}
         onNextChapter={handleNextChapter}
-        isBookmarked={
-          bookmark?.spineIndex === currentSpineIndex &&
-          bookmark.page === currentPage
-        }
-        onToggleBookmark={handleToggleBookmark}
+        bookmarkPages={bookmarkPageMarkers}
       />
 
       {imageViewerSrc && (
