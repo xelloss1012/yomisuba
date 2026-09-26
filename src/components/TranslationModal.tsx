@@ -4,6 +4,10 @@ import { AiProvider } from '../types/epub';
 import { AI_PROVIDER_LABELS, translateWithAi } from '../utils/aiTranslation';
 import { getCachedTranslation, saveCachedTranslation } from '../utils/translationCache';
 import { DictionaryEntry, getDictionarySearchTerms } from '../utils/dictionary';
+import {
+  formatDictionaryHistoryResponse,
+  TranslationHistoryKind,
+} from '../utils/translationHistory';
 
 interface Props {
   isOpen: boolean;
@@ -11,9 +15,17 @@ interface Props {
   selectedText: string;
   aiProvider?: AiProvider;
   aiApiKey?: string;
+  onSaveHistory: (kind: TranslationHistoryKind, query: string, response: string, provider?: AiProvider) => void;
 }
 
-export const TranslationModal: React.FC<Props> = ({ isOpen, onClose, selectedText, aiProvider, aiApiKey }) => {
+export const TranslationModal: React.FC<Props> = ({
+  isOpen,
+  onClose,
+  selectedText,
+  aiProvider,
+  aiApiKey,
+  onSaveHistory,
+}) => {
   const [translatedText, setTranslatedText] = useState<string>('');
   const [dictionaryTerms, setDictionaryTerms] = useState<{
     baseForm: string;
@@ -26,53 +38,72 @@ export const TranslationModal: React.FC<Props> = ({ isOpen, onClose, selectedTex
   useEffect(() => {
     if (!isOpen || !selectedText) return;
 
+    let cancelled = false;
+    setTranslatedText('');
+    setDictionaryTerms(null);
+    setIsLoading(true);
+
     getDictionarySearchTerms(selectedText)
-      .then((lookup) =>
-        setDictionaryTerms({
+      .then((lookup) => {
+        const terms = {
           baseForm: lookup.baseForm,
           searchTerms: lookup.searchTerms,
           entries: lookup.entries,
-        })
-      )
-      .catch(() => setDictionaryTerms(null));
+        };
+        if (cancelled) return;
+        setDictionaryTerms(terms);
+        onSaveHistory(
+          'dictionary',
+          selectedText,
+          formatDictionaryHistoryResponse(terms.baseForm, terms.searchTerms, terms.entries)
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setDictionaryTerms(null);
+      });
 
     const translate = async () => {
-      setIsLoading(true);
       const provider = aiProvider || 'google';
       const providerKey = aiApiKey || '';
       const cachedTranslation = getCachedTranslation(provider, selectedText, providerKey);
+      const resultKind: TranslationHistoryKind = aiProvider ? 'ai' : 'translation';
       if (cachedTranslation) {
-        setTranslatedText(cachedTranslation);
-        setIsLoading(false);
+        if (!cancelled) {
+          setTranslatedText(cachedTranslation);
+          onSaveHistory(resultKind, selectedText, cachedTranslation, aiProvider);
+          setIsLoading(false);
+        }
         return;
       }
 
       try {
+        let result: string;
         if (aiProvider && aiApiKey) {
-          const result = await translateWithAi(aiProvider, aiApiKey, selectedText);
-          setTranslatedText(result);
-          saveCachedTranslation(provider, selectedText, result, providerKey);
+          result = await translateWithAi(aiProvider, aiApiKey, selectedText);
         } else {
           const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=es&dt=t&q=${encodeURIComponent(selectedText)}`;
           const res = await fetch(url);
           const data = await res.json();
           if (data && data[0]) {
-            const result = data[0].map((item: [string]) => item[0]).join('');
-            setTranslatedText(result);
-            saveCachedTranslation(provider, selectedText, result, providerKey);
+            result = data[0].map((item: [string]) => item[0]).join('');
           } else {
-            setTranslatedText('No se pudo traducir el texto.');
+            result = 'No se pudo traducir el texto.';
           }
         }
+        if (cancelled) return;
+        setTranslatedText(result);
+        saveCachedTranslation(provider, selectedText, result, providerKey);
+        onSaveHistory(resultKind, selectedText, result, aiProvider);
       } catch (err) {
-        setTranslatedText(err instanceof Error ? err.message : 'Traducción no disponible.');
+        if (!cancelled) setTranslatedText(err instanceof Error ? err.message : 'Traducción no disponible.');
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
 
-    translate();
-  }, [aiApiKey, aiProvider, isOpen, selectedText]);
+    void translate();
+    return () => { cancelled = true; };
+  }, [aiApiKey, aiProvider, isOpen, onSaveHistory, selectedText]);
 
   if (!isOpen) return null;
 

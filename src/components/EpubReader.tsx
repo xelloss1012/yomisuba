@@ -7,6 +7,7 @@ import { ReaderSettings } from './ReaderSettings';
 import { ReaderToc } from './ReaderToc';
 import { TextSelectionMenu, SelectionPosition } from './TextSelectionMenu';
 import { TranslationModal } from './TranslationModal';
+import { TranslationHistoryModal } from './TranslationHistoryModal';
 import { BookmarksModal, ReaderBookmark } from './BookmarksModal';
 import { Loader2, Menu, X, Minus, Plus, RotateCcw, Bookmark, BookmarkCheck } from 'lucide-react';
 import {
@@ -17,6 +18,12 @@ import {
   removeTextAnnotationMarkup,
   TextAnnotation,
 } from '../utils/textAnnotations';
+import {
+  readTranslationHistory,
+  saveTranslationHistoryEntry,
+  TranslationHistoryEntry,
+  TranslationHistoryKind,
+} from '../utils/translationHistory';
 
 type ReadingPosition = ReaderBookmark;
 
@@ -121,6 +128,11 @@ export const EpubReader: React.FC<Props> = ({
   const [tocError, setTocError] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const bookStorageKey = `ereader_book_${encodeURIComponent(`${epub.metadata.title}|${epub.metadata.creator}`)}`;
+  const translationHistoryStorageKey = `${bookStorageKey}_translation_history`;
+  const [translationHistory, setTranslationHistory] = useState<TranslationHistoryEntry[]>(() =>
+    readTranslationHistory(translationHistoryStorageKey)
+  );
+  const translationHistoryRef = useRef(translationHistory);
   const annotationsStorageKey = `${bookStorageKey}_annotations`;
   const textAnnotationsRef = useRef<TextAnnotation[]>([]);
   const [textAnnotations, setTextAnnotations] = useState<TextAnnotation[]>(() => {
@@ -141,6 +153,7 @@ export const EpubReader: React.FC<Props> = ({
   const pointerActiveRef = useRef(false);
   const [selectionPos, setSelectionPos] = useState<SelectionPosition | null>(null);
   const [isTranslateOpen, setIsTranslateOpen] = useState(false);
+  const [isTranslationHistoryOpen, setIsTranslationHistoryOpen] = useState(false);
   const [aiTranslationProvider, setAiTranslationProvider] = useState<AiProvider | undefined>();
   const [imageViewerSrc, setImageViewerSrc] = useState<string | null>(null);
   const [imageViewerScale, setImageViewerScale] = useState(1);
@@ -228,6 +241,43 @@ export const EpubReader: React.FC<Props> = ({
       // Persistence is optional when storage is unavailable.
     }
   }, [bookStorageKey]);
+
+  const handleSaveTranslationHistory = useCallback((
+    kind: TranslationHistoryKind,
+    query: string,
+    response: string,
+    provider?: AiProvider,
+  ) => {
+    const next = saveTranslationHistoryEntry(
+      translationHistoryStorageKey,
+      translationHistoryRef.current,
+      { kind, query, response, ...(kind === 'ai' && provider ? { provider } : {}) }
+    );
+    translationHistoryRef.current = next;
+    setTranslationHistory(next);
+  }, [translationHistoryStorageKey]);
+
+  const handleRemoveTranslationHistoryEntry = useCallback((id: string) => {
+    const next = translationHistoryRef.current.filter((entry) => entry.id !== id);
+    translationHistoryRef.current = next;
+    setTranslationHistory(next);
+    try {
+      if (next.length) localStorage.setItem(translationHistoryStorageKey, JSON.stringify(next));
+      else localStorage.removeItem(translationHistoryStorageKey);
+    } catch {
+      // Keep the in-memory history available when storage is unavailable.
+    }
+  }, [translationHistoryStorageKey]);
+
+  const handleClearTranslationHistory = useCallback(() => {
+    translationHistoryRef.current = [];
+    setTranslationHistory([]);
+    try {
+      localStorage.removeItem(translationHistoryStorageKey);
+    } catch {
+      // Keep the in-memory history available when storage is unavailable.
+    }
+  }, [translationHistoryStorageKey]);
 
   useEffect(() => {
     try {
@@ -1659,8 +1709,8 @@ export const EpubReader: React.FC<Props> = ({
   useEffect(() => { currentSpineRef.current = currentSpineIndex; }, [currentSpineIndex]);
   useEffect(() => {
     selectedTextRef.current = selectedText;
-    openOverlayRef.current = isBookmarksOpen || isTocOpen || isSettingsOpen || isTranslateOpen || Boolean(imageViewerSrc);
-  }, [imageViewerSrc, isBookmarksOpen, isSettingsOpen, isTocOpen, isTranslateOpen, selectedText]);
+    openOverlayRef.current = isBookmarksOpen || isTranslationHistoryOpen || isTocOpen || isSettingsOpen || isTranslateOpen || Boolean(imageViewerSrc);
+  }, [imageViewerSrc, isBookmarksOpen, isSettingsOpen, isTocOpen, isTranslateOpen, isTranslationHistoryOpen, selectedText]);
   useEffect(() => {
     if (!isLoadingChapter) {
       saveReadingPosition({ spineIndex: currentSpineIndex, page: currentPage });
@@ -1852,6 +1902,10 @@ export const EpubReader: React.FC<Props> = ({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isSettingsOpen || isTocOpen || isTranslateOpen) return;
+      if (isTranslationHistoryOpen) {
+        if (e.key === 'Escape') setIsTranslationHistoryOpen(false);
+        return;
+      }
       if (isBookmarksOpen) {
         if (e.key === 'Escape') setIsBookmarksOpen(false);
         return;
@@ -1880,7 +1934,7 @@ export const EpubReader: React.FC<Props> = ({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [imageViewerSrc, isBookmarksOpen, isRtl, isSettingsOpen, isTocOpen, isTranslateOpen, handleNextPage, handlePrevPage, onCloseBook]);
+  }, [imageViewerSrc, isBookmarksOpen, isRtl, isSettingsOpen, isTocOpen, isTranslateOpen, isTranslationHistoryOpen, handleNextPage, handlePrevPage, onCloseBook]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1888,6 +1942,7 @@ export const EpubReader: React.FC<Props> = ({
     void CapacitorApp.addListener('backButton', () => {
       if (cancelled) return;
       if (imageViewerSrc) setImageViewerSrc(null);
+      else if (isTranslationHistoryOpen) setIsTranslationHistoryOpen(false);
       else if (isBookmarksOpen) setIsBookmarksOpen(false);
       else onCloseBook();
     }).then((listener) => {
@@ -1897,7 +1952,7 @@ export const EpubReader: React.FC<Props> = ({
       cancelled = true;
       if (removeListener) void removeListener();
     };
-  }, [imageViewerSrc, isBookmarksOpen, onCloseBook]);
+  }, [imageViewerSrc, isBookmarksOpen, isTranslationHistoryOpen, onCloseBook]);
 
   const handleCopyDebug = async () => {
     const text = debugLines.join('\n');
@@ -2018,6 +2073,8 @@ export const EpubReader: React.FC<Props> = ({
         onToggleToc={() => setIsTocOpen(true)}
         onOpenBookmarks={() => setIsBookmarksOpen(true)}
         bookmarkCount={bookmarks.length}
+        onOpenHistory={() => setIsTranslationHistoryOpen(true)}
+        historyCount={translationHistory.length}
         onToggleSettings={() => setIsSettingsOpen(true)}
         onOpenFile={onCloseBook}
         settings={settings}
@@ -2140,7 +2197,7 @@ export const EpubReader: React.FC<Props> = ({
         // panel open it covered the bottom of the dictionary result. Fold it
         // away while any overlay is on screen, as it is already folded away
         // while the selection is being dragged.
-        isAdjusting={isSelectionAdjusting || isTranslateOpen || isBookmarksOpen || isTocOpen || isSettingsOpen || Boolean(imageViewerSrc)}
+        isAdjusting={isSelectionAdjusting || isTranslateOpen || isBookmarksOpen || isTranslationHistoryOpen || isTocOpen || isSettingsOpen || Boolean(imageViewerSrc)}
         isUnderlined={isSelectionUnderlined}
         onToggleUnderline={handleToggleUnderline}
         onClose={() => {
@@ -2152,6 +2209,10 @@ export const EpubReader: React.FC<Props> = ({
           setIsSelectionUnderlined(false);
         }}
         onOpenTranslate={() => {
+          setAiTranslationProvider(undefined);
+          setIsTranslateOpen(true);
+        }}
+        onOpenDictionary={() => {
           setAiTranslationProvider(undefined);
           setIsTranslateOpen(true);
         }}
@@ -2170,6 +2231,15 @@ export const EpubReader: React.FC<Props> = ({
         selectedText={selectedText}
         aiProvider={aiTranslationProvider}
         aiApiKey={aiTranslationProvider ? settings.aiApiKeys[aiTranslationProvider] : undefined}
+        onSaveHistory={handleSaveTranslationHistory}
+      />
+
+      <TranslationHistoryModal
+        isOpen={isTranslationHistoryOpen}
+        entries={translationHistory}
+        onClose={() => setIsTranslationHistoryOpen(false)}
+        onRemove={handleRemoveTranslationHistoryEntry}
+        onClear={handleClearTranslationHistory}
       />
 
       <BookmarksModal

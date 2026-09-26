@@ -23,6 +23,7 @@ interface Props {
   isAdjusting?: boolean;
   onClose: () => void;
   onOpenTranslate: () => void;
+  onOpenDictionary: () => void;
   isUnderlined: boolean;
   onToggleUnderline: () => void;
   aiProviders: AiProvider[];
@@ -35,6 +36,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
   isAdjusting = false,
   onClose,
   onOpenTranslate,
+  onOpenDictionary,
   isUnderlined,
   onToggleUnderline,
   aiProviders,
@@ -199,7 +201,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
           <button
             onClick={(e) => {
               e.stopPropagation();
-              onOpenTranslate();
+              onOpenDictionary();
             }}
             className="tap-area flex-1 flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl hover:bg-zinc-800 active:scale-95 text-xs font-medium transition-all text-indigo-300 hover:text-white"
             title="Traducir texto al español"

@@ -9,6 +9,7 @@ import {
   Columns,
   Rows,
   List,
+  History,
 } from 'lucide-react';
 
 interface Props {
@@ -18,6 +19,8 @@ interface Props {
   onToggleToc: () => void;
   onOpenBookmarks: () => void;
   bookmarkCount: number;
+  onOpenHistory: () => void;
+  historyCount: number;
   onToggleSettings: () => void;
   onOpenFile: () => void;
   settings: ReaderSettingsState;
@@ -31,6 +34,8 @@ export const ReaderNavbar: React.FC<Props> = ({
   onToggleToc,
   onOpenBookmarks,
   bookmarkCount,
+  onOpenHistory,
+  historyCount,
   onToggleSettings,
   onOpenFile,
   settings,
@@ -85,6 +90,19 @@ export const ReaderNavbar: React.FC<Props> = ({
             {bookmarkCount > 0 && (
               <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-400 px-1 text-[9px] font-bold text-amber-950">
                 {bookmarkCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={onOpenHistory}
+            title={`Historial de consultas (${historyCount})`}
+            aria-label={`Abrir historial de consultas (${historyCount})`}
+            className="tap-area relative rounded-lg p-2 text-zinc-700 transition-colors hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
+          >
+            <History className="h-4 w-4" />
+            {historyCount > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-indigo-500 px-1 text-[9px] font-bold text-white">
+                {historyCount}
               </span>
             )}
           </button>
