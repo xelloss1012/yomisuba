@@ -21,9 +21,11 @@ import {
 import {
   readTranslationHistory,
   saveTranslationHistoryEntry,
+  formatDictionaryHistoryResponse,
   TranslationHistoryEntry,
   TranslationHistoryKind,
 } from '../utils/translationHistory';
+import { DictionaryLookup, getDictionarySearchTerms } from '../utils/dictionary';
 
 type ReadingPosition = ReaderBookmark;
 
@@ -145,6 +147,7 @@ export const EpubReader: React.FC<Props> = ({
   );
 
   const [selectedText, setSelectedText] = useState('');
+  const [dictionaryPreview, setDictionaryPreview] = useState<DictionaryLookup | null>(null);
   const [isSelectionUnderlined, setIsSelectionUnderlined] = useState(false);
   const [isSelectionAdjusting, setIsSelectionAdjusting] = useState(false);
   const selectionSettleRef = useRef<number | undefined>(undefined);
@@ -1711,6 +1714,39 @@ export const EpubReader: React.FC<Props> = ({
     selectedTextRef.current = selectedText;
     openOverlayRef.current = isBookmarksOpen || isTranslationHistoryOpen || isTocOpen || isSettingsOpen || isTranslateOpen || Boolean(imageViewerSrc);
   }, [imageViewerSrc, isBookmarksOpen, isSettingsOpen, isTocOpen, isTranslateOpen, isTranslationHistoryOpen, selectedText]);
+
+  useEffect(() => {
+    const query = selectedText.trim();
+    if (isSelectionAdjusting || !query || Array.from(query).length > 32) {
+      setDictionaryPreview(null);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void getDictionarySearchTerms(query)
+        .then((lookup) => {
+          if (cancelled) return;
+          const hasEntries = lookup.entries.length > 0;
+          setDictionaryPreview(hasEntries ? lookup : null);
+          if (hasEntries) {
+            handleSaveTranslationHistory(
+              'dictionary',
+              query,
+              formatDictionaryHistoryResponse(lookup.baseForm, lookup.searchTerms, lookup.entries)
+            );
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setDictionaryPreview(null);
+        });
+    }, 220);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [handleSaveTranslationHistory, isSelectionAdjusting, selectedText]);
   useEffect(() => {
     if (!isLoadingChapter) {
       saveReadingPosition({ spineIndex: currentSpineIndex, page: currentPage });
@@ -2198,6 +2234,7 @@ export const EpubReader: React.FC<Props> = ({
         // away while any overlay is on screen, as it is already folded away
         // while the selection is being dragged.
         isAdjusting={isSelectionAdjusting || isTranslateOpen || isBookmarksOpen || isTranslationHistoryOpen || isTocOpen || isSettingsOpen || Boolean(imageViewerSrc)}
+        dictionaryPreview={dictionaryPreview}
         isUnderlined={isSelectionUnderlined}
         onToggleUnderline={handleToggleUnderline}
         onClose={() => {

@@ -11,7 +11,7 @@ export interface TranslationHistoryEntry {
   response: string;
 }
 
-export const MAX_TRANSLATION_HISTORY_ENTRIES = 100;
+export const MAX_TRANSLATION_HISTORY_ENTRIES = 500;
 const MAX_HISTORY_STORAGE_BYTES = 2.5 * 1024 * 1024;
 const MAX_RESPONSE_LENGTH = 32_000;
 

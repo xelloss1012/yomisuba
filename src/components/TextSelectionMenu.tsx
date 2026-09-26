@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Copy, Languages, Volume2, Search, BookOpen, Check, X, Underline } from 'lucide-react';
 import { AiProvider } from '../types/epub';
 import { AI_PROVIDER_LABELS } from '../utils/aiTranslation';
+import { DictionaryLookup } from '../utils/dictionary';
 
 export interface SelectionPosition {
   x: number;
@@ -24,6 +25,7 @@ interface Props {
   onClose: () => void;
   onOpenTranslate: () => void;
   onOpenDictionary: () => void;
+  dictionaryPreview: DictionaryLookup | null;
   isUnderlined: boolean;
   onToggleUnderline: () => void;
   aiProviders: AiProvider[];
@@ -37,6 +39,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
   onClose,
   onOpenTranslate,
   onOpenDictionary,
+  dictionaryPreview,
   isUnderlined,
   onToggleUnderline,
   aiProviders,
@@ -139,6 +142,40 @@ export const TextSelectionMenu: React.FC<Props> = ({
       onClick={(e) => e.stopPropagation()}
     >
       <div className="bg-zinc-900/95 dark:bg-zinc-800/95 text-white rounded-2xl p-2 shadow-2xl backdrop-blur-xl border border-zinc-700/80 flex flex-col gap-1.5">
+        {dictionaryPreview?.entries[0] && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpenDictionary();
+            }}
+            className="w-full rounded-xl border border-emerald-400/20 bg-emerald-950/35 px-3 py-2 text-left transition-colors hover:bg-emerald-950/60"
+            title="Abrir la consulta completa del diccionario"
+          >
+            <span className="flex items-baseline gap-2">
+              <span className="text-sm font-semibold text-emerald-200">
+                {dictionaryPreview.entries[0].kanji.join(' · ') || dictionaryPreview.entries[0].kana.join(' · ')}
+              </span>
+              {dictionaryPreview.entries[0].kana.length > 0 && dictionaryPreview.entries[0].kanji.length > 0 && (
+                <span className="text-xs text-zinc-400">
+                  {dictionaryPreview.entries[0].kana.join(' · ')}
+                </span>
+              )}
+              {dictionaryPreview.entries.length > 1 && (
+                <span className="ml-auto text-[10px] text-zinc-400">
+                  +{dictionaryPreview.entries.length - 1}
+                </span>
+              )}
+            </span>
+            <span className="mt-0.5 block line-clamp-2 text-xs leading-relaxed text-zinc-200">
+              {dictionaryPreview.entries[0].senses
+                .slice(0, 2)
+                .map((sense) => sense.glosses.join('; '))
+                .join(' · ')}
+            </span>
+          </button>
+        )}
+
         {/* Mobile Preview Header */}
         {isMobile && (
           <div className="flex items-center justify-between px-2 pt-0.5 pb-1 border-b border-zinc-700/60 text-xs">

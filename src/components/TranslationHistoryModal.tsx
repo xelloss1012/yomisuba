@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
 import { BookOpen, Clock, Languages, Trash2, X } from 'lucide-react';
 import { AI_PROVIDER_LABELS } from '../utils/aiTranslation';
-import { TranslationHistoryEntry } from '../utils/translationHistory';
+import {
+  MAX_TRANSLATION_HISTORY_ENTRIES,
+  TranslationHistoryEntry,
+} from '../utils/translationHistory';
 
 interface Props {
   isOpen: boolean;
@@ -134,7 +137,7 @@ export const TranslationHistoryModal: React.FC<Props> = ({
           </p>
         )}
         <p className="border-t border-zinc-100 px-4 py-2 text-center text-[10px] text-zinc-400 dark:border-zinc-800">
-          Se conservan como máximo las 100 consultas más recientes de este libro.
+          Se conservan como máximo las {MAX_TRANSLATION_HISTORY_ENTRIES} consultas más recientes de este libro.
         </p>
       </section>
     </div>
