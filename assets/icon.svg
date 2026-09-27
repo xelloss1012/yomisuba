@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4f46e5" />
+      <stop offset="100%" stop-color="#18181b" />
+    </linearGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24" />
+      <stop offset="100%" stop-color="#d97706" />
+    </linearGradient>
+  </defs>
+  <!-- Background with rounded app icon shape -->
+  <rect width="512" height="512" rx="112" fill="url(#bg)" />
+  
+  <!-- Subtle book pages glow / shadow -->
+  <path d="M128 140C180 130 236 140 256 160C276 140 332 130 384 140V372C332 362 276 372 256 392C236 372 180 362 128 372V140Z" fill="#27272a" opacity="0.6" />
+
+  <!-- Open Book Base -->
+  <path d="M120 128C176 118 232 128 256 150C280 128 336 118 392 128V364C336 354 280 364 256 386C232 364 176 354 120 364V128Z" fill="#f4f4f5" />
+  
+  <!-- Book spine / center fold shadow -->
+  <path d="M250 150V386C262 374 270 364 256 150Z" fill="#d4d4d8" />
+
+  <!-- Bookmark Ribbon -->
+  <path d="M310 128L330 150L310 210L290 150Z" fill="url(#gold)" />
+
+  <!-- Vertical Japanese Text Lines / Kanji 読 (Read) -->
+  <!-- Left page vertical text lines -->
+  <line x1="170" y1="170" x2="170" y2="310" stroke="#71717a" stroke-width="12" stroke-linecap="round" />
+  <line x1="205" y1="185" x2="205" y2="295" stroke="#71717a" stroke-width="10" stroke-linecap="round" />
+
+  <!-- Right page vertical text lines -->
+  <line x1="305" y1="185" x2="305" y2="295" stroke="#71717a" stroke-width="10" stroke-linecap="round" />
+  <line x1="340" y1="170" x2="340" y2="310" stroke="#4f46e5" stroke-width="12" stroke-linecap="round" />
+</svg>
