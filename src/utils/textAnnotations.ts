@@ -137,44 +137,41 @@ const getRangeAtOffsets = (root: HTMLElement, start: number, end: number) => {
 
 const textContent = (root: HTMLElement) => textNodes(root).map((node) => node.data).join('');
 
-const wrapRange = (range: Range, id: string) => {
-  const span = range.startContainer.ownerDocument!.createElement('span');
-  span.dataset.readerUnderline = id;
-  span.style.backgroundColor = 'rgba(129, 140, 248, 0.28)';
-  span.style.borderRadius = '2px';
-  span.appendChild(range.extractContents());
-  range.insertNode(span);
-};
-
 export const applyTextAnnotations = (
   root: HTMLElement,
   annotations: TextAnnotation[],
 ) => {
-  const pending = annotations
-    .map((annotation) => ({
-      annotation,
-      offset: findAnnotationOffset(textContent(root), annotation),
-    }))
-    .filter((item) => item.offset >= 0)
-    .sort((a, b) => b.offset - a.offset);
+  const win = root.ownerDocument.defaultView as (Window & {
+    Highlight?: { new (...ranges: Range[]): unknown };
+    CSS?: { highlights?: { set(key: string, value: unknown): void; delete(key: string): void } };
+  }) | null;
+  if (!win || !win.Highlight || !win.CSS || !win.CSS.highlights) return;
 
-  for (const item of pending) {
-    const range = getRangeAtOffsets(root, item.offset, item.offset + item.annotation.quote.length);
-    if (range) wrapRange(range, item.annotation.id);
+  const ranges: Range[] = [];
+  for (const annotation of annotations) {
+    const offset = findAnnotationOffset(textContent(root), annotation);
+    if (offset >= 0) {
+      const range = getRangeAtOffsets(root, offset, offset + annotation.quote.length);
+      if (range) ranges.push(range);
+    }
+  }
+
+  if (ranges.length > 0) {
+    const HighlightConstructor = win.Highlight;
+    const highlight = new HighlightConstructor(...ranges);
+    win.CSS.highlights.set('reader-annotation', highlight);
+  } else {
+    win.CSS.highlights.delete('reader-annotation');
   }
 };
 
-export const removeTextAnnotationMarkup = (root: HTMLElement, id: string) => {
-  const spans = Array.from(root.querySelectorAll<HTMLElement>('[data-reader-underline]'))
-    .filter((span) => span.dataset.readerUnderline === id);
-  for (const span of spans) {
-    const parent = span.parentNode;
-    if (!parent) continue;
-    while (span.firstChild) parent.insertBefore(span.firstChild, span);
-    parent.removeChild(span);
+export const removeTextAnnotationMarkup = (root: HTMLElement, _id: string) => {
+  const win = root.ownerDocument.defaultView as (Window & { CSS?: { highlights?: { delete(key: string): void } } }) | null;
+  if (win?.CSS?.highlights) {
+    win.CSS.highlights.delete('reader-annotation');
   }
 };
 
-export const applyTextAnnotationToRange = (range: Range, id: string) => {
-  wrapRange(range, id);
+export const applyTextAnnotationToRange = (_range: Range, _id: string) => {
+  // Handled by state update and applyTextAnnotations re-render
 };

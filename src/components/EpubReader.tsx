@@ -311,6 +311,14 @@ export const EpubReader: React.FC<Props> = ({
     } catch {
       // Persistence is optional when storage is unavailable.
     }
+    const iframe = iframeRef.current;
+    const scroller = iframe?.contentDocument?.getElementById('reader-scroller');
+    if (scroller) {
+      applyTextAnnotations(
+        scroller,
+        textAnnotations.filter((annotation) => annotation.spineIndex === currentSpineRef.current)
+      );
+    }
   }, [annotationsStorageKey, textAnnotations]);
 
   const isCurrentBookmarked = bookmarks.some((item) =>
@@ -496,6 +504,10 @@ export const EpubReader: React.FC<Props> = ({
     .vertical-punctuation {
       text-orientation: upright; -webkit-text-orientation: upright;
       display: inline-block; line-height: 1;
+    }
+    ::highlight(reader-annotation) {
+      background-color: rgba(129, 140, 248, 0.35);
+      color: inherit;
     }
     p  { margin: 0; padding: ${isVertical ? '0 0 0 0.5rem' : '0 0 0.5rem 0'}; }
     h1,h2,h3,h4 { font-weight:700; break-after:avoid; }
