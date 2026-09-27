@@ -497,7 +497,7 @@ export const EpubReader: React.FC<Props> = ({
       text-orientation: upright; -webkit-text-orientation: upright;
       display: inline-block; line-height: 1;
     }
-    p  { margin: 0 0 ${isVertical ? '0 0.5rem' : '0.5rem 0'}; }
+    p  { margin: 0; padding: ${isVertical ? '0 0 0 0.5rem' : '0 0 0.5rem 0'}; }
     h1,h2,h3,h4 { font-weight:700; break-after:avoid; }
     ruby {
       break-inside: avoid;
@@ -925,9 +925,9 @@ export const EpubReader: React.FC<Props> = ({
         // Extra lateral push required once the selection has reached the very end
         // of the visible page. Reaching the last column must not paginate: only
         // insisting in the same direction does.
-        const selectionPushDistance = 26;
-        const selectionPushReset = 14;
-        const selectionHoldDelay = 700;
+        const selectionPushDistance = 50;
+        const selectionPushReset = 16;
+        const selectionHoldDelay = 1000;
         const selectionGuardDuration = 650;
         const selectionResumeDistance = 24;
         // The reading flow of a page grows towards this side, so the next page
@@ -949,6 +949,7 @@ export const EpubReader: React.FC<Props> = ({
         let selectionAdjustmentStarted = false;
         let selectionBaselineTimer: number | undefined;
         let selectionTurnBusy = false;
+        let ignoreSelectionChange = false;
         let selectionGuard:
           | {
             node: Node;
@@ -1210,6 +1211,7 @@ export const EpubReader: React.FC<Props> = ({
         };
 
         const handleIframeSelectionChange = () => {
+          if (ignoreSelectionChange) return;
           const selection = iframe.contentWindow?.getSelection();
           if (!selection?.rangeCount || !selection.toString()) {
             resetSelectionTracking();
@@ -1223,6 +1225,30 @@ export const EpubReader: React.FC<Props> = ({
             selectedTextAnnotationIdRef.current = null;
             setIsSelectionUnderlined(false);
             return;
+          }
+
+          const scroller = doc.getElementById('reader-scroller');
+          const focusNode = selection.focusNode;
+          const anchorNode = selection.anchorNode;
+
+          if (
+            !focusNode ||
+            !anchorNode ||
+            focusNode.nodeType !== Node.TEXT_NODE ||
+            anchorNode.nodeType !== Node.TEXT_NODE ||
+            focusNode === scroller ||
+            anchorNode === scroller ||
+            focusNode === doc.body ||
+            anchorNode === doc.body ||
+            focusNode === doc.documentElement ||
+            anchorNode === doc.documentElement
+          ) {
+            return;
+          }
+
+          const range = selection.getRangeAt(0);
+          if (range) {
+            selectionRangeRef.current = range.cloneRange();
           }
 
           const signature = getSelectionSignature(selection);
