@@ -140,10 +140,8 @@ const textContent = (root: HTMLElement) => textNodes(root).map((node) => node.da
 const wrapRange = (range: Range, id: string) => {
   const span = range.startContainer.ownerDocument!.createElement('span');
   span.dataset.readerUnderline = id;
-  span.style.textDecoration = 'underline';
-  span.style.textDecorationColor = 'currentColor';
-  span.style.textDecorationThickness = '0.08em';
-  span.style.textUnderlineOffset = '0.12em';
+  span.style.backgroundColor = 'rgba(129, 140, 248, 0.28)';
+  span.style.borderRadius = '2px';
   span.appendChild(range.extractContents());
   range.insertNode(span);
 };
