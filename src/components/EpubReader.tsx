@@ -11,7 +11,6 @@ import { TranslationHistoryModal } from './TranslationHistoryModal';
 import { BookmarksModal, ReaderBookmark } from './BookmarksModal';
 import { Loader2, Menu, X, Minus, Plus, RotateCcw, Bookmark, BookmarkCheck } from 'lucide-react';
 import {
-  applyTextAnnotationToRange,
   applyTextAnnotations,
   captureTextAnnotation,
   readTextAnnotations,
@@ -733,22 +732,17 @@ export const EpubReader: React.FC<Props> = ({
       : null;
     selectionRangeRef.current = range.cloneRange();
     selectionAnnotationRef.current = anchor;
+    const selectedTextStr = sel.toString().trim();
+    const currentSpine = currentSpineRef.current;
     const matchingAnnotation = anchor && textAnnotationsRef.current.find((annotation) =>
-      annotation.spineIndex === anchor.spineIndex &&
-      annotation.quote === anchor.quote &&
-      annotation.prefix === anchor.prefix &&
-      annotation.suffix === anchor.suffix
+      annotation.spineIndex === currentSpine &&
+      (
+        (annotation.quote === anchor.quote && annotation.prefix === anchor.prefix) ||
+        annotation.quote.includes(selectedTextStr) ||
+        selectedTextStr.includes(annotation.quote)
+      )
     );
-    const intersectingSpan = matchingAnnotation ? null : Array.from(
-      iframe.contentDocument.querySelectorAll<HTMLElement>('[data-reader-underline]')
-    ).find((span) => {
-      try {
-        return range.intersectsNode(span);
-      } catch {
-        return false;
-      }
-    });
-    const annotationId = matchingAnnotation?.id || intersectingSpan?.dataset.readerUnderline || null;
+    const annotationId = matchingAnnotation?.id || null;
     selectedTextAnnotationIdRef.current = annotationId || null;
     setIsSelectionUnderlined(Boolean(annotationId));
 
@@ -786,16 +780,20 @@ export const EpubReader: React.FC<Props> = ({
     const anchor = selectionAnnotationRef.current;
     const iframe = iframeRef.current;
     const scroller = iframe?.contentDocument?.getElementById('reader-scroller');
-    if (!anchor || !scroller) return;
+    if (!scroller) return;
+
+    const selectedTextStr = iframe?.contentWindow?.getSelection()?.toString().trim() || '';
+    const currentSpine = currentSpineRef.current;
 
     const existing = textAnnotationsRef.current.find((annotation) =>
-      annotation.id === selectedTextAnnotationIdRef.current
-    ) || textAnnotationsRef.current.find((annotation) =>
-      annotation.spineIndex === anchor.spineIndex &&
-      annotation.quote === anchor.quote &&
-      annotation.prefix === anchor.prefix &&
-      annotation.suffix === anchor.suffix
+      annotation.spineIndex === currentSpine &&
+      (
+        annotation.id === selectedTextAnnotationIdRef.current ||
+        (anchor && annotation.quote === anchor.quote && annotation.prefix === anchor.prefix) ||
+        (selectedTextStr && (annotation.quote.includes(selectedTextStr) || selectedTextStr.includes(annotation.quote)))
+      )
     );
+
     if (existing) {
       removeTextAnnotationMarkup(scroller, existing.id);
       const next = textAnnotationsRef.current.filter((annotation) => annotation.id !== existing.id);
@@ -806,13 +804,13 @@ export const EpubReader: React.FC<Props> = ({
       return;
     }
 
+    if (!anchor) return;
     const range = selectionRangeRef.current;
     if (!range || range.startContainer.ownerDocument !== scroller.ownerDocument) return;
     const annotation: TextAnnotation = {
       ...anchor,
       id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
     };
-    applyTextAnnotationToRange(range, annotation.id);
     const next = [...textAnnotationsRef.current, annotation];
     textAnnotationsRef.current = next;
     setTextAnnotations(next);
