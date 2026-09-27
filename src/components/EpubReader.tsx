@@ -378,6 +378,20 @@ export const EpubReader: React.FC<Props> = ({
   // keeps them from drifting apart again.
   const buildChapterDocument = useCallback((rawHtml: string) => {
     const parsed = new DOMParser().parseFromString(rawHtml, 'text/html');
+    
+    // Move furigana text into a data attribute to render it via CSS ::after.
+    // This makes it completely invisible to the native text selection engine,
+    // solving both the "empty selection" bug and the interleaved text copy issues
+    // without needing fragile user-select workarounds.
+    const rts = parsed.querySelectorAll('rt');
+    rts.forEach((rt) => {
+      const text = rt.textContent;
+      if (text) {
+        rt.setAttribute('data-rt', text);
+        rt.textContent = '';
+      }
+    });
+
     const bodyContent = parsed.body.innerHTML;
     const fontCss = getFontFamilyCss(settings.fontFamily);
     const mobile = window.innerWidth < 640;
@@ -514,15 +528,21 @@ export const EpubReader: React.FC<Props> = ({
       break-inside: avoid;
       page-break-inside: avoid;
       -webkit-column-break-inside: avoid;
+      unicode-bidi: isolate;
     }
     ruby rt {
       font-size: 0.52em;
       line-height: 1;
       opacity: 0.85;
       font-weight: 400;
-      user-select: none;
-      -webkit-user-select: none;
       pointer-events: none;
+    }
+    ruby rt::after {
+      content: attr(data-rt);
+    }
+    ::highlight(reader-annotation) rt {
+      background-color: transparent !important;
+      color: inherit;
     }
     .tate-chu-yoko, [class*="tcy"], [class*="tate-ch"] {
       text-combine-upright: all; -webkit-text-combine: horizontal; }
@@ -1223,6 +1243,30 @@ export const EpubReader: React.FC<Props> = ({
         const handleIframeSelectionChange = () => {
           if (ignoreSelectionChange) return;
           const selection = iframe.contentWindow?.getSelection();
+          if (selection && selection.rangeCount > 0) {
+            const node = selection.anchorNode;
+            if (node && node.parentElement?.closest('rt')) {
+              // Android WebView selection handle snapped to an rt element; collapse or shift to parent/base text
+              const ruby = node.parentElement.closest('ruby');
+              if (ruby) {
+                const textNode = Array.from(ruby.childNodes).find(
+                  (c) => c.nodeType === Node.TEXT_NODE && !c.parentElement?.closest('rt')
+                );
+                if (textNode) {
+                  try {
+                    const r = doc.createRange();
+                    r.setStart(textNode, 0);
+                    r.setEnd(textNode, Math.min(1, textNode.nodeValue?.length || 1));
+                    selection.removeAllRanges();
+                    selection.addRange(r);
+                  } catch {
+                    // Ignore range adjustment failure
+                  }
+                }
+              }
+            }
+          }
+
           if (!selection?.rangeCount || !selection.toString()) {
             resetSelectionTracking();
             selectionGuard = null;
