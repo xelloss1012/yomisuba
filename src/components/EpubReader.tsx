@@ -884,21 +884,21 @@ export const EpubReader: React.FC<Props> = ({
         doc.write(fullHtml);
         doc.close();
 
-        // Force common Japanese ellipsis glyphs upright in vertical writing.
+        // Force common Japanese ellipsis, exclamation, and question marks upright in vertical writing.
         if (isVertical) {
           const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
           const textNodes: Text[] = [];
           let node: Node | null;
           while ((node = walker.nextNode())) {
             if (node.parentElement?.closest('style, script, .vertical-punctuation')) continue;
-            if (/[…⋯︙]/.test(node.nodeValue || '')) textNodes.push(node as Text);
+            if (/[…⋯︙!?！？‼⁇⁉]/.test(node.nodeValue || '')) textNodes.push(node as Text);
           }
           textNodes.forEach((textNode) => {
-            const parts = (textNode.nodeValue || '').split(/([…⋯︙])/g);
+            const parts = (textNode.nodeValue || '').split(/([…⋯︙!?！？‼⁇⁉]+)/g);
             const fragment = doc.createDocumentFragment();
             parts.forEach((part) => {
               if (!part) return;
-              if (/^[…⋯︙]$/.test(part)) {
+              if (/^[…⋯︙!?！？‼⁇⁉]+$/.test(part)) {
                 const span = doc.createElement('span');
                 span.className = 'vertical-punctuation';
                 span.textContent = part;
