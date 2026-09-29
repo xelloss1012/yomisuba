@@ -67,10 +67,12 @@ const guessBaseForms = (word: string): string[] => {
     add(`${stem}る`);
   }
 
-  const passivePast = word.match(/^(.+?)(られた|れた)$/);
-  if (passivePast) {
-    const stem = passivePast[1];
-    if (word.endsWith('られた')) {
+  // Passive (present: られる/れる, past: られた/れた, te-form: られて/れて)
+  const passive = word.match(/^(.+?)(られる|られた|られて|れる|れた|れて)$/);
+  if (passive) {
+    const ending = passive[2];
+    const stem = passive[1];
+    if (ending.startsWith('られ')) {
       add(`${stem}る`);
     } else {
       const last = stem.slice(-1);
@@ -78,6 +80,53 @@ const guessBaseForms = (word: string): string[] => {
       if (godanEnding) add(`${stem.slice(0, -1)}${godanEnding}`);
       add(`${stem}る`);
     }
+  }
+
+  // Causative (させる/させた/させて and せる/せた/せて)
+  const causative = word.match(/^(.+?)(させる|させた|させて|せる|せた|せて)$/);
+  if (causative) {
+    const ending = causative[2];
+    const stem = causative[1];
+    if (ending.startsWith('させ')) {
+      add(`${stem}る`);
+    } else {
+      const last = stem.slice(-1);
+      const godanEnding = godanNegativeStemToDictionaryForm[last];
+      if (godanEnding) add(`${stem.slice(0, -1)}${godanEnding}`);
+      add(`${stem}る`);
+    }
+  }
+
+  // Common past and te-form for Godan / Ichidan
+  const teTa = word.match(/^(.+?)(って|った|いて|いた|いで|いだ|して|した|んで|んだ)$/);
+  if (teTa) {
+    const stem = teTa[1];
+    const ending = teTa[2];
+    if (ending === 'って' || ending === 'った') {
+      add(`${stem}る`);
+      add(`${stem}つ`);
+      add(`${stem}う`);
+    } else if (ending === 'いて' || ending === 'いた') {
+      add(`${stem}く`);
+      if (stem === '行') add('行く');
+    } else if (ending === 'いで' || ending === 'いだ') {
+      add(`${stem}ぐ`);
+    } else if (ending === 'して' || ending === 'した') {
+      add(`${stem}す`);
+      add(`${stem}する`);
+    } else if (ending === 'んで' || ending === 'んだ') {
+      add(`${stem}む`);
+      add(`${stem}ぶ`);
+      add(`${stem}ぬ`);
+    }
+  }
+
+  // Plain ichidan past / te-form (e.g. 食べて -> 食べる, 食べた -> 食べる)
+  if (word.endsWith('て') && !word.match(/(って|いて|いで|して|んで|れて|せて)$/)) {
+    add(`${word.slice(0, -1)}る`);
+  }
+  if (word.endsWith('た') && !word.match(/(った|いた|いだ|した|んだ|れた|せた)$/)) {
+    add(`${word.slice(0, -1)}る`);
   }
 
   const polite = word.match(/^(.+?)(ませんでした|ません|ました|ます)$/);
