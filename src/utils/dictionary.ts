@@ -49,6 +49,219 @@ const normalizeSelection = (value: string): string => {
 
 const unique = (items: string[]) => Array.from(new Set(items.filter(Boolean)));
 
+const romajiKana: Record<string, string> = {
+  kya: 'きゃ',
+  kyu: 'きゅ',
+  kyo: 'きょ',
+  gya: 'ぎゃ',
+  gyu: 'ぎゅ',
+  gyo: 'ぎょ',
+  sha: 'しゃ',
+  shu: 'しゅ',
+  sho: 'しょ',
+  sya: 'しゃ',
+  syu: 'しゅ',
+  syo: 'しょ',
+  ja: 'じゃ',
+  ju: 'じゅ',
+  jo: 'じょ',
+  jya: 'じゃ',
+  jyu: 'じゅ',
+  jyo: 'じょ',
+  cha: 'ちゃ',
+  chu: 'ちゅ',
+  cho: 'ちょ',
+  tya: 'ちゃ',
+  tyu: 'ちゅ',
+  tyo: 'ちょ',
+  nya: 'にゃ',
+  nyu: 'にゅ',
+  nyo: 'にょ',
+  hya: 'ひゃ',
+  hyu: 'ひゅ',
+  hyo: 'ひょ',
+  bya: 'びゃ',
+  byu: 'びゅ',
+  byo: 'びょ',
+  pya: 'ぴゃ',
+  pyu: 'ぴゅ',
+  pyo: 'ぴょ',
+  rya: 'りゃ',
+  ryu: 'りゅ',
+  ryo: 'りょ',
+  fa: 'ふぁ',
+  fi: 'ふぃ',
+  fe: 'ふぇ',
+  fo: 'ふぉ',
+  va: 'ゔぁ',
+  vi: 'ゔぃ',
+  vu: 'ゔ',
+  ve: 'ゔぇ',
+  vo: 'ゔぉ',
+  kwa: 'くぁ',
+  kwi: 'くぃ',
+  kwe: 'くぇ',
+  kwo: 'くぉ',
+  gwa: 'ぐぁ',
+  gwi: 'ぐぃ',
+  gwe: 'ぐぇ',
+  gwo: 'ぐぉ',
+  shi: 'し',
+  si: 'し',
+  chi: 'ち',
+  ti: 'ち',
+  tsu: 'つ',
+  tu: 'つ',
+  dzu: 'づ',
+  fu: 'ふ',
+  hu: 'ふ',
+  ji: 'じ',
+  zi: 'じ',
+  wo: 'を',
+  wi: 'うぃ',
+  we: 'うぇ',
+  xa: 'ぁ',
+  xi: 'ぃ',
+  xu: 'ぅ',
+  xe: 'ぇ',
+  xo: 'ぉ',
+  la: 'ぁ',
+  li: 'ぃ',
+  lu: 'ぅ',
+  le: 'ぇ',
+  lo: 'ぉ',
+  xya: 'ゃ',
+  xyu: 'ゅ',
+  xyo: 'ょ',
+  lya: 'ゃ',
+  lyu: 'ゅ',
+  lyo: 'ょ',
+  xtsu: 'っ',
+  ltsu: 'っ',
+  ka: 'か',
+  ki: 'き',
+  ku: 'く',
+  ke: 'け',
+  ko: 'こ',
+  ga: 'が',
+  gi: 'ぎ',
+  gu: 'ぐ',
+  ge: 'げ',
+  go: 'ご',
+  sa: 'さ',
+  su: 'す',
+  se: 'せ',
+  so: 'そ',
+  za: 'ざ',
+  zu: 'ず',
+  ze: 'ぜ',
+  zo: 'ぞ',
+  ta: 'た',
+  te: 'て',
+  to: 'と',
+  da: 'だ',
+  di: 'ぢ',
+  du: 'づ',
+  de: 'で',
+  do: 'ど',
+  na: 'な',
+  ni: 'に',
+  nu: 'ぬ',
+  ne: 'ね',
+  no: 'の',
+  ha: 'は',
+  hi: 'ひ',
+  he: 'へ',
+  ho: 'ほ',
+  ba: 'ば',
+  bi: 'び',
+  bu: 'ぶ',
+  be: 'べ',
+  bo: 'ぼ',
+  pa: 'ぱ',
+  pi: 'ぴ',
+  pu: 'ぷ',
+  pe: 'ぺ',
+  po: 'ぽ',
+  ma: 'ま',
+  mi: 'み',
+  mu: 'む',
+  me: 'め',
+  mo: 'も',
+  ya: 'や',
+  yu: 'ゆ',
+  yo: 'よ',
+  ra: 'ら',
+  ri: 'り',
+  ru: 'る',
+  re: 'れ',
+  ro: 'ろ',
+  wa: 'わ',
+  a: 'あ',
+  i: 'い',
+  u: 'う',
+  e: 'え',
+  o: 'お',
+};
+
+const romajiKeys = Object.keys(romajiKana).sort((left, right) => right.length - left.length);
+
+const romajiToHiragana = (value: string): string | null => {
+  const input = value.toLowerCase();
+  if (!/^[a-z']+$/.test(input)) return null;
+
+  let result = '';
+  let position = 0;
+
+  while (position < input.length) {
+    const current = input[position];
+    const next = input[position + 1];
+
+    if (current === "'") {
+      return null;
+    }
+
+    if (current === 'n' && next === "'") {
+      result += 'ん';
+      position += 2;
+      continue;
+    }
+
+    if (
+      current === 'n' &&
+      next &&
+      next !== 'n' &&
+      !'aiueoy'.includes(next)
+    ) {
+      result += 'ん';
+      position += 1;
+      continue;
+    }
+
+    if (
+      current !== 'n' &&
+      next === current &&
+      !'aeiou'.includes(current)
+    ) {
+      result += 'っ';
+      position += 1;
+      continue;
+    }
+
+    const match = romajiKeys.find((key) => input.startsWith(key, position));
+    if (!match) return null;
+
+    result += romajiKana[match];
+    position += match.length;
+  }
+
+  if (input.endsWith('n')) {
+    result += 'ん';
+  }
+
+  return result || null;
+};
+
 const godanNegativeStemToDictionaryForm: Record<string, string> = {
   か: 'く',
   が: 'ぐ',
@@ -364,13 +577,14 @@ export const getDictionarySearchTerms = async (value: string): Promise<Dictionar
     return { originalText: '', baseForm: '', searchTerms: [], entries: [], hasCompleteMatch: false };
   }
 
-  let searchTerms = guessBaseForms(originalText);
+  const hiraganaText = romajiToHiragana(originalText) || originalText;
+  let searchTerms = guessBaseForms(hiraganaText);
   const tokenSurfaceTerms: string[] = [];
   const tokenBaseForms: string[] = [];
 
   try {
     const tokenizer = await getTokenizer();
-    const tokens = tokenizer.tokenize(originalText);
+    const tokens = tokenizer.tokenize(hiraganaText);
     for (const token of tokens) {
       if (!['記号', '助詞', '助動詞'].includes(token.pos) && token.surface_form) {
         tokenSurfaceTerms.push(token.surface_form);
@@ -395,9 +609,10 @@ export const getDictionarySearchTerms = async (value: string): Promise<Dictionar
     ...tokenSurfaceTerms,
     ...tokenBaseForms,
     originalText,
+    hiraganaText,
   ]).filter((term) => term.length > 0);
 
-  const directTerms = unique([originalText, ...tokenSurfaceTerms]);
+  const directTerms = unique([originalText, hiraganaText, ...tokenSurfaceTerms]);
   const inflectedTerms = searchTerms.filter((term) => !directTerms.includes(term));
 
   const spanishResults = findRawEntries(directTerms, inflectedTerms, spanishIndex);
@@ -446,7 +661,7 @@ export const getDictionarySearchTerms = async (value: string): Promise<Dictionar
 
   return {
     originalText,
-    baseForm: searchTerms[0] || originalText,
+    baseForm: searchTerms[0] || hiraganaText,
     searchTerms,
     entries: topEntries.map((item) => item.entry),
     hasCompleteMatch,
