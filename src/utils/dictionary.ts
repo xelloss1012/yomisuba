@@ -365,16 +365,17 @@ export const getDictionarySearchTerms = async (value: string): Promise<Dictionar
   }
 
   let searchTerms = guessBaseForms(originalText);
-  const tokenTerms: string[] = [];
+  const tokenSurfaceTerms: string[] = [];
+  const tokenBaseForms: string[] = [];
 
   try {
     const tokenizer = await getTokenizer();
     const tokens = tokenizer.tokenize(originalText);
     for (const token of tokens) {
       if (!['記号', '助詞', '助動詞'].includes(token.pos) && token.surface_form) {
-        tokenTerms.push(token.surface_form);
+        tokenSurfaceTerms.push(token.surface_form);
         if (token.basic_form && token.basic_form !== '*') {
-          tokenTerms.push(token.basic_form);
+          tokenBaseForms.push(token.basic_form);
         }
       }
     }
@@ -389,10 +390,15 @@ export const getDictionarySearchTerms = async (value: string): Promise<Dictionar
     // The regex fallback still provides useful lookups when the tokenizer is unavailable.
   }
 
-  searchTerms = unique([...searchTerms, ...tokenTerms, originalText]).filter((term) => term.length > 0);
-  
-  const directTerms = unique([originalText, ...tokenTerms]);
-  const inflectedTerms = searchTerms.filter((term) => term !== originalText && !directTerms.includes(term));
+  searchTerms = unique([
+    ...searchTerms,
+    ...tokenSurfaceTerms,
+    ...tokenBaseForms,
+    originalText,
+  ]).filter((term) => term.length > 0);
+
+  const directTerms = unique([originalText, ...tokenSurfaceTerms]);
+  const inflectedTerms = searchTerms.filter((term) => !directTerms.includes(term));
 
   const spanishResults = findRawEntries(directTerms, inflectedTerms, spanishIndex);
   let englishResults: Array<{ entry: CompactEntry; score: number }> = [];
