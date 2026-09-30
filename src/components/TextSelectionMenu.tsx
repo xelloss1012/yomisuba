@@ -166,6 +166,9 @@ export const TextSelectionMenu: React.FC<Props> = ({
                   +{dictionaryPreview.entries.length - 1}
                 </span>
               )}
+              <span className="rounded bg-emerald-900/80 px-1 py-0.5 text-[9px] font-bold uppercase text-emerald-200">
+                {dictionaryPreview.entries[0].language}
+              </span>
             </span>
             <span className="mt-0.5 block line-clamp-2 text-xs leading-relaxed text-zinc-200">
               {dictionaryPreview.entries[0].senses
@@ -173,6 +176,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
                 .map((sense) => sense.glosses.join('; '))
                 .join(' · ')}
             </span>
+            <span className="mt-1 block text-[9px] text-zinc-400">JMdict/EDICT © EDRDG</span>
           </button>
         )}
 

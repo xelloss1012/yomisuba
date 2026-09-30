@@ -36,6 +36,7 @@ export const TranslationModal: React.FC<Props> = ({
     baseForm: string;
     searchTerms: string[];
     entries: DictionaryEntry[];
+    englishFallbackError?: string;
   } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -68,6 +69,7 @@ export const TranslationModal: React.FC<Props> = ({
           baseForm: lookup.baseForm,
           searchTerms: lookup.searchTerms,
           entries: lookup.entries,
+          englishFallbackError: lookup.englishFallbackError,
         };
         if (cancelled) return;
         setDictionaryTerms(terms);
@@ -285,7 +287,7 @@ export const TranslationModal: React.FC<Props> = ({
           {dictionaryTerms && (
             <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/60 dark:bg-emerald-950/20 p-3 text-xs text-emerald-900 dark:text-emerald-200 space-y-3">
               <div className="text-[10px] font-bold uppercase tracking-[0.12em] mb-1.5 text-emerald-700 dark:text-emerald-300">
-                Diccionario JMDict local
+                Diccionario JMDict local · español prioritario
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full bg-emerald-200/80 dark:bg-emerald-900/70 px-2 py-1 font-semibold">
@@ -297,6 +299,11 @@ export const TranslationModal: React.FC<Props> = ({
                   </span>
                 ))}
               </div>
+              {dictionaryTerms.englishFallbackError && (
+                <p role="alert" className="text-amber-700 dark:text-amber-300">
+                  {dictionaryTerms.englishFallbackError}
+                </p>
+              )}
               {dictionaryTerms.entries.length === 0 ? (
                 <p className="text-zinc-600 dark:text-zinc-400">
                   No se encontró una entrada local para esta forma.
@@ -308,6 +315,9 @@ export const TranslationModal: React.FC<Props> = ({
                       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                         <span className="font-semibold text-base text-zinc-900 dark:text-zinc-100">
                           {entry.kanji.length ? entry.kanji.join(' · ') : entry.kana.join(' · ')}
+                        </span>
+                        <span className="rounded bg-emerald-100 px-1 py-0.5 text-[9px] font-bold uppercase text-emerald-800 dark:bg-emerald-900/70 dark:text-emerald-200">
+                          {entry.language}
                         </span>
                         {entry.kana.length > 0 && (
                           <span className="text-zinc-500 dark:text-zinc-400">{entry.kana.join(' · ')}</span>
@@ -329,6 +339,26 @@ export const TranslationModal: React.FC<Props> = ({
                   ))}
                 </div>
               )}
+              <p className="border-t border-emerald-200 pt-2 text-[10px] text-emerald-800 dark:border-emerald-900/60 dark:text-emerald-300">
+                JMdict/EDICT © EDRDG ·{' '}
+                <a
+                  href="https://www.edrdg.org/wiki/JMdict-EDICT_Dictionary_Project.html"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline"
+                >
+                  fuente
+                </a>
+                {' · '}
+                <a
+                  href="https://www.edrdg.org/edrdg/licence.html"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline"
+                >
+                  licencia CC BY-SA 4.0
+                </a>
+              </p>
             </div>
           )}
         </div>

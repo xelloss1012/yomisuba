@@ -1,4 +1,5 @@
 import jmdictEntries from '../data/jmdict-spa.json';
+import englishDictionaryUrl from '../data/jmdict-en.json.gz?inline';
 
 export interface DictionarySense {
   partOfSpeech: string[];
@@ -7,6 +8,7 @@ export interface DictionarySense {
 
 export interface DictionaryEntry {
   id: string;
+  language: 'es' | 'en';
   kanji: string[];
   kana: string[];
   senses: DictionarySense[];
@@ -17,6 +19,7 @@ export interface DictionaryLookup {
   baseForm: string;
   searchTerms: string[];
   entries: DictionaryEntry[];
+  englishFallbackError?: string;
 }
 
 interface CompactEntry {
@@ -27,7 +30,14 @@ interface CompactEntry {
 }
 
 const entries = jmdictEntries as CompactEntry[];
+const spanishEntryIds = new Set(entries.map((entry) => entry.id));
 let tokenizerPromise: Promise<{ tokenize(input: string): Array<{ surface_form: string; pos: string; basic_form?: string }> }> | null = null;
+let englishIndexPromise: Promise<DictionaryIndex> | null = null;
+
+interface DictionaryIndex {
+  byForm: Map<string, CompactEntry[]>;
+  forms: string[];
+}
 
 const normalizeSelection = (value: string): string => {
   return value
@@ -168,8 +178,9 @@ const getTokenizer = async () => {
   return tokenizerPromise;
 };
 
-const toEntry = (entry: CompactEntry): DictionaryEntry => ({
+const toEntry = (entry: CompactEntry, language: DictionaryEntry['language']): DictionaryEntry => ({
   id: entry.id,
+  language,
   kanji: entry.k,
   kana: entry.r,
   senses: entry.s.map((sense) => ({
@@ -178,37 +189,83 @@ const toEntry = (entry: CompactEntry): DictionaryEntry => ({
   })),
 });
 
-const findEntries = (terms: string[]): DictionaryEntry[] => {
+const createIndex = (source: CompactEntry[], excludedIds?: Set<string>): DictionaryIndex => {
+  const byForm = new Map<string, CompactEntry[]>();
+  for (const entry of source) {
+    if (excludedIds?.has(entry.id)) continue;
+    for (const form of unique([...entry.k, ...entry.r])) {
+      const matchingEntries = byForm.get(form);
+      if (matchingEntries) matchingEntries.push(entry);
+      else byForm.set(form, [entry]);
+    }
+  }
+  return { byForm, forms: [...byForm.keys()].sort() };
+};
+
+const spanishIndex = createIndex(entries);
+
+const getEnglishIndex = async (): Promise<DictionaryIndex> => {
+  if (!englishIndexPromise) {
+    englishIndexPromise = (async () => {
+      const response = await fetch(englishDictionaryUrl);
+      if (!response.ok) {
+        throw new Error(`No se pudo cargar JMdict inglés (HTTP ${response.status}).`);
+      }
+      if (!response.body || typeof DecompressionStream === 'undefined') {
+        throw new Error('Este navegador no admite la carga comprimida del diccionario inglés.');
+      }
+      const decompressed = response.body.pipeThrough(new DecompressionStream('gzip'));
+      const loadedEntries = await new Response(decompressed).json() as CompactEntry[];
+      if (!Array.isArray(loadedEntries)) {
+        throw new Error('El archivo local de JMdict inglés no tiene un formato válido.');
+      }
+      return createIndex(loadedEntries, spanishEntryIds);
+    })();
+  }
+  return englishIndexPromise;
+};
+
+const findEntries = (
+  terms: string[],
+  index: DictionaryIndex,
+  language: DictionaryEntry['language'],
+): Array<{ entry: DictionaryEntry; score: number }> => {
   const normalizedTerms = unique(terms.map(normalizeSelection)).filter(Boolean);
   const ranked = new Map<string, { entry: CompactEntry; score: number }>();
 
-  for (const entry of entries) {
-    const forms = [...entry.k, ...entry.r];
-    let bestScore = Number.POSITIVE_INFINITY;
+  const addMatches = (matches: CompactEntry[] | undefined, score: number) => {
+    for (const entry of matches || []) {
+      const current = ranked.get(entry.id);
+      if (!current || score < current.score) ranked.set(entry.id, { entry, score });
+    }
+  };
 
-    for (const term of normalizedTerms) {
-      for (const form of forms) {
-        if (form === term) {
-          bestScore = Math.min(bestScore, 0);
-        } else if (term.startsWith(form) && form.length >= 2) {
-          // Handles compounds such as 幹部様: show the 幹部 entry as well.
-          bestScore = Math.min(bestScore, 10 + (term.length - form.length));
-        } else if (form.startsWith(term) && term.length >= 2) {
-          // Also makes an incomplete selection useful as a dictionary prefix.
-          bestScore = Math.min(bestScore, 20 + (form.length - term.length));
-        }
-      }
+  for (const term of normalizedTerms) {
+    addMatches(index.byForm.get(term), 0);
+
+    for (let length = 2; length < term.length; length += 1) {
+      addMatches(index.byForm.get(term.slice(0, length)), 10 + (term.length - length));
     }
 
-    if (Number.isFinite(bestScore)) {
-      ranked.set(entry.id, { entry, score: bestScore });
+    let low = 0;
+    let high = index.forms.length;
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      if (index.forms[middle] < term) low = middle + 1;
+      else high = middle;
+    }
+    for (let position = low; position < index.forms.length; position += 1) {
+      const form = index.forms[position];
+      if (!form.startsWith(term)) break;
+      if (form.length > term.length && term.length >= 2) {
+        addMatches(index.byForm.get(form), 20 + (form.length - term.length));
+      }
     }
   }
 
   return [...ranked.values()]
     .sort((left, right) => left.score - right.score)
-    .slice(0, 20)
-    .map(({ entry }) => toEntry(entry));
+    .map(({ entry, score }) => ({ entry: toEntry(entry, language), score }));
 };
 
 export const getDictionarySearchTerms = async (value: string): Promise<DictionaryLookup> => {
@@ -243,10 +300,31 @@ export const getDictionarySearchTerms = async (value: string): Promise<Dictionar
   }
 
   searchTerms = unique([...searchTerms, ...tokenTerms, originalText]).filter((term) => term.length > 0);
+  const spanishMatches = findEntries(searchTerms, spanishIndex, 'es');
+  let englishMatches: Array<{ entry: DictionaryEntry; score: number }> = [];
+  let englishFallbackError: string | undefined;
+  if (spanishMatches.length < 20) {
+    try {
+      const englishIndex = await getEnglishIndex();
+      englishMatches = findEntries(searchTerms, englishIndex, 'en');
+    } catch (error) {
+      englishIndexPromise = null;
+      englishFallbackError = error instanceof Error
+        ? error.message
+        : 'No se pudo cargar el complemento inglés de JMdict.';
+    }
+  }
+  const spanishIds = new Set(spanishMatches.map(({ entry }) => entry.id));
+  const combinedEntries = [
+    ...spanishMatches,
+    ...englishMatches.filter(({ entry }) => !spanishIds.has(entry.id)),
+  ].slice(0, 20).map(({ entry }) => entry);
+
   return {
     originalText,
     baseForm: searchTerms[0] || originalText,
     searchTerms,
-    entries: findEntries(searchTerms),
+    entries: combinedEntries,
+    englishFallbackError,
   };
 };

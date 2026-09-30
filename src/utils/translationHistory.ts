@@ -78,6 +78,7 @@ export const formatDictionaryHistoryResponse = (
   baseForm: string,
   searchTerms: string[],
   entries: Array<{
+    language: 'es' | 'en';
     kanji: string[];
     kana: string[];
     senses: Array<{ partOfSpeech: string[]; glosses: string[] }>;
@@ -90,7 +91,7 @@ export const formatDictionaryHistoryResponse = (
   entries.forEach((entry, index) => {
     lines.push(
       '',
-      `${index + 1}. ${entry.kanji.length ? entry.kanji.join(' · ') : entry.kana.join(' · ')}`,
+      `${index + 1}. [${entry.language.toUpperCase()}] ${entry.kanji.length ? entry.kanji.join(' · ') : entry.kana.join(' · ')}`,
       ...(entry.kana.length ? [`Lectura: ${entry.kana.join(' · ')}`] : []),
       ...entry.senses.map((sense) =>
         `${sense.partOfSpeech.length ? `[${sense.partOfSpeech.join(', ')}] ` : ''}${sense.glosses.join('; ')}`

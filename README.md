@@ -35,6 +35,12 @@ Una aplicación web moderna tipo Kindle desarrollada en **React + TypeScript + V
 5. **Libro de Muestra Integrado**:
    - Incluye un botón para generar y cargar al instante un libro de prueba japonés (*走れメロス - Dazai Osamu*) con portada, ilustraciones, furigana y varios capítulos sin necesidad de buscar un archivo local.
 
+6. **Diccionario JMDict japonés-español/inglés**:
+   - Prioriza las entradas españolas y completa los resultados que faltan con la edición inglesa oficial de JMdict.
+   - El complemento inglés se distribuye comprimido y se carga solo cuando hacen falta resultados adicionales.
+   - Para actualizarlo a la última versión oficial (Python 3.8 o superior): `npm run dictionary:update`.
+   - Los datos JMdict/EDICT son © Electronic Dictionary Research and Development Group (EDRDG), bajo licencia [CC BY-SA 4.0](https://www.edrdg.org/edrdg/licence.html). Consulta también la [fuente y documentación de JMdict](https://www.edrdg.org/wiki/JMdict-EDICT_Dictionary_Project.html).
+
 ---
 
 ## 🚀 Cómo ejecutar la aplicación
