@@ -50,6 +50,49 @@ export const App: React.FC = () => {
     }
   }, [settings]);
 
+  // Screen Wake Lock to keep screen awake while app is active
+  useEffect(() => {
+    let wakeLock: any = null;
+    let isReleased = false;
+
+    const requestWakeLock = async () => {
+      if ('wakeLock' in navigator && document.visibilityState === 'visible' && !isReleased) {
+        try {
+          wakeLock = await (navigator as any).wakeLock.request('screen');
+          wakeLock?.addEventListener('release', () => {
+            wakeLock = null;
+          });
+        } catch (err) {
+          // Wake lock request might fail (e.g. low battery, tab not active)
+        }
+      }
+    };
+
+    void requestWakeLock();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void requestWakeLock();
+      } else {
+        if (wakeLock) {
+          void wakeLock.release();
+          wakeLock = null;
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      isReleased = true;
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (wakeLock) {
+        void wakeLock.release();
+        wakeLock = null;
+      }
+    };
+  }, []);
+
   const handleUpdateSettings = (newSettings: Partial<ReaderSettingsState>) => {
     setSettings((prev) => ({ ...prev, ...newSettings }));
   };
