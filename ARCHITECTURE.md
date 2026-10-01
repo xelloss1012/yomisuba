@@ -127,6 +127,16 @@ Se conservan las 6 entradas más recientes, de modo que rotar el dispositivo o c
 
 ---
 
+### 3.1. Búsqueda en el libro (`src/utils/bookSearch.ts` / `BookSearchModal.tsx`)
+
+- **Entradas**: botón de lupa en la barra superior, `Ctrl+F` y el botón «Buscar en el libro» del menú de selección (que rellena el cuadro con el texto seleccionado).
+- **Índice**: texto «buscable» de cada capítulo, calculado bajo demanda al abrir el panel y cacheado en memoria mientras el libro está abierto. Descarta espacios, lecturas `rt`/`rp`, `script` y `style`, y pliega mayúsculas y formas de ancho completo (NFKC), de modo que `ＡＢＣ` encuentra `abc` y un salto de línea del EPUB no parte una frase.
+- **Dirección de una coincidencia**: `{spineIndex, start, length}`, es decir, un desplazamiento en el texto buscable, **no una página** (las páginas dependen de fuente, tamaño y ventana). La misma extracción se aplica al HTML original (índice) y al capítulo ya maquetado (localización), por eso el desplazamiento significa lo mismo en ambos.
+- **Navegar**: solo al pulsar una coincidencia. Si es otro capítulo, se maqueta en un iframe oculto (mismo `buildChapterDocument`, mismas puntuaciones verticales con `wrapVerticalPunctuation`) para saber su página, y luego se llama a `loadChapter(spine, página)`. La página se obtiene comparando el rect del texto con el del scroller, así que cualquier `transform` activo se cancela. Pasado ~1,3 s se revalida por si fuentes o imágenes movieron el maquetado.
+- **Resaltado**: CSS Custom Highlight API (`::highlight(search-hit)`), 8 s, sin tocar el DOM; si el navegador no la tiene, solo se navega.
+- **Recientes**: hasta 20 por libro en `${bookStorageKey}_recent_searches`; se guardan al pulsar Intro o una coincidencia, no al teclear.
+- Máximo 300 coincidencias mostradas. Los fragmentos se muestran sobre el texto normalizado (sin espacios).
+
 ## 🔄 Estado Actual del Desarrollo
 
 - ✅ Lectura completa de archivos `.epub`.
@@ -147,7 +157,6 @@ Se conservan las 6 entradas más recientes, de modo que rotar el dispositivo o c
    - Guardar en `localStorage` o IndexedDB el último libro leído, el capítulo y el número de página actual.
 2. **Resaltado y Marcadores (Highlights & Bookmarks)**:
    - Permitir guardar pasajes seleccionados con colores y consultar la lista de marcadores desde la barra lateral.
-3. **Búsqueda de Texto en el Libro**:
-   - Implementar un buscador global para localizar palabras o frases a lo largo de todos los capítulos del EPUB.
+3. ~~Búsqueda de Texto en el Libro~~ (hecho, ver 3.1).
 4. **Carga de Fuentes Personalizadas**:
    - Permitir al usuario subir o seleccionar archivos de fuentes tipográficas adicionales (`.ttf` / `.otf`).

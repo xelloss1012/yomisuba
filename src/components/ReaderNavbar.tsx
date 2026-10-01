@@ -10,6 +10,7 @@ import {
   Rows,
   List,
   History,
+  Search,
 } from 'lucide-react';
 
 interface Props {
@@ -18,6 +19,7 @@ interface Props {
   isVisible: boolean;
   onToggleToc: () => void;
   onOpenBookmarks: () => void;
+  onOpenSearch: () => void;
   bookmarkCount: number;
   onOpenHistory: () => void;
   historyCount: number;
@@ -33,6 +35,7 @@ export const ReaderNavbar: React.FC<Props> = ({
   isVisible,
   onToggleToc,
   onOpenBookmarks,
+  onOpenSearch,
   bookmarkCount,
   onOpenHistory,
   historyCount,
@@ -92,6 +95,14 @@ export const ReaderNavbar: React.FC<Props> = ({
                 {bookmarkCount}
               </span>
             )}
+          </button>
+          <button
+            onClick={onOpenSearch}
+            title="Buscar en el libro (Ctrl+F)"
+            aria-label="Buscar en el libro"
+            className="tap-area rounded-lg p-2 text-zinc-700 transition-colors hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
+          >
+            <Search className="h-4 w-4" />
           </button>
           <button
             onClick={onOpenHistory}

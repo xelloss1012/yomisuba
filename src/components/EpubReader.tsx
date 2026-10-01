@@ -25,6 +25,17 @@ import {
   TranslationHistoryKind,
 } from '../utils/translationHistory';
 import { DictionaryLookup, getDictionarySearchTerms } from '../utils/dictionary';
+import { BookSearchModal } from './BookSearchModal';
+import {
+  addRecentSearch,
+  clearRecentSearches,
+  extractSearchText,
+  locateSearchRange,
+  pageOfRange,
+  readRecentSearches,
+  removeRecentSearch,
+  SearchHit,
+} from '../utils/bookSearch';
 
 type ReadingPosition = ReaderBookmark;
 
@@ -90,6 +101,35 @@ const countScrollerPages = (
   return Math.max(1, Math.ceil(extent / viewportWidth));
 };
 
+// Force common Japanese ellipsis, exclamation and question marks upright in
+// vertical writing. Shared by the live reader and the hidden frame that finds
+// where a search hit falls, so both lay out exactly the same DOM.
+const wrapVerticalPunctuation = (doc: Document) => {
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+  const textNodes: Text[] = [];
+  let node: Node | null;
+  while ((node = walker.nextNode())) {
+    if (node.parentElement?.closest('style, script, .vertical-punctuation')) continue;
+    if (/[…⋯︙!?！？‼⁇⁉]/.test(node.nodeValue || '')) textNodes.push(node as Text);
+  }
+  textNodes.forEach((textNode) => {
+    const parts = (textNode.nodeValue || '').split(/([…⋯︙!?！？‼⁇⁉]+)/g);
+    const fragment = doc.createDocumentFragment();
+    parts.forEach((part) => {
+      if (!part) return;
+      if (/^[…⋯︙!?！？‼⁇⁉]+$/.test(part)) {
+        const span = doc.createElement('span');
+        span.className = 'vertical-punctuation';
+        span.textContent = part;
+        fragment.appendChild(span);
+      } else {
+        fragment.appendChild(doc.createTextNode(part));
+      }
+    });
+    textNode.parentNode?.replaceChild(fragment, textNode);
+  });
+};
+
 const hashString = (value: string) => {
   let hash = 5381;
   for (let index = 0; index < value.length; index += 1) {
@@ -129,6 +169,15 @@ export const EpubReader: React.FC<Props> = ({
   const [tocError, setTocError] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const bookStorageKey = `ereader_book_${encodeURIComponent(`${epub.metadata.title}|${epub.metadata.creator}`)}`;
+  const recentSearchesStorageKey = `${bookStorageKey}_recent_searches`;
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchSeed, setSearchSeed] = useState({ text: '', token: 0 });
+  const [recentSearches, setRecentSearches] = useState<string[]>(() =>
+    readRecentSearches(recentSearchesStorageKey)
+  );
+  // Searchable text of each chapter, filled on demand and kept while the book is open.
+  const chapterSearchTextRef = useRef<Map<number, Promise<string>>>(new Map());
+  const searchHighlightTimerRef = useRef<number | undefined>(undefined);
   const translationHistoryStorageKey = `${bookStorageKey}_translation_history`;
   const [translationHistory, setTranslationHistory] = useState<TranslationHistoryEntry[]>(() =>
     readTranslationHistory(translationHistoryStorageKey)
@@ -938,32 +987,7 @@ export const EpubReader: React.FC<Props> = ({
         doc.write(fullHtml);
         doc.close();
 
-        // Force common Japanese ellipsis, exclamation, and question marks upright in vertical writing.
-        if (isVertical) {
-          const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
-          const textNodes: Text[] = [];
-          let node: Node | null;
-          while ((node = walker.nextNode())) {
-            if (node.parentElement?.closest('style, script, .vertical-punctuation')) continue;
-            if (/[…⋯︙!?！？‼⁇⁉]/.test(node.nodeValue || '')) textNodes.push(node as Text);
-          }
-          textNodes.forEach((textNode) => {
-            const parts = (textNode.nodeValue || '').split(/([…⋯︙!?！？‼⁇⁉]+)/g);
-            const fragment = doc.createDocumentFragment();
-            parts.forEach((part) => {
-              if (!part) return;
-              if (/^[…⋯︙!?！？‼⁇⁉]+$/.test(part)) {
-                const span = doc.createElement('span');
-                span.className = 'vertical-punctuation';
-                span.textContent = part;
-                fragment.appendChild(span);
-              } else {
-                fragment.appendChild(doc.createTextNode(part));
-              }
-            });
-            textNode.parentNode?.replaceChild(fragment, textNode);
-          });
-        }
+        if (isVertical) wrapVerticalPunctuation(doc);
 
         const scroller = doc.getElementById('reader-scroller');
         if (scroller) {
@@ -1898,8 +1922,8 @@ export const EpubReader: React.FC<Props> = ({
   useEffect(() => { currentSpineRef.current = currentSpineIndex; }, [currentSpineIndex]);
   useEffect(() => {
     selectedTextRef.current = selectedText;
-    openOverlayRef.current = isBookmarksOpen || isTranslationHistoryOpen || isTocOpen || isSettingsOpen || isTranslateOpen || Boolean(imageViewerSrc);
-  }, [imageViewerSrc, isBookmarksOpen, isSettingsOpen, isTocOpen, isTranslateOpen, isTranslationHistoryOpen, selectedText]);
+    openOverlayRef.current = isBookmarksOpen || isSearchOpen || isTranslationHistoryOpen || isTocOpen || isSettingsOpen || isTranslateOpen || Boolean(imageViewerSrc);
+  }, [imageViewerSrc, isBookmarksOpen, isSearchOpen, isSettingsOpen, isTocOpen, isTranslateOpen, isTranslationHistoryOpen, selectedText]);
 
   useEffect(() => {
     const query = selectedText.trim();
@@ -1999,6 +2023,173 @@ export const EpubReader: React.FC<Props> = ({
       bookPage: getGlobalPage(position.spineIndex, position.page) + 1,
     };
   });
+  // ─── SEARCH IN BOOK ───────────────────────────────────────────────────────────
+  useEffect(() => {
+    chapterSearchTextRef.current.clear();
+  }, [epub]);
+
+  const getChapterSearchText = useCallback((spineIndex: number) => {
+    const cache = chapterSearchTextRef.current;
+    let pending = cache.get(spineIndex);
+    if (!pending) {
+      pending = epub.getChapterContent(epub.spine[spineIndex].href).then((rawHtml) => {
+        const parsed = new DOMParser().parseFromString(rawHtml, 'text/html');
+        return extractSearchText(parsed.body, parsed);
+      });
+      cache.set(spineIndex, pending);
+      pending.catch(() => cache.delete(spineIndex));
+    }
+    return pending;
+  }, [epub]);
+
+  // Label shown above each group of hits: the nearest table-of-contents entry
+  // at or before the chapter file the hit lives in.
+  const spineLabels = useMemo(() => {
+    const labels: string[] = new Array(epub.spine.length).fill('');
+    const visit = (items: typeof epub.toc) => {
+      items.forEach((item) => {
+        const index = resolveSpineIndex(item.href);
+        if (index >= 0 && !labels[index]) labels[index] = item.label;
+        if (item.subitems) visit(item.subitems);
+      });
+    };
+    visit(epub.toc);
+    let carried = '';
+    return labels.map((label, index) => {
+      if (label) carried = label;
+      return carried || `Sección ${index + 1}`;
+    });
+  }, [epub.spine.length, epub.toc, resolveSpineIndex]);
+
+  const openSearch = useCallback((text = '') => {
+    setSearchSeed((seed) => ({ text: text.trim().slice(0, 100), token: seed.token + 1 }));
+    setIsSearchOpen(true);
+  }, []);
+
+  const handleRememberSearch = useCallback((query: string) => {
+    setRecentSearches((list) => addRecentSearch(recentSearchesStorageKey, list, query));
+  }, [recentSearchesStorageKey]);
+
+  const handleRemoveRecentSearch = useCallback((query: string) => {
+    setRecentSearches((list) => removeRecentSearch(recentSearchesStorageKey, list, query));
+  }, [recentSearchesStorageKey]);
+
+  const handleClearRecentSearches = useCallback(() => {
+    setRecentSearches(clearRecentSearches(recentSearchesStorageKey));
+  }, [recentSearchesStorageKey]);
+
+  // Lays the hit's chapter out in a hidden frame, exactly as the reader would,
+  // to learn which page the hit lands on without showing anything meanwhile.
+  const findHitPage = useCallback(async (hit: SearchHit): Promise<number> => {
+    const host = iframeRef.current;
+    if (!host) return 0;
+    const vw = host.clientWidth || window.innerWidth;
+    const vh = host.clientHeight || window.innerHeight;
+    const frame = document.createElement('iframe');
+    frame.style.cssText = `position:fixed;left:-10000px;top:0;width:${vw}px;height:${vh}px;visibility:hidden;pointer-events:none;border:0;`;
+    document.body.appendChild(frame);
+    try {
+      const rawHtml = await epub.getChapterContent(epub.spine[hit.spineIndex].href);
+      const doc = frame.contentDocument;
+      if (!doc) return 0;
+      doc.open();
+      doc.write(buildChapterDocument(rawHtml).html);
+      doc.close();
+      if (isVertical) wrapVerticalPunctuation(doc);
+      await doc.fonts?.ready;
+      await Promise.race([
+        Promise.all(Array.from(doc.images).map((image) => image.complete
+          ? Promise.resolve()
+          : new Promise<void>((resolve) => {
+            image.addEventListener('load', () => resolve(), { once: true });
+            image.addEventListener('error', () => resolve(), { once: true });
+          }))),
+        new Promise<void>((resolve) => window.setTimeout(resolve, 1200)),
+      ]);
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 40));
+      const scroller = doc.getElementById('reader-scroller');
+      if (!scroller) return 0;
+      const range = locateSearchRange(scroller, doc, hit.start, hit.length);
+      if (!range) return 0;
+      const pages = countScrollerPages(doc, scroller, isVertical, vw, vh);
+      return Math.min(pages - 1, pageOfRange(range, scroller, isVertical, vw, vh));
+    } finally {
+      frame.remove();
+    }
+  }, [buildChapterDocument, epub, isVertical]);
+
+  // Page the hit currently sits on in the live reader, or null when it cannot
+  // be found there.
+  const getLiveHitPage = useCallback((hit: SearchHit): number | null => {
+    const iframe = iframeRef.current;
+    const doc = iframe?.contentDocument;
+    const scroller = doc?.getElementById('reader-scroller');
+    if (!iframe || !doc || !scroller) return null;
+    const range = locateSearchRange(scroller, doc, hit.start, hit.length);
+    if (!range) return null;
+    const vw = iframe.clientWidth || window.innerWidth;
+    const vh = iframe.clientHeight || window.innerHeight;
+    return pageOfRange(range, scroller, isVertical, vw, vh);
+  }, [isVertical]);
+
+  // Marks the hit on the page for a few seconds so it is easy to spot. Uses the
+  // CSS Custom Highlight API, which paints over the text without touching the
+  // DOM (and so without disturbing the layout); where it is missing the reader
+  // still lands on the right page, just without the marker.
+  const highlightSearchHit = useCallback((hit: SearchHit) => {
+    const iframe = iframeRef.current;
+    const doc = iframe?.contentDocument;
+    const scroller = doc?.getElementById('reader-scroller');
+    const win = iframe?.contentWindow as (Window & {
+      Highlight?: new (...ranges: Range[]) => unknown;
+      CSS?: { highlights?: { set(name: string, value: unknown): void; delete(name: string): void } };
+    }) | null | undefined;
+    const registry = win?.CSS?.highlights;
+    const HighlightClass = win?.Highlight;
+    if (!doc || !scroller || !registry || !HighlightClass) return;
+    const range = locateSearchRange(scroller, doc, hit.start, hit.length);
+    if (!range) return;
+    if (!doc.getElementById('search-hit-style')) {
+      const style = doc.createElement('style');
+      style.id = 'search-hit-style';
+      style.textContent = '::highlight(search-hit){background-color:rgba(250,204,21,0.7);color:inherit;}';
+      doc.head.appendChild(style);
+    }
+    registry.set('search-hit', new HighlightClass(range));
+    window.clearTimeout(searchHighlightTimerRef.current);
+    searchHighlightTimerRef.current = window.setTimeout(() => registry.delete('search-hit'), 8000);
+  }, []);
+
+  const handleSelectSearchHit = useCallback(async (hit: SearchHit) => {
+    setIsSearchOpen(false);
+    let page: number;
+    if (hit.spineIndex === currentSpineRef.current) {
+      page = Math.min(
+        Math.max(0, totalPagesRef.current - 1),
+        getLiveHitPage(hit) ?? currentPageRef.current,
+      );
+      currentPageRef.current = page;
+      setCurrentPage(page);
+      updatePagination();
+    } else {
+      page = await findHitPage(hit);
+      await loadChapter(hit.spineIndex, page);
+    }
+    highlightSearchHit(hit);
+    // Fonts and images can still shift the layout after the chapter appears,
+    // so once it has settled, re-check that the hit really is on the page
+    // shown and correct it if the page moved. Skipped if the reader has turned
+    // the page or left the chapter in the meantime.
+    window.setTimeout(() => {
+      if (currentSpineRef.current !== hit.spineIndex || currentPageRef.current !== page) return;
+      const actual = getLiveHitPage(hit);
+      if (actual === null || actual === page || actual >= totalPagesRef.current) return;
+      currentPageRef.current = actual;
+      setCurrentPage(actual);
+      updatePagination();
+    }, 1300);
+  }, [findHitPage, getLiveHitPage, highlightSearchHit, loadChapter, updatePagination]);
+
   const bookmarkPageMarkers = isBookPaginationReady
     ? bookmarks.map((position) => getGlobalPage(position.spineIndex, position.page))
     : [];
@@ -2123,7 +2314,17 @@ export const EpubReader: React.FC<Props> = ({
   // Keyboard
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (isSearchOpen) {
+        // The search box owns the keyboard: space, j and k must type, not turn pages.
+        if (e.key === 'Escape') setIsSearchOpen(false);
+        return;
+      }
       if (isSettingsOpen || isTocOpen || isTranslateOpen) return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        openSearch(selectedTextRef.current);
+        return;
+      }
       if (isTranslationHistoryOpen) {
         if (e.key === 'Escape') setIsTranslationHistoryOpen(false);
         return;
@@ -2156,7 +2357,7 @@ export const EpubReader: React.FC<Props> = ({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [imageViewerSrc, isBookmarksOpen, isRtl, isSettingsOpen, isTocOpen, isTranslateOpen, isTranslationHistoryOpen, handleNextPage, handlePrevPage, onCloseBook]);
+  }, [imageViewerSrc, isBookmarksOpen, isRtl, isSearchOpen, isSettingsOpen, isTocOpen, isTranslateOpen, isTranslationHistoryOpen, handleNextPage, handlePrevPage, onCloseBook, openSearch]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2165,6 +2366,7 @@ export const EpubReader: React.FC<Props> = ({
       if (cancelled) return;
       if (imageViewerSrc) setImageViewerSrc(null);
       else if (isTranslationHistoryOpen) setIsTranslationHistoryOpen(false);
+      else if (isSearchOpen) setIsSearchOpen(false);
       else if (isBookmarksOpen) setIsBookmarksOpen(false);
       else onCloseBook();
     }).then((listener) => {
@@ -2174,7 +2376,7 @@ export const EpubReader: React.FC<Props> = ({
       cancelled = true;
       if (removeListener) void removeListener();
     };
-  }, [imageViewerSrc, isBookmarksOpen, isTranslationHistoryOpen, onCloseBook]);
+  }, [imageViewerSrc, isBookmarksOpen, isSearchOpen, isTranslationHistoryOpen, onCloseBook]);
 
   const handleCopyDebug = async () => {
     const text = debugLines.join('\n');
@@ -2294,6 +2496,7 @@ export const EpubReader: React.FC<Props> = ({
         isVisible={showUi}
         onToggleToc={() => setIsTocOpen(true)}
         onOpenBookmarks={() => setIsBookmarksOpen(true)}
+        onOpenSearch={() => openSearch()}
         bookmarkCount={bookmarks.length}
         onOpenHistory={() => setIsTranslationHistoryOpen(true)}
         historyCount={translationHistory.length}
@@ -2419,7 +2622,7 @@ export const EpubReader: React.FC<Props> = ({
         // panel open it covered the bottom of the dictionary result. Fold it
         // away while any overlay is on screen, as it is already folded away
         // while the selection is being dragged.
-        isAdjusting={isSelectionAdjusting || isTranslateOpen || isBookmarksOpen || isTranslationHistoryOpen || isTocOpen || isSettingsOpen || Boolean(imageViewerSrc)}
+        isAdjusting={isSelectionAdjusting || isTranslateOpen || isBookmarksOpen || isSearchOpen || isTranslationHistoryOpen || isTocOpen || isSettingsOpen || Boolean(imageViewerSrc)}
         dictionaryPreview={dictionaryPreview}
         isUnderlined={isSelectionUnderlined}
         onToggleUnderline={handleToggleUnderline}
@@ -2439,6 +2642,7 @@ export const EpubReader: React.FC<Props> = ({
           setAiTranslationProvider(undefined);
           setIsTranslateOpen(true);
         }}
+        onSearchInBook={() => openSearch(selectedText)}
         aiProviders={configuredAiProviders}
         onOpenAiTranslate={(provider) => {
           setAiTranslationProvider(provider);
@@ -2463,6 +2667,21 @@ export const EpubReader: React.FC<Props> = ({
         onClose={() => setIsTranslationHistoryOpen(false)}
         onRemove={handleRemoveTranslationHistoryEntry}
         onClear={handleClearTranslationHistory}
+      />
+
+      <BookSearchModal
+        isOpen={isSearchOpen}
+        initialQuery={searchSeed.text}
+        openToken={searchSeed.token}
+        spineCount={epub.spine.length}
+        getChapterText={getChapterSearchText}
+        getChapterLabel={(spineIndex) => spineLabels[spineIndex] || `Sección ${spineIndex + 1}`}
+        recentSearches={recentSearches}
+        onRememberSearch={handleRememberSearch}
+        onRemoveRecent={handleRemoveRecentSearch}
+        onClearRecents={handleClearRecentSearches}
+        onClose={() => setIsSearchOpen(false)}
+        onSelectHit={handleSelectSearchHit}
       />
 
       <BookmarksModal

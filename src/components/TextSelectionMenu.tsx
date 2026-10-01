@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Copy, Languages, Volume2, Search, BookOpen, Check, X, Underline } from 'lucide-react';
+import { Copy, Languages, Volume2, Search, BookOpen, Check, X, Underline, TextSearch } from 'lucide-react';
 import { AiProvider } from '../types/epub';
 import { AI_PROVIDER_LABELS } from '../utils/aiTranslation';
 import { DictionaryLookup } from '../utils/dictionary';
@@ -28,6 +28,7 @@ interface Props {
   dictionaryPreview: DictionaryLookup | null;
   isUnderlined: boolean;
   onToggleUnderline: () => void;
+  onSearchInBook: () => void;
   aiProviders: AiProvider[];
   onOpenAiTranslate: (provider: AiProvider) => void;
 }
@@ -42,6 +43,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
   dictionaryPreview,
   isUnderlined,
   onToggleUnderline,
+  onSearchInBook,
   aiProviders,
   onOpenAiTranslate,
 }) => {
@@ -211,7 +213,8 @@ export const TextSelectionMenu: React.FC<Props> = ({
         )}
 
         {/* Action Buttons */}
-        <div className="flex items-center justify-between gap-1">
+        {/* Wraps as a safety net: on a phone the seven actions do not fit one row. */}
+        <div className={`flex items-center justify-between gap-1 ${isMobile ? 'flex-wrap' : ''}`}>
           <button
             onClick={(event) => {
               event.stopPropagation();
@@ -225,7 +228,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
             aria-pressed={isUnderlined}
           >
             <Underline className="h-3.5 w-3.5" />
-            <span>{isUnderlined ? 'Quitar subrayado' : 'Subrayar'}</span>
+            {!isMobile && <span>{isUnderlined ? 'Quitar subrayado' : 'Subrayar'}</span>}
           </button>
 
           {/* Copiar */}
@@ -233,9 +236,10 @@ export const TextSelectionMenu: React.FC<Props> = ({
             onClick={handleCopy}
             className="tap-area flex-1 flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl hover:bg-zinc-800 active:scale-95 text-xs font-medium transition-all"
             title="Copiar texto"
+            aria-label="Copiar texto"
           >
             {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-            <span>{copied ? 'Copiado' : 'Copiar'}</span>
+            {!isMobile && <span>{copied ? 'Copiado' : 'Copiar'}</span>}
           </button>
 
           {/* Traducir */}
@@ -272,6 +276,19 @@ export const TextSelectionMenu: React.FC<Props> = ({
             title="Pronunciación en japonés"
           >
             <Volume2 className={`w-4 h-4 ${isSpeaking ? 'animate-pulse text-amber-400' : ''}`} />
+          </button>
+
+          {/* Buscar en el libro */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onSearchInBook();
+            }}
+            className="tap-area p-2 rounded-xl hover:bg-zinc-800 active:scale-95 text-xs transition-all text-sky-300 hover:text-white"
+            title="Buscar en el libro"
+            aria-label="Buscar en el libro"
+          >
+            <TextSearch className="w-4 h-4" />
           </button>
 
           {/* Buscar en Google */}
