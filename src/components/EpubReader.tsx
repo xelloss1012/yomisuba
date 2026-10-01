@@ -1815,7 +1815,7 @@ export const EpubReader: React.FC<Props> = ({
           if (cancelled) return;
           const hasEntries = lookup.entries.length > 0;
           setDictionaryPreview(hasEntries ? lookup : null);
-          if (hasEntries) {
+          if (hasEntries && lookup.hasCompleteMatch) {
             handleSaveTranslationHistory(
               'dictionary',
               query,

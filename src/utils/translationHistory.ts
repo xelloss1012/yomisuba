@@ -54,10 +54,7 @@ export const saveTranslationHistoryEntry = (
   if (
     latest &&
     latest.kind === nextEntry.kind &&
-    latest.provider === nextEntry.provider &&
-    latest.query === nextEntry.query &&
-    latest.response === nextEntry.response &&
-    nextEntry.queriedAt - latest.queriedAt < 3000
+    latest.query === nextEntry.query
   ) {
     return history;
   }

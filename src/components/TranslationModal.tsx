@@ -73,11 +73,13 @@ export const TranslationModal: React.FC<Props> = ({
         };
         if (cancelled) return;
         setDictionaryTerms(terms);
-        onSaveHistory(
-          'dictionary',
-          selectedText,
-          formatDictionaryHistoryResponse(terms.baseForm, terms.searchTerms, terms.entries)
-        );
+        if (lookup.hasCompleteMatch) {
+          onSaveHistory(
+            'dictionary',
+            selectedText,
+            formatDictionaryHistoryResponse(terms.baseForm, terms.searchTerms, terms.entries)
+          );
+        }
       })
       .catch(() => {
         if (!cancelled) setDictionaryTerms(null);
