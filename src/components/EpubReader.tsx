@@ -153,6 +153,13 @@ export const EpubReader: React.FC<Props> = ({
   // Set from the iframe's pointer events: the menu must wait for the finger to
   // leave the screen, not merely for the selection to pause.
   const pointerActiveRef = useRef(false);
+  // Once a long-press turns into a native selection the browser cancels the
+  // pointer and the handle drags no longer reach the document as touchend or
+  // pointerup. From then on the release can only be inferred from silence, so
+  // these track whether the native selection took over and when we last saw
+  // the finger (or the selection) move.
+  const nativeSelectionTookOverRef = useRef(false);
+  const lastPointerActivityRef = useRef(0);
   const [selectionPos, setSelectionPos] = useState<SelectionPosition | null>(null);
   const [isTranslateOpen, setIsTranslateOpen] = useState(false);
   const [isTranslationHistoryOpen, setIsTranslationHistoryOpen] = useState(false);
@@ -777,24 +784,33 @@ export const EpubReader: React.FC<Props> = ({
     // and grabbing a handle, which is exactly when it gets in the way.
     setIsSelectionAdjusting(true);
     if (selectionSettleRef.current !== undefined) window.clearTimeout(selectionSettleRef.current);
-    const revealWhenReleased = (waited: number) => {
+    lastPointerActivityRef.current = Date.now();
+    // Dragging a native handle produces selection changes but no pointerdown,
+    // so a change while the native selection owns the pointer means the finger
+    // is on screen again, even if a previous silence had marked it released.
+    if (nativeSelectionTookOverRef.current) pointerActiveRef.current = true;
+    const releaseSilence = 500;
+    const revealWhenReleased = () => {
       if (!pointerActiveRef.current) {
         logDebugRef.current('selection menu revealed after release');
         setIsSelectionAdjusting(false);
         return;
       }
-      if (waited >= 3000) {
-        logDebugRef.current('selection menu revealed after 3s without selection changes');
+      // Native selection has the pointer: no up/end event will ever arrive, so
+      // a short silence (no pointer move, no selection change) means release.
+      if (
+        nativeSelectionTookOverRef.current &&
+        Date.now() - lastPointerActivityRef.current >= releaseSilence
+      ) {
+        logDebugRef.current('selection menu revealed after native selection went quiet');
+        pointerActiveRef.current = false;
         setIsSelectionAdjusting(false);
         return;
       }
-      selectionSettleRef.current = window.setTimeout(
-        () => revealWhenReleased(waited + 100),
-        100,
-      );
+      selectionSettleRef.current = window.setTimeout(revealWhenReleased, 50);
     };
     logDebugRef.current('selection menu waiting for release');
-    selectionSettleRef.current = window.setTimeout(() => revealWhenReleased(100), 100);
+    selectionSettleRef.current = window.setTimeout(revealWhenReleased, 50);
     setSelectedText(text);
     setSelectionPos({
       x: iRect.left + rect.left,
@@ -1557,9 +1573,12 @@ export const EpubReader: React.FC<Props> = ({
         doc.addEventListener('pointerdown', () => {
           countDebugRef.current('pdown');
           pointerActiveRef.current = true;
+          nativeSelectionTookOverRef.current = false;
+          lastPointerActivityRef.current = Date.now();
         }, { passive: true });
         doc.addEventListener('pointermove', (e) => {
           countDebugRef.current('pmove');
+          lastPointerActivityRef.current = Date.now();
           onSelectionPointerMove(e.clientX);
         }, { passive: true });
         doc.addEventListener('pointerup', () => {
@@ -1572,6 +1591,8 @@ export const EpubReader: React.FC<Props> = ({
         // the end of swipe gestures.
         doc.addEventListener('pointercancel', () => {
           countDebugRef.current('pcancel');
+          nativeSelectionTookOverRef.current = true;
+          lastPointerActivityRef.current = Date.now();
           pointerTracked = false;
         }, { passive: true });
         document.addEventListener('selectionchange', () => countDebugRef.current('selchg-top'));
@@ -1601,10 +1622,13 @@ export const EpubReader: React.FC<Props> = ({
         doc.addEventListener('touchstart', (e) => {
           countDebugRef.current('tstart');
           pointerActiveRef.current = true;
+          nativeSelectionTookOverRef.current = false;
+          lastPointerActivityRef.current = Date.now();
           if (e.touches[0]) onStart(e.touches[0].clientX, e.touches[0].clientY);
         }, { passive: true });
         doc.addEventListener('touchmove', (e) => {
           countDebugRef.current('tmove');
+          lastPointerActivityRef.current = Date.now();
           if (e.touches[0]) onMove(e.touches[0].clientX, e.touches[0].clientY);
         }, { passive: true });
         doc.addEventListener('touchend', (e) => {
@@ -1614,6 +1638,8 @@ export const EpubReader: React.FC<Props> = ({
         }, { passive: true });
         doc.addEventListener('touchcancel', () => {
           countDebugRef.current('tcancel');
+          nativeSelectionTookOverRef.current = true;
+          lastPointerActivityRef.current = Date.now();
         }, { passive: true });
 
         // ── Trigger pagination once content is laid out ──
