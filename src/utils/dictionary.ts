@@ -282,11 +282,16 @@ const getEnglishIndex = async (): Promise<DictionaryIndex> => {
   return englishIndexPromise;
 };
 
-const isVerbOrAdjective = (entry: CompactEntry): boolean => {
+const isInflectableEntry = (entry: CompactEntry, form: string): boolean => {
   return entry.s.some((sense) =>
-    sense.p.some((pos) =>
-      pos.startsWith('v') || pos.startsWith('adj') || pos === 'exp' || pos === 'aux' || pos === 'cop'
-    )
+    sense.p.some((pos) => {
+      const normalizedPos = pos.toLowerCase();
+      const isSuruVerb = pos === 'vs' || pos.startsWith('vs-') || normalizedPos.includes('verb suru');
+      const isVerb = (pos.startsWith('v') && !pos.startsWith('vs')) ||
+        (/\bverb\b/.test(normalizedPos) && (!isSuruVerb || form.endsWith('する')));
+      const isAdjective = pos.startsWith('adj') || /\badjective\b/.test(normalizedPos);
+      return isVerb || isAdjective || (isSuruVerb && form.endsWith('する'));
+    })
   );
 };
 
@@ -299,9 +304,11 @@ const findRawEntries = (
   const normalizedInflected = unique(inflectedTerms.map(normalizeSelection)).filter(Boolean);
   const ranked = new Map<string, { entry: CompactEntry; score: number }>();
 
-  const addMatches = (matches: CompactEntry[] | undefined, score: number, requireVerbOrAdj = false) => {
+  const addMatches = (matches: CompactEntry[] | undefined, score: number, form: string, requireInflectable = false) => {
     for (const entry of matches || []) {
-      const effectiveScore = requireVerbOrAdj && !isVerbOrAdjective(entry) ? Math.max(score, 5) : score;
+      const effectiveScore = requireInflectable && !isInflectableEntry(entry, form)
+        ? Math.max(score, 5)
+        : score;
       const current = ranked.get(entry.id);
       if (!current || effectiveScore < current.score) {
         ranked.set(entry.id, { entry, score: effectiveScore });
@@ -310,10 +317,10 @@ const findRawEntries = (
   };
 
   for (const term of normalizedDirect) {
-    addMatches(index.byForm.get(term), 0, false);
+    addMatches(index.byForm.get(term), 0, term);
 
     for (let length = 2; length < term.length; length += 1) {
-      addMatches(index.byForm.get(term.slice(0, length)), 10 + (term.length - length), false);
+      addMatches(index.byForm.get(term.slice(0, length)), 10 + (term.length - length), term);
     }
 
     let low = 0;
@@ -327,16 +334,16 @@ const findRawEntries = (
       const form = index.forms[position];
       if (!form.startsWith(term)) break;
       if (form.length > term.length && term.length >= 2) {
-        addMatches(index.byForm.get(form), 20 + (form.length - term.length), false);
+        addMatches(index.byForm.get(form), 20 + (form.length - term.length), term);
       }
     }
   }
 
   for (const term of normalizedInflected) {
-    addMatches(index.byForm.get(term), 0, true);
+    addMatches(index.byForm.get(term), 0, term, true);
 
     for (let length = 2; length < term.length; length += 1) {
-      addMatches(index.byForm.get(term.slice(0, length)), 10 + (term.length - length), true);
+      addMatches(index.byForm.get(term.slice(0, length)), 10 + (term.length - length), term, true);
     }
 
     let low = 0;
@@ -350,7 +357,7 @@ const findRawEntries = (
       const form = index.forms[position];
       if (!form.startsWith(term)) break;
       if (form.length > term.length && term.length >= 2) {
-        addMatches(index.byForm.get(form), 20 + (form.length - term.length), true);
+        addMatches(index.byForm.get(form), 20 + (form.length - term.length), term, true);
       }
     }
   }

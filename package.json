@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "build:web": "npm run build",
+    "dictionary:test": "node scripts/test-dictionary-search.mjs",
     "android:add": "npm run build && cap add android",
     "android:sync": "npm run build && cap sync android",
     "android:open": "cap open android",
