@@ -1,3 +1,4 @@
+import TokenizerWorker from './tokenizer.worker?worker&inline';
 import jmdictEntries from '../data/jmdict-spa.json';
 import englishDictionaryUrl from '../data/jmdict-en.json.gz?inline';
 
@@ -32,7 +33,15 @@ interface CompactEntry {
 
 const entries = jmdictEntries as CompactEntry[];
 const spanishEntryIds = new Set(entries.map((entry) => entry.id));
-let tokenizerPromise: Promise<{ tokenize(input: string): Array<{ surface_form: string; pos: string; basic_form?: string }> }> | null = null;
+interface DictionaryToken {
+  surface_form: string;
+  pos: string;
+  basic_form?: string;
+}
+interface TokenizerClient {
+  tokenize(input: string): Promise<DictionaryToken[]>;
+}
+let tokenizerPromise: Promise<TokenizerClient> | null = null;
 let englishIndexPromise: Promise<DictionaryIndex> | null = null;
 
 interface DictionaryIndex {
@@ -217,116 +226,91 @@ const guessBaseForms = (word: string): string[] => {
   return unique(candidates);
 };
 
-const crcTable = (() => {
-  const table = new Uint32Array(256);
-  for (let n = 0; n < 256; n += 1) {
-    let c = n;
-    for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    table[n] = c >>> 0;
-  }
-  return table;
-})();
+// kuromoji runs in a worker (see tokenizer.worker.ts): building it on the main
+// thread froze the reader for seconds on a phone.
+const tokenizerTimeoutMs = 90000;
+// After a failure (no dictionary files, no Worker support) do not try again on
+// every selection: each attempt would download the whole dictionary anew.
+const tokenizerRetryDelayMs = 5 * 60 * 1000;
+let tokenizerFailedAt = 0;
 
-// Wraps raw bytes in a valid gzip container made of stored (uncompressed)
-// deflate blocks.
-const gzipStored = (raw: Uint8Array): Uint8Array => {
-  const blockSize = 0xffff;
-  const blocks = Math.max(1, Math.ceil(raw.length / blockSize));
-  const out = new Uint8Array(10 + raw.length + blocks * 5 + 8);
-  const view = new DataView(out.buffer);
-  out.set([0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff], 0);
-  let position = 10;
-  for (let start = 0, block = 0; block < blocks; block += 1, start += blockSize) {
-    const length = Math.min(blockSize, raw.length - start);
-    out[position] = block === blocks - 1 ? 1 : 0;
-    view.setUint16(position + 1, length, true);
-    view.setUint16(position + 3, ~length & 0xffff, true);
-    out.set(raw.subarray(start, start + length), position + 5);
-    position += 5 + length;
-  }
-  let crc = 0xffffffff;
-  for (let index = 0; index < raw.length; index += 1) {
-    crc = crcTable[(crc ^ raw[index]) & 0xff] ^ (crc >>> 8);
-  }
-  view.setUint32(position, (crc ^ 0xffffffff) >>> 0, true);
-  view.setUint32(position + 4, raw.length >>> 0, true);
-  return out;
-};
-
-// kuromoji downloads its *.dat.gz files and gunzips them itself. Many static
-// servers (Vite dev/preview among them) serve a .gz with `Content-Encoding:
-// gzip`, so the browser has already decompressed the body and kuromoji's own
-// gunzip throws "invalid file signature" inside xhr.onload, which leaves the
-// build callback uncalled forever. While the tokenizer builds, dictionary
-// responses that are no longer gzip are re-wrapped so both kinds of server work.
-const installDictionaryXhrShim = (): (() => void) => {
-  const NativeXhr = window.XMLHttpRequest;
-  const responseGetter = Object.getOwnPropertyDescriptor(NativeXhr.prototype, 'response')?.get;
-  if (!responseGetter) return () => undefined;
-  const nativeResponse: () => unknown = responseGetter;
-
-  class DictionaryXhr extends NativeXhr {
-    private dictionaryUrl = false;
-    private wrapped: ArrayBuffer | null = null;
-
-    open(method: string, url: string | URL, ...rest: unknown[]) {
-      this.dictionaryUrl = String(url).includes('/dict/');
-      return (super.open as (...args: unknown[]) => void)(method, url, ...rest);
+const createTokenizer = (): Promise<TokenizerClient> =>
+  new Promise((resolve, reject) => {
+    let worker: Worker;
+    try {
+      worker = new TokenizerWorker();
+    } catch (error) {
+      reject(error);
+      return;
     }
+    const pending = new Map<number, { resolve: (tokens: DictionaryToken[]) => void; reject: (error: Error) => void }>();
+    let nextId = 1;
+    let settled = false;
 
-    get response() {
-      const body = nativeResponse.call(this);
-      if (!this.dictionaryUrl || !(body instanceof ArrayBuffer) || body.byteLength < 2) return body;
-      const head = new Uint8Array(body, 0, 2);
-      if (head[0] === 0x1f && head[1] === 0x8b) return body;
-      if (!this.wrapped) {
-        const wrapped = gzipStored(new Uint8Array(body));
-        this.wrapped = wrapped.buffer.slice(wrapped.byteOffset, wrapped.byteOffset + wrapped.byteLength) as ArrayBuffer;
+    const fail = (error: Error) => {
+      worker.terminate();
+      pending.forEach((request) => request.reject(error));
+      pending.clear();
+      if (settled) {
+        // The worker died after it was usable: let the next lookup start afresh.
+        tokenizerPromise = null;
+      } else {
+        settled = true;
+        reject(error);
       }
-      return this.wrapped;
-    }
-  }
+    };
+    const timer = window.setTimeout(() => fail(new Error('kuromoji: tiempo de carga del diccionario agotado')), tokenizerTimeoutMs);
 
-  window.XMLHttpRequest = DictionaryXhr as unknown as typeof XMLHttpRequest;
-  return () => {
-    window.XMLHttpRequest = NativeXhr;
-  };
-};
+    worker.onerror = (event) => {
+      window.clearTimeout(timer);
+      fail(new Error(event.message || 'kuromoji: error del worker'));
+    };
+    worker.onmessage = (event: MessageEvent) => {
+      const message = event.data as
+        | { type: 'ready' }
+        | { type: 'init-error'; message: string }
+        | { type: 'tokens'; id: number; tokens: DictionaryToken[] };
+      if (message.type === 'ready') {
+        window.clearTimeout(timer);
+        settled = true;
+        resolve({
+          tokenize: (text) =>
+            new Promise((resolveTokens, rejectTokens) => {
+              const id = nextId;
+              nextId += 1;
+              pending.set(id, { resolve: resolveTokens, reject: rejectTokens });
+              worker.postMessage({ type: 'tokenize', id, text });
+            }),
+        });
+      } else if (message.type === 'init-error') {
+        window.clearTimeout(timer);
+        fail(new Error(message.message));
+      } else if (message.type === 'tokens') {
+        pending.get(message.id)?.resolve(message.tokens);
+        pending.delete(message.id);
+      }
+    };
+    worker.postMessage({ type: 'init', dicPath: new URL('/dict/', window.location.href).href });
+  });
 
-const tokenizerTimeoutMs = 60000;
-
-const getTokenizer = async () => {
+const getTokenizer = async (): Promise<TokenizerClient> => {
   if (!tokenizerPromise) {
-    const attempt = import('kuromoji').then(
-      (kuromoji) =>
-        new Promise<NonNullable<typeof tokenizerPromise> extends Promise<infer T> ? T : never>((resolve, reject) => {
-          const restoreXhr = installDictionaryXhrShim();
-          const timer = window.setTimeout(() => {
-            restoreXhr();
-            reject(new Error('kuromoji: tiempo de carga del diccionario agotado'));
-          }, tokenizerTimeoutMs);
-          try {
-            kuromoji.builder({ dicPath: '/dict/' }).build((error, tokenizer) => {
-              window.clearTimeout(timer);
-              restoreXhr();
-              if (error) reject(error);
-              else resolve(tokenizer);
-            });
-          } catch (error) {
-            window.clearTimeout(timer);
-            restoreXhr();
-            reject(error);
-          }
-        })
-    );
-    // A failed build must not be cached, or one bad attempt would disable the
-    // tokenizer until the page is reloaded.
+    if (Date.now() - tokenizerFailedAt < tokenizerRetryDelayMs) {
+      throw new Error('kuromoji no disponible');
+    }
+    const attempt = createTokenizer();
     attempt.catch(() => {
+      tokenizerFailedAt = Date.now();
       if (tokenizerPromise === attempt) tokenizerPromise = null;
     });
     tokenizerPromise = attempt;
   }
   return tokenizerPromise;
+};
+
+/** Starts loading the tokenizer in the background so the first lookup is instant. */
+export const warmUpDictionary = () => {
+  void getTokenizer().catch(() => undefined);
 };
 
 const toEntry = (entry: CompactEntry, language: DictionaryEntry['language']): DictionaryEntry => ({
@@ -471,7 +455,7 @@ export const getDictionarySearchTerms = async (value: string): Promise<Dictionar
 
   try {
     const tokenizer = await getTokenizer();
-    const tokens = tokenizer.tokenize(originalText);
+    const tokens = await tokenizer.tokenize(originalText);
     for (const token of tokens) {
       if (!['記号', '助詞', '助動詞'].includes(token.pos) && token.surface_form) {
         tokenSurfaceTerms.push(token.surface_form);

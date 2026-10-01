@@ -24,7 +24,7 @@ import {
   TranslationHistoryEntry,
   TranslationHistoryKind,
 } from '../utils/translationHistory';
-import { DictionaryLookup, getDictionarySearchTerms } from '../utils/dictionary';
+import { DictionaryLookup, getDictionarySearchTerms, warmUpDictionary } from '../utils/dictionary';
 import { BookSearchModal } from './BookSearchModal';
 import {
   addRecentSearch,
@@ -839,6 +839,7 @@ export const EpubReader: React.FC<Props> = ({
     // is on screen again, even if a previous silence had marked it released.
     if (nativeSelectionTookOverRef.current) pointerActiveRef.current = true;
     const releaseSilence = 500;
+    const releaseFallbackSilence = 1500;
     const revealWhenReleased = () => {
       if (!pointerActiveRef.current) {
         logDebugRef.current('selection menu revealed after release');
@@ -852,6 +853,14 @@ export const EpubReader: React.FC<Props> = ({
         Date.now() - lastPointerActivityRef.current >= releaseSilence
       ) {
         logDebugRef.current('selection menu revealed after native selection went quiet');
+        pointerActiveRef.current = false;
+        setIsSelectionAdjusting(false);
+        return;
+      }
+      // Safety net: whatever events the device did or did not send, a menu that
+      // stays folded with no input at all would leave the reader without it.
+      if (Date.now() - lastPointerActivityRef.current >= releaseFallbackSilence) {
+        logDebugRef.current('selection menu revealed after silence fallback');
         pointerActiveRef.current = false;
         setIsSelectionAdjusting(false);
         return;
@@ -2023,6 +2032,13 @@ export const EpubReader: React.FC<Props> = ({
       bookPage: getGlobalPage(position.spineIndex, position.page) + 1,
     };
   });
+  // Load the morphological dictionary in its worker while the book is read, so
+  // the first word selected already finds it ready.
+  useEffect(() => {
+    const timer = window.setTimeout(warmUpDictionary, 2500);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   // ─── SEARCH IN BOOK ───────────────────────────────────────────────────────────
   useEffect(() => {
     chapterSearchTextRef.current.clear();
