@@ -778,15 +778,23 @@ export const EpubReader: React.FC<Props> = ({
     setIsSelectionAdjusting(true);
     if (selectionSettleRef.current !== undefined) window.clearTimeout(selectionSettleRef.current);
     const revealWhenReleased = (waited: number) => {
-      // Handles do not always deliver a matching pointerup, so give up waiting
-      // after a while rather than hiding the menu for good.
-      if (!pointerActiveRef.current || waited >= 2500) {
+      if (!pointerActiveRef.current) {
+        logDebugRef.current('selection menu revealed after release');
         setIsSelectionAdjusting(false);
         return;
       }
-      selectionSettleRef.current = window.setTimeout(() => revealWhenReleased(waited + 250), 250);
+      if (waited >= 3000) {
+        logDebugRef.current('selection menu revealed after 3s without selection changes');
+        setIsSelectionAdjusting(false);
+        return;
+      }
+      selectionSettleRef.current = window.setTimeout(
+        () => revealWhenReleased(waited + 100),
+        100,
+      );
     };
-    selectionSettleRef.current = window.setTimeout(() => revealWhenReleased(300), 300);
+    logDebugRef.current('selection menu waiting for release');
+    selectionSettleRef.current = window.setTimeout(() => revealWhenReleased(100), 100);
     setSelectedText(text);
     setSelectionPos({
       x: iRect.left + rect.left,
@@ -1517,18 +1525,47 @@ export const EpubReader: React.FC<Props> = ({
         };
 
         logDebugRef.current('listeners ok');
+        const traceInputEvent = (scope: string, event: Event) => {
+          const target = event.target && 'tagName' in event.target
+            ? String(event.target.tagName).toLowerCase()
+            : 'unknown';
+          const pointerType = 'pointerType' in event ? ` pointer=${event.pointerType}` : '';
+          const buttons = 'buttons' in event ? ` buttons=${event.buttons}` : '';
+          const touches = event.type.startsWith('touch')
+            ? ` touches=${(event as TouchEvent).touches.length} changed=${(event as TouchEvent).changedTouches.length}`
+            : '';
+          logDebugRef.current(
+            `${scope}.${event.type} target=${target}${pointerType}${buttons}${touches} active=${pointerActiveRef.current ? 1 : 0}`,
+          );
+        };
+        const inputEvents = [
+          'pointerdown', 'pointerup', 'pointercancel', 'lostpointercapture',
+          'touchstart', 'touchend', 'touchcancel', 'mousedown', 'mouseup',
+        ];
+        inputEvents.forEach((type) => {
+          doc.addEventListener(type, (event) => traceInputEvent('iframe', event), {
+            capture: true,
+            passive: true,
+          });
+        });
         doc.addEventListener('selectionchange', () => {
           countDebugRef.current('selchg');
           handleIframeSelectionChange();
         });
         // The native selection handles report through pointer events, so this is
         // the stream the selection paging has to run on.
-        doc.addEventListener('pointerdown', () => countDebugRef.current('pdown'), { passive: true });
+        doc.addEventListener('pointerdown', () => {
+          countDebugRef.current('pdown');
+          pointerActiveRef.current = true;
+        }, { passive: true });
         doc.addEventListener('pointermove', (e) => {
           countDebugRef.current('pmove');
           onSelectionPointerMove(e.clientX);
         }, { passive: true });
-        doc.addEventListener('pointerup', () => countDebugRef.current('pup'), { passive: true });
+        doc.addEventListener('pointerup', () => {
+          countDebugRef.current('pup');
+          pointerActiveRef.current = false;
+        }, { passive: true });
         // The browser cancels the pointer as soon as a long-press turns into a
         // native selection. That must not be read as "the finger left the
         // screen": doing so let the menu pop up mid-selection, and swallowed
@@ -1577,7 +1614,6 @@ export const EpubReader: React.FC<Props> = ({
         }, { passive: true });
         doc.addEventListener('touchcancel', () => {
           countDebugRef.current('tcancel');
-          pointerActiveRef.current = false;
         }, { passive: true });
 
         // ── Trigger pagination once content is laid out ──
@@ -1772,11 +1808,49 @@ export const EpubReader: React.FC<Props> = ({
     logDebugRef.current = (line: string) => {
       if (!debugEnabled) return;
       const stamp = new Date().toISOString().slice(17, 23);
-      debugBufferRef.current = [...debugBufferRef.current.slice(-13), `${stamp} ${line}`];
+      debugBufferRef.current = [...debugBufferRef.current.slice(-39), `${stamp} ${line}`];
     };
     countDebugRef.current = (key: string) => {
       if (!debugEnabled) return;
       debugCountsRef.current[key] = (debugCountsRef.current[key] || 0) + 1;
+    };
+  }, [debugEnabled]);
+
+  useEffect(() => {
+    if (!debugEnabled) return;
+
+    const traceInputEvent = (event: Event) => {
+      const target = event.target && 'tagName' in event.target
+        ? String(event.target.tagName).toLowerCase()
+        : 'unknown';
+      const pointerType = 'pointerType' in event ? ` pointer=${event.pointerType}` : '';
+      const buttons = 'buttons' in event ? ` buttons=${event.buttons}` : '';
+      const touches = event.type.startsWith('touch')
+        ? ` touches=${(event as TouchEvent).touches.length} changed=${(event as TouchEvent).changedTouches.length}`
+        : '';
+      logDebugRef.current(
+        `parent.${event.type} target=${target}${pointerType}${buttons}${touches} active=${pointerActiveRef.current ? 1 : 0}`,
+      );
+    };
+    const inputEvents = [
+      'pointerdown', 'pointerup', 'pointercancel',
+      'touchstart', 'touchend', 'touchcancel', 'mousedown', 'mouseup',
+    ];
+    inputEvents.forEach((type) => {
+      document.addEventListener(type, traceInputEvent, { capture: true, passive: true });
+    });
+    const traceWindowEvent = (event: Event) => traceInputEvent(event);
+    window.addEventListener('blur', traceWindowEvent);
+    window.addEventListener('focus', traceWindowEvent);
+    document.addEventListener('visibilitychange', traceInputEvent);
+
+    return () => {
+      inputEvents.forEach((type) => {
+        document.removeEventListener(type, traceInputEvent, { capture: true });
+      });
+      window.removeEventListener('blur', traceWindowEvent);
+      window.removeEventListener('focus', traceWindowEvent);
+      document.removeEventListener('visibilitychange', traceInputEvent);
     };
   }, [debugEnabled]);
 
@@ -2295,7 +2369,7 @@ export const EpubReader: React.FC<Props> = ({
       {debugEnabled && (
         <div className="fixed top-2 left-2 z-[95] max-w-[78vw] rounded-lg bg-black/75 px-2 py-1.5 pointer-events-none">
           <div className="font-mono text-[9px] leading-[1.35] text-lime-200 whitespace-pre-wrap select-text">
-            {debugLines.length ? debugLines.join('\n') : 'diagnóstico activo · selecciona texto…'}
+            {debugLines.length ? debugLines.slice(-12).join('\n') : 'diagnóstico activo · selecciona texto…'}
           </div>
           <button
             onClick={handleCopyDebug}
