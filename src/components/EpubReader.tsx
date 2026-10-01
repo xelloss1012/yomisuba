@@ -29,6 +29,7 @@ import { BookSearchModal } from './BookSearchModal';
 import {
   addRecentSearch,
   clearRecentSearches,
+  createSearchLocator,
   extractSearchText,
   locateSearchRange,
   pageOfRange,
@@ -2094,20 +2095,24 @@ export const EpubReader: React.FC<Props> = ({
     setRecentSearches(clearRecentSearches(recentSearchesStorageKey));
   }, [recentSearchesStorageKey]);
 
-  // Lays the hit's chapter out in a hidden frame, exactly as the reader would,
-  // to learn which page the hit lands on without showing anything meanwhile.
-  const findHitPage = useCallback(async (hit: SearchHit): Promise<number> => {
+  // Lays a chapter out in a hidden frame, exactly as the reader would, and
+  // hands the laid-out document to `measure` before throwing the frame away.
+  const withHiddenChapter = useCallback(async <T,>(
+    spineIndex: number,
+    measure: (scroller: HTMLElement, doc: Document, vw: number, vh: number) => T,
+    fallback: T,
+  ): Promise<T> => {
     const host = iframeRef.current;
-    if (!host) return 0;
+    if (!host) return fallback;
     const vw = host.clientWidth || window.innerWidth;
     const vh = host.clientHeight || window.innerHeight;
     const frame = document.createElement('iframe');
     frame.style.cssText = `position:fixed;left:-10000px;top:0;width:${vw}px;height:${vh}px;visibility:hidden;pointer-events:none;border:0;`;
     document.body.appendChild(frame);
     try {
-      const rawHtml = await epub.getChapterContent(epub.spine[hit.spineIndex].href);
+      const rawHtml = await epub.getChapterContent(epub.spine[spineIndex].href);
       const doc = frame.contentDocument;
-      if (!doc) return 0;
+      if (!doc) return fallback;
       doc.open();
       doc.write(buildChapterDocument(rawHtml).html);
       doc.close();
@@ -2124,15 +2129,41 @@ export const EpubReader: React.FC<Props> = ({
       ]);
       await new Promise<void>((resolve) => window.setTimeout(resolve, 40));
       const scroller = doc.getElementById('reader-scroller');
-      if (!scroller) return 0;
-      const range = locateSearchRange(scroller, doc, hit.start, hit.length);
-      if (!range) return 0;
-      const pages = countScrollerPages(doc, scroller, isVertical, vw, vh);
-      return Math.min(pages - 1, pageOfRange(range, scroller, isVertical, vw, vh));
+      if (!scroller) return fallback;
+      return measure(scroller, doc, vw, vh);
     } finally {
       frame.remove();
     }
   }, [buildChapterDocument, epub, isVertical]);
+
+  // Pages (0-based, within the chapter) of several hits of one chapter, from a
+  // single layout pass.
+  const getHitPages = useCallback((spineIndex: number, hits: Array<{ start: number; length: number }>) =>
+    withHiddenChapter(
+      spineIndex,
+      (scroller, doc, vw, vh) => {
+        const locator = createSearchLocator(scroller, doc);
+        const pages = countScrollerPages(doc, scroller, isVertical, vw, vh);
+        return hits.map((hit) => {
+          const range = locator.locate(hit.start, hit.length);
+          return range ? Math.min(pages - 1, pageOfRange(range, scroller, isVertical, vw, vh)) : 0;
+        });
+      },
+      hits.map(() => 0),
+    ), [isVertical, withHiddenChapter]);
+
+  const findHitPage = useCallback(async (hit: SearchHit): Promise<number> => {
+    const [page] = await getHitPages(hit.spineIndex, [hit]);
+    return page ?? 0;
+  }, [getHitPages]);
+
+  // "p. 123" counting the whole book once its pagination is known, otherwise
+  // the page within the chapter.
+  const getSearchPageLabel = useCallback((spineIndex: number, page: number) => {
+    return isBookPaginationReady
+      ? `p. ${getGlobalPage(spineIndex, page) + 1}`
+      : `p. ${page + 1} del cap.`;
+  }, [getGlobalPage, isBookPaginationReady]);
 
   // Page the hit currently sits on in the live reader, or null when it cannot
   // be found there.
@@ -2691,6 +2722,8 @@ export const EpubReader: React.FC<Props> = ({
         openToken={searchSeed.token}
         spineCount={epub.spine.length}
         getChapterText={getChapterSearchText}
+        getHitPages={getHitPages}
+        getPageLabel={getSearchPageLabel}
         getChapterLabel={(spineIndex) => spineLabels[spineIndex] || `Sección ${spineIndex + 1}`}
         recentSearches={recentSearches}
         onRememberSearch={handleRememberSearch}

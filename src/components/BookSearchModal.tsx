@@ -15,6 +15,9 @@ interface Props {
   openToken: number;
   spineCount: number;
   getChapterText: (spineIndex: number) => Promise<string>;
+  /** Pages (0-based, within the chapter) of several hits of one chapter. */
+  getHitPages: (spineIndex: number, hits: Array<{ start: number; length: number }>) => Promise<number[]>;
+  getPageLabel: (spineIndex: number, page: number) => string;
   getChapterLabel: (spineIndex: number) => string;
   recentSearches: string[];
   onRememberSearch: (query: string) => void;
@@ -32,6 +35,8 @@ export const BookSearchModal: React.FC<Props> = ({
   openToken,
   spineCount,
   getChapterText,
+  getHitPages,
+  getPageLabel,
   getChapterLabel,
   recentSearches,
   onRememberSearch,
@@ -47,10 +52,16 @@ export const BookSearchModal: React.FC<Props> = ({
   const [indexedCount, setIndexedCount] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const indexRunRef = useRef(0);
+  // Page of each hit, keyed by chapter:start:length. Filled by laying the
+  // chapters out, so it matches the page the reader will actually open.
+  const hitPagesRef = useRef<Map<string, number>>(new Map());
+  const [pagesVersion, setPagesVersion] = useState(0);
 
   // Open with the text handed in (selection) or with an empty, focused box.
   useEffect(() => {
     if (!isOpen) return;
+    hitPagesRef.current.clear();
+    setPagesVersion((version) => version + 1);
     setInput(initialQuery);
     setQuery(initialQuery);
     if (!initialQuery) window.setTimeout(() => inputRef.current?.focus(), 60);
@@ -111,6 +122,40 @@ export const BookSearchModal: React.FC<Props> = ({
       truncated: found.length > MAX_SEARCH_HITS,
     };
   }, [normalizedQuery, texts]);
+
+  // Place the hits on their pages, one chapter per layout pass, so each result
+  // can show where it is. Results stay usable meanwhile; a new query abandons
+  // the pass between chapters.
+  useEffect(() => {
+    if (!isOpen || !hits.length) return;
+    let cancelled = false;
+    const pending = new Map<number, SearchHit[]>();
+    for (const hit of hits) {
+      if (hitPagesRef.current.has(`${hit.spineIndex}:${hit.start}:${hit.length}`)) continue;
+      const group = pending.get(hit.spineIndex);
+      if (group) group.push(hit);
+      else pending.set(hit.spineIndex, [hit]);
+    }
+    const place = async () => {
+      for (const [spineIndex, group] of pending) {
+        if (cancelled) return;
+        try {
+          const pages = await getHitPages(spineIndex, group);
+          if (cancelled) return;
+          group.forEach((hit, position) => {
+            hitPagesRef.current.set(`${hit.spineIndex}:${hit.start}:${hit.length}`, pages[position] ?? 0);
+          });
+          setPagesVersion((version) => version + 1);
+        } catch {
+          // A chapter that cannot be laid out simply shows no page number.
+        }
+      }
+    };
+    void place();
+    return () => {
+      cancelled = true;
+    };
+  }, [getHitPages, hits, isOpen]);
 
   if (!isOpen) return null;
 
@@ -282,13 +327,24 @@ export const BookSearchModal: React.FC<Props> = ({
                           onRememberSearch(query);
                           onSelectHit(hit);
                         }}
-                        className="block w-full rounded-xl px-3 py-2.5 text-left text-sm leading-relaxed text-zinc-700 hover:bg-zinc-50 active:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800/70 dark:active:bg-zinc-800"
+                        className="flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left text-sm leading-relaxed text-zinc-700 hover:bg-zinc-50 active:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800/70 dark:active:bg-zinc-800"
                       >
-                        <span className="text-zinc-500 dark:text-zinc-400">…{hit.before}</span>
-                        <mark className="rounded bg-amber-200 px-0.5 text-zinc-900 dark:bg-amber-400/80">
-                          {hit.match}
-                        </mark>
-                        <span className="text-zinc-500 dark:text-zinc-400">{hit.after}…</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="text-zinc-500 dark:text-zinc-400">…{hit.before}</span>
+                          <mark className="rounded bg-amber-200 px-0.5 text-zinc-900 dark:bg-amber-400/80">
+                            {hit.match}
+                          </mark>
+                          <span className="text-zinc-500 dark:text-zinc-400">{hit.after}…</span>
+                        </span>
+                        <span
+                          className="mt-0.5 shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-medium tabular-nums text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"
+                          data-pages-version={pagesVersion}
+                        >
+                          {(() => {
+                            const page = hitPagesRef.current.get(`${hit.spineIndex}:${hit.start}:${hit.length}`);
+                            return page === undefined ? 'p. …' : getPageLabel(hit.spineIndex, page);
+                          })()}
+                        </span>
                       </button>
                     </li>
                   </React.Fragment>

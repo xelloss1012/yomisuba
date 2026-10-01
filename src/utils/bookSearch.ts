@@ -61,47 +61,72 @@ export const extractSearchText = (root: Node, doc: Document): string => {
   return out;
 };
 
+/**
+ * Locates ranges by searchable-text offset. Built once per laid-out chapter,
+ * it answers any number of lookups without walking the DOM again, which is
+ * what makes placing hundreds of hits on their pages cheap.
+ */
+export const createSearchLocator = (root: Node, doc: Document) => {
+  const nodes = textNodesOf(root, doc);
+  // starts[i] = searchable characters before node i; the last entry is the total.
+  const starts: number[] = [];
+  let total = 0;
+  for (const node of nodes) {
+    starts.push(total);
+    for (const char of node.nodeValue || '') total += normalizeChar(char).length;
+  }
+  starts.push(total);
+
+  // Code-unit span, inside `node`, of the character holding searchable offset `within`.
+  const spanIn = (node: Text, within: number): [number, number] | null => {
+    let kept = 0;
+    let unit = 0;
+    for (const char of node.nodeValue || '') {
+      const size = normalizeChar(char).length;
+      if (size && within < kept + size) return [unit, unit + char.length];
+      kept += size;
+      unit += char.length;
+    }
+    return null;
+  };
+
+  const nodeIndexAt = (position: number): number => {
+    if (position < 0 || position >= total) return -1;
+    // First node that starts beyond `position`; the one before it holds it.
+    let low = 1;
+    let high = starts.length - 1;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (starts[middle] > position) high = middle;
+      else low = middle + 1;
+    }
+    return low - 1;
+  };
+
+  /** Range covering `length` searchable characters from offset `start`. */
+  const locate = (start: number, length: number): Range | null => {
+    const first = nodeIndexAt(start);
+    const last = nodeIndexAt(start + Math.max(1, length) - 1);
+    if (first < 0 || last < 0) return null;
+    const startSpan = spanIn(nodes[first], start - starts[first]);
+    const endSpan = spanIn(nodes[last], start + Math.max(1, length) - 1 - starts[last]);
+    if (!startSpan || !endSpan) return null;
+    const range = doc.createRange();
+    range.setStart(nodes[first], startSpan[0]);
+    range.setEnd(nodes[last], endSpan[1]);
+    return range;
+  };
+
+  return { locate };
+};
+
 /** Range covering `length` searchable characters from offset `start`. */
 export const locateSearchRange = (
   root: Node,
   doc: Document,
   start: number,
   length: number,
-): Range | null => {
-  const end = start + length;
-  let position = 0;
-  let startNode: Text | null = null;
-  let startOffset = 0;
-  let endNode: Text | null = null;
-  let endOffset = 0;
-
-  for (const node of textNodesOf(root, doc)) {
-    const value = node.nodeValue || '';
-    let unit = 0;
-    for (const char of value) {
-      const kept = normalizeChar(char).length;
-      if (kept) {
-        if (!startNode && position >= start) {
-          startNode = node;
-          startOffset = unit;
-        }
-        position += kept;
-        if (position >= end) {
-          endNode = node;
-          endOffset = unit + char.length;
-          break;
-        }
-      }
-      unit += char.length;
-    }
-    if (endNode) break;
-  }
-  if (!startNode || !endNode) return null;
-  const range = doc.createRange();
-  range.setStart(startNode, startOffset);
-  range.setEnd(endNode, endOffset);
-  return range;
-};
+): Range | null => createSearchLocator(root, doc).locate(start, length);
 
 /** Non-overlapping matches of `query` (already normalised) inside `text`. */
 export const findHits = (
