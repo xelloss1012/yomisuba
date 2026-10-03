@@ -24,6 +24,7 @@ import {
   TranslationHistoryEntry,
   TranslationHistoryKind,
 } from '../utils/translationHistory';
+import { ReaderBookBackup } from '../utils/googleDriveBackup';
 import { DictionaryLookup, getDictionarySearchTerms, warmUpDictionary } from '../utils/dictionary';
 import { BookSearchModal } from './BookSearchModal';
 import {
@@ -145,6 +146,7 @@ interface Props {
   settings: ReaderSettingsState;
   selectedTheme: ReaderSettingsState['theme'];
   onUpdateSettings: (newSettings: Partial<ReaderSettingsState>) => void;
+  onBookDataChange?: (data: ReaderBookBackup) => void;
 }
 
 export const EpubReader: React.FC<Props> = ({
@@ -153,6 +155,7 @@ export const EpubReader: React.FC<Props> = ({
   settings,
   selectedTheme,
   onUpdateSettings,
+  onBookDataChange,
 }) => {
   const [currentSpineIndex, setCurrentSpineIndex] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
@@ -233,6 +236,10 @@ export const EpubReader: React.FC<Props> = ({
   const shownPageRef = useRef<{ spine: number; page: number } | null>(null);
   const imageDragRef = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null);
   const selectedTextRef = useRef('');
+  const backupDirtyRef = useRef(false);
+  const pendingReaderBackupRef = useRef<ReaderBookBackup | null>(null);
+  const onBookDataChangeRef = useRef(onBookDataChange);
+  onBookDataChangeRef.current = onBookDataChange;
   const selectionRangeRef = useRef<Range | null>(null);
   const selectionAnnotationRef = useRef<Omit<TextAnnotation, 'id'> | null>(null);
   const selectedTextAnnotationIdRef = useRef<string | null>(null);
@@ -309,12 +316,17 @@ export const EpubReader: React.FC<Props> = ({
     }
   }, [bookStorageKey]);
 
+  const markReaderDataChanged = useCallback(() => {
+    backupDirtyRef.current = true;
+  }, []);
+
   const handleSaveTranslationHistory = useCallback((
     kind: TranslationHistoryKind,
     query: string,
     response: string,
     provider?: AiProvider,
   ) => {
+    const previousId = translationHistoryRef.current[0]?.id;
     const next = saveTranslationHistoryEntry(
       translationHistoryStorageKey,
       translationHistoryRef.current,
@@ -322,7 +334,8 @@ export const EpubReader: React.FC<Props> = ({
     );
     translationHistoryRef.current = next;
     setTranslationHistory(next);
-  }, [translationHistoryStorageKey]);
+    if (next[0]?.id && next[0].id !== previousId) markReaderDataChanged();
+  }, [markReaderDataChanged, translationHistoryStorageKey]);
 
   const handleRemoveTranslationHistoryEntry = useCallback((id: string) => {
     const next = translationHistoryRef.current.filter((entry) => entry.id !== id);
@@ -334,7 +347,8 @@ export const EpubReader: React.FC<Props> = ({
     } catch {
       // Keep the in-memory history available when storage is unavailable.
     }
-  }, [translationHistoryStorageKey]);
+    markReaderDataChanged();
+  }, [markReaderDataChanged, translationHistoryStorageKey]);
 
   const handleClearTranslationHistory = useCallback(() => {
     translationHistoryRef.current = [];
@@ -344,7 +358,8 @@ export const EpubReader: React.FC<Props> = ({
     } catch {
       // Keep the in-memory history available when storage is unavailable.
     }
-  }, [translationHistoryStorageKey]);
+    markReaderDataChanged();
+  }, [markReaderDataChanged, translationHistoryStorageKey]);
 
   useEffect(() => {
     try {
@@ -384,6 +399,7 @@ export const EpubReader: React.FC<Props> = ({
   );
 
   const handleToggleBookmark = useCallback(() => {
+    markReaderDataChanged();
     const currentPosition = {
       spineIndex: currentSpineRef.current,
       page: currentPageRef.current,
@@ -400,13 +416,14 @@ export const EpubReader: React.FC<Props> = ({
           a.spineIndex - b.spineIndex || a.page - b.page
         );
     });
-  }, []);
+  }, [markReaderDataChanged]);
 
   const handleRemoveBookmark = useCallback((position: ReadingPosition) => {
+    markReaderDataChanged();
     setBookmarks((existing) => existing.filter((item) =>
       item.spineIndex !== position.spineIndex || item.page !== position.page
     ));
-  }, []);
+  }, [markReaderDataChanged]);
 
   const themeColors = {
     light: { bg: '#ffffff', text: '#18181b' },
@@ -901,6 +918,7 @@ export const EpubReader: React.FC<Props> = ({
 
     if (existing) {
       removeTextAnnotationMarkup(scroller, existing.id);
+      markReaderDataChanged();
       const next = textAnnotationsRef.current.filter((annotation) => annotation.id !== existing.id);
       textAnnotationsRef.current = next;
       setTextAnnotations(next);
@@ -916,16 +934,18 @@ export const EpubReader: React.FC<Props> = ({
       ...anchor,
       id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
     };
+    markReaderDataChanged();
     const next = [...textAnnotationsRef.current, annotation];
     textAnnotationsRef.current = next;
     setTextAnnotations(next);
     selectedTextAnnotationIdRef.current = annotation.id;
     setIsSelectionUnderlined(true);
-  }, []);
+  }, [markReaderDataChanged]);
 
   // ─── PAGE ACTIONS ─────────────────────────────────────────────────────────────
   // We use refs so that callbacks registered inside the iframe closure stay fresh.
   const doNextPage = useCallback(() => {
+    markReaderDataChanged();
     const page = currentPageRef.current;
     const spine = currentSpineRef.current;
     const pages = totalPagesRef.current;
@@ -940,9 +960,10 @@ export const EpubReader: React.FC<Props> = ({
       loadChapter(spine + 1, 0);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [epub.spine.length, updatePagination]);
+  }, [epub.spine.length, markReaderDataChanged, updatePagination]);
 
   const doPrevPage = useCallback(() => {
+    markReaderDataChanged();
     const page = currentPageRef.current;
     const spine = currentSpineRef.current;
 
@@ -958,7 +979,7 @@ export const EpubReader: React.FC<Props> = ({
       loadChapter(spine - 1, -1);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [updatePagination]);
+  }, [markReaderDataChanged, updatePagination]);
 
   const doNextRef = useRef(doNextPage);
   const doPrevRef = useRef(doPrevPage);
@@ -1975,6 +1996,47 @@ export const EpubReader: React.FC<Props> = ({
     }
   }, [currentPage, currentSpineIndex, isLoadingChapter, saveReadingPosition]);
 
+  useEffect(() => {
+    if (!onBookDataChange || !backupDirtyRef.current || isLoadingChapter || !isReaderPositioned) return;
+    const backup: ReaderBookBackup = {
+      bookKey: bookStorageKey,
+      title: epub.metadata.title,
+      creator: epub.metadata.creator,
+      position: { spineIndex: currentSpineIndex, page: currentPage },
+      bookmarks,
+      annotations: textAnnotations,
+      translationHistory,
+    };
+    pendingReaderBackupRef.current = backup;
+    const timer = window.setTimeout(() => {
+      onBookDataChange(backup);
+      pendingReaderBackupRef.current = null;
+      backupDirtyRef.current = false;
+    }, 900);
+    return () => window.clearTimeout(timer);
+  }, [
+    bookStorageKey,
+    bookmarks,
+    currentPage,
+    currentSpineIndex,
+    epub.metadata.creator,
+    epub.metadata.title,
+    isLoadingChapter,
+    isReaderPositioned,
+    onBookDataChange,
+    textAnnotations,
+    translationHistory,
+  ]);
+
+  useEffect(() => () => {
+    const pendingBackup = pendingReaderBackupRef.current;
+    if (pendingBackup) {
+      onBookDataChangeRef.current?.(pendingBackup);
+      pendingReaderBackupRef.current = null;
+      backupDirtyRef.current = false;
+    }
+  }, []);
+
   // Expose page-turn handlers to React world (footer buttons, keyboard)
   const handleNextPage = useCallback(() => doNextRef.current(), []);
   const handlePrevPage = useCallback(() => doPrevRef.current(), []);
@@ -1992,6 +2054,7 @@ export const EpubReader: React.FC<Props> = ({
 
   const handleSeekPage = useCallback((requestedPage: number) => {
     if (!isBookPaginationReady || !bookTotalPages) return;
+    markReaderDataChanged();
     const targetPage = Math.min(Math.max(0, Math.round(requestedPage)), bookTotalPages - 1);
     let targetSpineIndex = 0;
     for (let index = 0; index < bookPageOffsetsRef.current.length; index += 1) {
@@ -2006,10 +2069,11 @@ export const EpubReader: React.FC<Props> = ({
       return;
     }
     loadChapter(targetSpineIndex, targetLocalPage);
-  }, [bookTotalPages, isBookPaginationReady, loadChapter, updatePagination]);
+  }, [bookTotalPages, isBookPaginationReady, loadChapter, markReaderDataChanged, updatePagination]);
 
   const handleSelectBookmark = useCallback((position: ReadingPosition) => {
     if (position.spineIndex < 0 || position.spineIndex >= epub.spine.length || position.page < 0) return;
+    markReaderDataChanged();
     const maxPage = Math.max(1, chapterPageCountsRef.current[position.spineIndex] || 1) - 1;
     const targetPage = Math.min(position.page, maxPage);
     if (position.spineIndex === currentSpineRef.current) {
@@ -2020,7 +2084,7 @@ export const EpubReader: React.FC<Props> = ({
       loadChapter(position.spineIndex, targetPage);
     }
     setIsBookmarksOpen(false);
-  }, [epub.spine.length, loadChapter, updatePagination]);
+  }, [epub.spine.length, loadChapter, markReaderDataChanged, updatePagination]);
 
   const bookmarkItems = bookmarks.map((position) => {
     const chapterIndex = epub.toc.findIndex(
@@ -2210,6 +2274,7 @@ export const EpubReader: React.FC<Props> = ({
   }, []);
 
   const handleSelectSearchHit = useCallback(async (hit: SearchHit) => {
+    markReaderDataChanged();
     setIsSearchOpen(false);
     let page: number;
     if (hit.spineIndex === currentSpineRef.current) {
@@ -2237,7 +2302,7 @@ export const EpubReader: React.FC<Props> = ({
       setCurrentPage(actual);
       updatePagination();
     }, 1300);
-  }, [findHitPage, getLiveHitPage, highlightSearchHit, loadChapter, updatePagination]);
+  }, [findHitPage, getLiveHitPage, highlightSearchHit, loadChapter, markReaderDataChanged, updatePagination]);
 
   const bookmarkPageMarkers = isBookPaginationReady
     ? bookmarks.map((position) => getGlobalPage(position.spineIndex, position.page))
@@ -2337,11 +2402,13 @@ export const EpubReader: React.FC<Props> = ({
 
   const handleNextChapter = () => {
     if (currentSpineRef.current < epub.spine.length - 1) {
+      markReaderDataChanged();
       loadChapter(currentSpineRef.current + 1, 0);
     }
   };
   const handlePrevChapter = () => {
     if (currentSpineRef.current > 0) {
+      markReaderDataChanged();
       loadChapter(currentSpineRef.current - 1, 0);
     }
   };
@@ -2357,6 +2424,7 @@ export const EpubReader: React.FC<Props> = ({
       return;
     }
     setTocError(null);
+    markReaderDataChanged();
     loadChapter(index, 0);
   };
 

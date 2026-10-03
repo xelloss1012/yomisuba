@@ -22,14 +22,14 @@ Una aplicación web moderna tipo Kindle desarrollada en **React + TypeScript + V
    - Extracción y renderizado client-side directo en el navegador con `JSZip`.
    - Resolución automática de recursos locales (imágenes, hojas de estilo CSS, fuentes, portadas).
    - Tabla de contenidos interactiva (TOC) para saltar rápidamente entre capítulos.
-   - 100% privado y local (ningún archivo se sube a ningún servidor externo).
+   - La biblioteca y los datos se guardan en local. Solo se envía una copia a Google Drive cuando el usuario inicia sesión y la solicita.
 
 4. **Personalización y Temas**:
    - **Modo Blanco** (estándar limpio).
    - **Modo Papel** (tono cálido agradable para lectura prolongada).
    - **Modo Sepia** (tono clásico pergamino).
    - **Modo Noche / Oscuro** (fondo oscuro para descanso visual).
-   - Control de tamaño de fuente (12px – 42px) e interlineado.
+   - Control de tamaño de fuente (12px – 50px) e interlineado.
    - Conmutador rápido entre modo Vertical (縦書き) y Horizontal (横書き).
 
 5. **Libro de Muestra Integrado**:
@@ -77,12 +77,12 @@ npm run android:sync
 # Abrirlo en Android Studio
 npm run android:open
 
-# Generar un APK debug desde la raíz del proyecto
-npm run android:build:debug
+# Generar un APK release desde la raíz del proyecto
+npm run android:build:release
 ```
 
 El APK se copia siempre en
-`dist/android/ereader-japanese-vertical-debug.apk`. `dist/` está excluido de
+`dist/android/ereader-japanese-vertical-release.apk`. `dist/` está excluido de
 Git, por lo que el binario no se sube al repositorio. El `dist/index.html` de
 la versión web se mantiene en paralelo.
 
@@ -95,6 +95,44 @@ caché de traducciones. Las traducciones IA siguen necesitando conexión a
 Internet. El workflow `.github/workflows/build.yml` es opcional y solo sirve
 para automatización; no es necesario para compilar ni usar la aplicación
 localmente.
+
+---
+
+### Copia de seguridad en Google Drive
+
+La aplicación continúa funcionando y guardando datos localmente sin iniciar
+sesión. Al conectar Google, los ajustes (incluidas las claves IA) se guardan
+automáticamente cuando cambian, y los datos de lectura cuando el usuario
+avanza, añade/elimina marcadores o anotaciones, o modifica el historial. Cada
+libro tiene un archivo de lectura independiente. Los EPUB no se suben solos:
+el usuario elige cada libro que quiere guardar o descargar. La restauración de
+ajustes también es manual; al descargar un libro se restaura su estado si hay
+una copia. No hay base de datos compartida entre usuarios ni archivo ZIP. Todo
+se guarda en el Drive de la cuenta conectada.
+
+Para habilitar Drive:
+
+1. En Google Cloud Console crea un proyecto, activa **Google Drive API** y
+   configura la pantalla de consentimiento OAuth. Si permanece en modo
+   **Testing**, añade las cuentas que probarán la app como usuarios de prueba.
+2. Crea un cliente OAuth de tipo **Web application**. En web, añade los
+   orígenes autorizados de la aplicación. Para Android, crea además un cliente
+   OAuth Android con el ID de paquete `com.ereader.japanesevertical` y la
+   huella SHA-1 del certificado que firma la APK (debug y release si usarás
+   ambos).
+3. Copia `.env.example` a `.env.local` y asigna a
+   `VITE_GOOGLE_WEB_CLIENT_ID` el ID del cliente web (`...apps.googleusercontent.com`).
+   No se necesita Firebase ni un `google-services.json`.
+4. Ejecuta `npm run android:sync` y vuelve a compilar la aplicación.
+
+Google pedirá autorización para acceder a los archivos creados por EReader.
+El permiso `drive.file` permite crear y actualizar archivos de EReader. La app
+usa el ID de cliente web también en Android; el cliente OAuth Android autoriza
+el paquete y certificado de firma. El token se mantiene solo en memoria y
+puede ser necesario volver a conectar Google si caduca. Los ajustes y datos de
+lectura son JSON, y los EPUB son archivos individuales; no están cifrados por
+la app. La configuración incluye cualquier clave IA guardada y queda sujeta a
+la seguridad de la cuenta Google y Drive.
 
 ---
 

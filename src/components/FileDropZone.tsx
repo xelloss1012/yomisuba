@@ -2,15 +2,44 @@ import React, { useState } from 'react';
 import { UploadCloud, BookOpen, Sparkles, FileText, CheckCircle2, Clock3 } from 'lucide-react';
 import { createSampleJapaneseEpub } from '../utils/sampleBook';
 import { RecentBook } from '../utils/recentBooks';
+import { GoogleDriveBook, GoogleDriveSession } from '../utils/googleDriveBackup';
+import { GoogleDriveBackupPanel } from './GoogleDriveBackupPanel';
 
 interface Props {
   onFileLoaded: (file: File | Blob) => void;
   onOpenRecent: (book: RecentBook) => void;
   recentBooks: RecentBook[];
   isLoading: boolean;
+  googleDriveConfigured: boolean;
+  googleDriveSession: GoogleDriveSession | null;
+  googleDriveSettingsDate: string | null;
+  googleDriveBooks: GoogleDriveBook[];
+  isDriveBusy: boolean;
+  onGoogleDriveSignIn: () => void;
+  onGoogleDriveSignOut: () => void;
+  onRestoreDriveSettings: () => void;
+  onUploadDriveBook: (book: RecentBook) => void;
+  onDownloadDriveBook: (book: GoogleDriveBook) => void;
+  onRefreshDriveBooks: () => void;
 }
 
-export const FileDropZone: React.FC<Props> = ({ onFileLoaded, onOpenRecent, recentBooks, isLoading }) => {
+export const FileDropZone: React.FC<Props> = ({
+  onFileLoaded,
+  onOpenRecent,
+  recentBooks,
+  isLoading,
+  googleDriveConfigured,
+  googleDriveSession,
+  googleDriveSettingsDate,
+  googleDriveBooks,
+  isDriveBusy,
+  onGoogleDriveSignIn,
+  onGoogleDriveSignOut,
+  onRestoreDriveSettings,
+  onUploadDriveBook,
+  onDownloadDriveBook,
+  onRefreshDriveBooks,
+}) => {
   const [isDragOver, setIsDragOver] = useState(false);
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -38,8 +67,8 @@ export const FileDropZone: React.FC<Props> = ({ onFileLoaded, onOpenRecent, rece
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-stone-50 via-zinc-100 to-stone-200 dark:from-zinc-950 dark:via-zinc-900 dark:to-stone-950 flex flex-col items-center justify-center p-4 sm:p-6 text-zinc-800 dark:text-zinc-200">
-      <div className="w-full max-w-xl bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-zinc-200/80 dark:border-zinc-800/80 p-6 sm:p-10 text-center">
+    <div className="h-full overflow-y-auto overscroll-y-contain bg-gradient-to-br from-stone-50 via-zinc-100 to-stone-200 dark:from-zinc-950 dark:via-zinc-900 dark:to-stone-950 flex flex-col items-center justify-start p-4 pb-8 sm:p-6 text-zinc-800 dark:text-zinc-200">
+      <div className="w-full max-w-xl shrink-0 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-zinc-200/80 dark:border-zinc-800/80 p-6 sm:p-10 text-center">
         {/* Brand & Badge */}
         <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-100 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 text-xs font-semibold mb-6">
           <BookOpen className="w-3.5 h-3.5" />
@@ -53,19 +82,34 @@ export const FileDropZone: React.FC<Props> = ({ onFileLoaded, onOpenRecent, rece
           Compatible con libros digitales estándar y lectura en vertical tradicional japonesa (<ruby>縦書き<rt>たてがき</rt></ruby>) con soporte de furigana y paginación.
         </p>
 
+        <GoogleDriveBackupPanel
+          configured={googleDriveConfigured}
+          session={googleDriveSession}
+          settingsDate={googleDriveSettingsDate}
+          localBooks={recentBooks}
+          cloudBooks={googleDriveBooks}
+          busy={isDriveBusy}
+          onSignIn={onGoogleDriveSignIn}
+          onSignOut={onGoogleDriveSignOut}
+          onRestoreSettings={onRestoreDriveSettings}
+          onUploadBook={onUploadDriveBook}
+          onDownloadBook={onDownloadDriveBook}
+          onRefreshBooks={onRefreshDriveBooks}
+        />
+
         {/* Drop Zone */}
         <div
+          className={`relative mt-6 border-2 border-dashed rounded-2xl p-8 transition-all cursor-pointer flex flex-col items-center justify-center ${
+            isDragOver
+              ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/30 scale-[1.02]'
+              : 'border-zinc-300 dark:border-zinc-700 hover:border-indigo-400 dark:hover:border-indigo-600 bg-zinc-50/50 dark:bg-zinc-800/30'
+          }`}
           onDragOver={(e) => {
             e.preventDefault();
             setIsDragOver(true);
           }}
           onDragLeave={() => setIsDragOver(false)}
           onDrop={handleDrop}
-          className={`relative border-2 border-dashed rounded-2xl p-8 transition-all cursor-pointer flex flex-col items-center justify-center ${
-            isDragOver
-              ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/30 scale-[1.02]'
-              : 'border-zinc-300 dark:border-zinc-700 hover:border-indigo-400 dark:hover:border-indigo-600 bg-zinc-50/50 dark:bg-zinc-800/30'
-          }`}
           onClick={() => document.getElementById('epub-file-input')?.click()}
         >
           <input

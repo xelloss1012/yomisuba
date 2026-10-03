@@ -8,6 +8,16 @@ const config: CapacitorConfig = {
   android: {
     backgroundColor: '#18181b',
   },
+  plugins: {
+    SocialLogin: {
+      providers: {
+        google: true,
+        facebook: false,
+        apple: false,
+        twitter: false,
+      },
+    },
+  },
 };
 
 export default config;

@@ -4,6 +4,24 @@ import { parseEpub } from './utils/epubParser';
 import { FileDropZone } from './components/FileDropZone';
 import { EpubReader } from './components/EpubReader';
 import { createBookId, getLastBookId, getRecentBook, listRecentBooks, RecentBook, saveRecentBook, setLastBookId } from './utils/recentBooks';
+import {
+  applyGoogleDriveReaderData,
+  downloadGoogleDriveBook,
+  getGoogleDriveSettingsDate,
+  GoogleDriveBook,
+  GoogleDriveSession,
+  googleDriveConfigured,
+  listGoogleDriveBooks,
+  ReaderBookBackup,
+  restoreGoogleDriveReaderData,
+  restoreGoogleDriveSession,
+  restoreGoogleDriveSettings,
+  saveGoogleDriveReaderData,
+  saveGoogleDriveSettings,
+  signInToGoogleDrive,
+  signOutGoogleDrive,
+  uploadGoogleDriveBook,
+} from './utils/googleDriveBackup';
 
 const SETTINGS_STORAGE_KEY = 'ereader_settings_v1';
 
@@ -30,6 +48,11 @@ export const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [recentBooks, setRecentBooks] = useState<RecentBook[]>([]);
+  const [googleDriveSession, setGoogleDriveSession] = useState<GoogleDriveSession | null>(null);
+  const [googleDriveSettingsDate, setGoogleDriveSettingsDate] = useState<string | null>(null);
+  const [googleDriveBooks, setGoogleDriveBooks] = useState<GoogleDriveBook[]>([]);
+  const [isDriveBusy, setIsDriveBusy] = useState(false);
+  const [settingsRevision, setSettingsRevision] = useState(0);
 
   const [settings, setSettings] = useState<ReaderSettingsState>(() => {
     try {
@@ -55,6 +78,18 @@ export const App: React.FC = () => {
   }, [settings]);
 
   useEffect(() => {
+    if (!googleDriveSession || settingsRevision === 0) return;
+    const timer = window.setTimeout(() => {
+      void saveGoogleDriveSettings(googleDriveSession.accessToken, settings)
+        .then(setGoogleDriveSettingsDate)
+        .catch((error: unknown) => {
+          setErrorMessage(`No se pudieron guardar los ajustes en Google Drive: ${error instanceof Error ? error.message : String(error)}`);
+        });
+    }, 900);
+    return () => window.clearTimeout(timer);
+  }, [googleDriveSession, settings, settingsRevision]);
+
+  useEffect(() => {
     if (effectiveSettings.theme === 'dark') {
       document.documentElement.classList.add('dark');
     } else {
@@ -70,6 +105,30 @@ export const App: React.FC = () => {
       window.clearInterval(intervalId);
       document.removeEventListener('visibilitychange', updateNightTime);
     };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const restoreDriveSession = async () => {
+      try {
+        const session = await restoreGoogleDriveSession();
+        if (!session || cancelled) return;
+        setGoogleDriveSession(session);
+        const [settingsDate, books] = await Promise.all([
+          getGoogleDriveSettingsDate(session.accessToken),
+          listGoogleDriveBooks(session.accessToken),
+        ]);
+        if (cancelled) return;
+        setGoogleDriveSettingsDate(settingsDate);
+        setGoogleDriveBooks(books);
+      } catch (error) {
+        if (!cancelled) {
+          setErrorMessage(`No se pudo restaurar la sesión de Google Drive: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+    };
+    void restoreDriveSession();
+    return () => { cancelled = true; };
   }, []);
 
   // Screen Wake Lock to keep screen awake while app is active
@@ -117,6 +176,7 @@ export const App: React.FC = () => {
 
   const handleUpdateSettings = (newSettings: Partial<ReaderSettingsState>) => {
     setSettings((prev) => ({ ...prev, ...newSettings }));
+    setSettingsRevision((revision) => revision + 1);
   };
 
   const openBook = async (fileOrBlob: File | Blob, preferredId?: string, preferredName?: string) => {
@@ -210,6 +270,88 @@ export const App: React.FC = () => {
     }
   };
 
+  const runDriveAction = async (action: () => Promise<void>) => {
+    setIsDriveBusy(true);
+    setErrorMessage(null);
+    try {
+      await action();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsDriveBusy(false);
+    }
+  };
+
+  const handleGoogleDriveSignIn = () => {
+    void runDriveAction(async () => {
+      const session = await signInToGoogleDrive();
+      setGoogleDriveSession(session);
+      const [settingsDate, books] = await Promise.all([
+        getGoogleDriveSettingsDate(session.accessToken),
+        listGoogleDriveBooks(session.accessToken),
+      ]);
+      setGoogleDriveSettingsDate(settingsDate);
+      setGoogleDriveBooks(books);
+    });
+  };
+
+  const handleGoogleDriveSignOut = () => {
+    void runDriveAction(async () => {
+      await signOutGoogleDrive();
+      setGoogleDriveSession(null);
+      setGoogleDriveSettingsDate(null);
+      setGoogleDriveBooks([]);
+    });
+  };
+
+  const handleRestoreDriveSettings = () => {
+    if (!googleDriveSession || !window.confirm('¿Reemplazar los ajustes locales por los ajustes guardados en tu Google Drive?')) return;
+    void runDriveAction(async () => {
+      const restored = await restoreGoogleDriveSettings(googleDriveSession.accessToken);
+      setSettings({ ...DEFAULT_SETTINGS, ...restored });
+      setSettingsRevision((revision) => revision + 1);
+    });
+  };
+
+  const handleUploadDriveBook = (book: RecentBook) => {
+    if (!googleDriveSession) return;
+    void runDriveAction(async () => {
+      await uploadGoogleDriveBook(googleDriveSession.accessToken, book);
+      setGoogleDriveBooks(await listGoogleDriveBooks(googleDriveSession.accessToken));
+    });
+  };
+
+  const handleDownloadDriveBook = (cloudBook: GoogleDriveBook) => {
+    if (!googleDriveSession || !window.confirm(
+      `Descargar «${cloudBook.title}» y restaurar sus datos de lectura locales?`
+    )) return;
+    void runDriveAction(async () => {
+      const book = recentBooks.find((item) =>
+        item.title === cloudBook.title && item.creator === cloudBook.creator
+      ) || await downloadGoogleDriveBook(googleDriveSession.accessToken, cloudBook);
+      const bookKey = `ereader_book_${encodeURIComponent(`${book.title}|${book.creator}`)}`;
+      const readerData = await restoreGoogleDriveReaderData(googleDriveSession.accessToken, bookKey);
+      if (readerData) applyGoogleDriveReaderData(readerData);
+      setRecentBooks((books) => [book, ...books.filter((item) => item.id !== book.id)].slice(0, 8));
+      await openBook(book.blob, book.id, book.name);
+    });
+  };
+
+  const handleBookDataChange = (data: ReaderBookBackup) => {
+    if (!googleDriveSession) return;
+    void saveGoogleDriveReaderData(googleDriveSession.accessToken, data).catch((error: unknown) => {
+      setErrorMessage(`No se pudo guardar el progreso en Google Drive: ${error instanceof Error ? error.message : String(error)}`);
+    });
+  };
+
+  const handleRefreshDriveBooks = () => {
+    if (!googleDriveSession) return;
+    void runDriveAction(async () => {
+      setGoogleDriveBooks(await listGoogleDriveBooks(googleDriveSession.accessToken));
+      setGoogleDriveSettingsDate(await getGoogleDriveSettingsDate(googleDriveSession.accessToken));
+    });
+  };
+
   return (
     <div className="fixed inset-0 w-full h-full overflow-hidden select-none bg-stone-100 dark:bg-zinc-950">
       {errorMessage && (
@@ -231,6 +373,7 @@ export const App: React.FC = () => {
           settings={effectiveSettings}
           selectedTheme={settings.theme}
           onUpdateSettings={handleUpdateSettings}
+          onBookDataChange={handleBookDataChange}
         />
       ) : (
         <FileDropZone
@@ -238,6 +381,17 @@ export const App: React.FC = () => {
           onOpenRecent={handleOpenRecent}
           recentBooks={recentBooks}
           isLoading={isLoading}
+          googleDriveConfigured={googleDriveConfigured}
+          googleDriveSession={googleDriveSession}
+          googleDriveSettingsDate={googleDriveSettingsDate}
+          googleDriveBooks={googleDriveBooks}
+          isDriveBusy={isDriveBusy}
+          onGoogleDriveSignIn={handleGoogleDriveSignIn}
+          onGoogleDriveSignOut={handleGoogleDriveSignOut}
+          onRestoreDriveSettings={handleRestoreDriveSettings}
+          onUploadDriveBook={handleUploadDriveBook}
+          onDownloadDriveBook={handleDownloadDriveBook}
+          onRefreshDriveBooks={handleRefreshDriveBooks}
         />
       )}
     </div>
