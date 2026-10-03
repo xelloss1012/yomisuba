@@ -24,8 +24,8 @@ function fingerprint(value: string): string {
   return (hash >>> 0).toString(16);
 }
 
-function createCacheKey(provider: TranslationProvider, text: string, apiKey = ''): string {
-  return `${provider}:${fingerprint(apiKey)}:${text.trim()}`;
+function createCacheKey(provider: TranslationProvider, text: string, apiKey = '', model = ''): string {
+  return `${provider}:${fingerprint(apiKey)}:${model ? `${model}:` : ''}${text.trim()}`;
 }
 
 function readEntries(): CachedTranslation[] {
@@ -57,8 +57,9 @@ export function getCachedTranslation(
   provider: TranslationProvider,
   text: string,
   apiKey = '',
+  model = '',
 ): string | null {
-  const cacheKey = createCacheKey(provider, text, apiKey);
+  const cacheKey = createCacheKey(provider, text, apiKey, model);
   const entries = readEntries();
   const entry = entries.find((candidate) => candidate.cacheKey === cacheKey);
   if (!entry) {
@@ -79,9 +80,10 @@ export function saveCachedTranslation(
   text: string,
   translation: string,
   apiKey = '',
+  model = '',
 ): void {
   const now = Date.now();
-  const cacheKey = createCacheKey(provider, text, apiKey);
+  const cacheKey = createCacheKey(provider, text, apiKey, model);
   const entries = readEntries().filter((entry) => entry.cacheKey !== cacheKey);
   writeEntries([
     {

@@ -4,7 +4,84 @@ export const AI_PROVIDER_LABELS: Record<AiProvider, string> = {
   gemini: 'Gemini',
   openai: 'ChatGPT',
   deepseek: 'DeepSeek',
+  openrouter: 'OpenRouter',
 };
+
+export const DEFAULT_OPENROUTER_MODEL = 'openrouter/free';
+export const OPENROUTER_MODEL_PRESETS = [
+  { id: 'openrouter/free', label: 'Gratis · selección automática' },
+  { id: 'openrouter/auto', label: 'Automático · mejor modelo para la tarea' },
+  { id: 'latest/openai', label: 'Último disponible de OpenAI' },
+  { id: 'latest/anthropic', label: 'Último disponible de Claude (Anthropic)' },
+  { id: 'latest/google', label: 'Último disponible de Gemini (Google)' },
+  { id: 'latest/deepseek', label: 'Último disponible de DeepSeek' },
+  { id: 'latest/x-ai', label: 'Último disponible de xAI (Grok)' },
+  { id: 'latest/meta-llama', label: 'Último disponible de Meta (Llama)' },
+  { id: 'latest/mistralai', label: 'Último disponible de Mistral' },
+  { id: 'latest/qwen', label: 'Último disponible de Qwen' },
+] as const;
+
+interface OpenRouterCatalogModel {
+  id?: string;
+  name?: string;
+  created?: number;
+  expiration_date?: string | null;
+}
+
+let openRouterCatalogPromise: Promise<OpenRouterCatalogModel[]> | null = null;
+let openRouterCatalogLoadedAt = 0;
+const OPENROUTER_CATALOG_CACHE_MS = 15 * 60 * 1000;
+
+async function getOpenRouterCatalog(): Promise<OpenRouterCatalogModel[]> {
+  if (
+    openRouterCatalogPromise &&
+    Date.now() - openRouterCatalogLoadedAt < OPENROUTER_CATALOG_CACHE_MS
+  ) {
+    return openRouterCatalogPromise;
+  }
+
+  openRouterCatalogLoadedAt = Date.now();
+  const request = (async () => {
+    const response = await fetch('https://openrouter.ai/api/v1/models');
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      const message = payload?.error?.message || `HTTP ${response.status}`;
+      throw new Error(`No se pudo consultar el catálogo de OpenRouter: ${message}`);
+    }
+    if (!Array.isArray(payload?.data)) {
+      throw new Error('El catálogo de modelos de OpenRouter tiene un formato no válido.');
+    }
+    return payload.data as OpenRouterCatalogModel[];
+  })();
+  openRouterCatalogPromise = request;
+  request.catch(() => {
+    if (openRouterCatalogPromise === request) {
+      openRouterCatalogPromise = null;
+      openRouterCatalogLoadedAt = 0;
+    }
+  });
+  return request;
+}
+
+export async function resolveOpenRouterModel(selection: string): Promise<string> {
+  if (!selection.startsWith('latest/')) return selection;
+
+  const provider = selection.slice('latest/'.length);
+  const models = (await getOpenRouterCatalog())
+    .filter((model) =>
+      model.id?.startsWith(`${provider}/`) &&
+      (provider !== 'google' || /gemini/i.test(`${model.id} ${model.name || ''}`)) &&
+      !model.id.includes(':') &&
+      model.created &&
+      (!model.expiration_date || Date.parse(model.expiration_date) > Date.now())
+    )
+    .sort((left, right) => (right.created || 0) - (left.created || 0));
+  const latestModel = models[0]?.id;
+  if (!latestModel) {
+    throw new Error(`OpenRouter no tiene modelos activos disponibles para ${provider}.`);
+  }
+  return latestModel;
+}
 
 function translationPrompt(text: string): string {
   return [
@@ -15,20 +92,17 @@ function translationPrompt(text: string): string {
   ].join('\n');
 }
 
-function explanationPrompt(text: string, translation: string): string {
+function explanationPrompt(text: string): string {
   return [
-    'Explica en español la traducción de este texto japonés.',
-    'Describe el sentido general, la gramática y las conjugaciones importantes, y el vocabulario relevante.',
+    'Traduce primero el texto japonés al español y, a continuación, explica esa traducción que tú mismo has generado.',
+    'Incluye la traducción al principio de la respuesta y después explica el sentido general, las construcciones gramaticales, las conjugaciones importantes y el vocabulario relevante.',
     'Aclara matices, registro o contexto cultural solo cuando sean útiles.',
     'No uses romaji ni transliteres japonés al alfabeto latino en las explicaciones de gramática o vocabulario.',
     'Cuando indiques la lectura o pronunciación de una palabra japonesa, escríbela en hiragana o katakana, según corresponda.',
-    'Estructura la respuesta con apartados breves y viñetas. No inventes información si algo es ambiguo.',
+    'Estructura la respuesta con los apartados «Traducción» y «Explicación», además de viñetas breves. No inventes información si algo es ambiguo.',
     '',
     'Texto japonés:',
     text,
-    '',
-    'Traducción propuesta:',
-    translation || '(todavía no hay traducción disponible)',
   ].join('\n');
 }
 
@@ -104,6 +178,7 @@ async function generateWithAi(
   prompt: string,
   systemMessage: string,
   maxOutputTokens: number,
+  openRouterModel = DEFAULT_OPENROUTER_MODEL,
 ): Promise<string> {
   let response: Response | undefined;
 
@@ -171,8 +246,13 @@ async function generateWithAi(
     }
   } else {
     const isDeepSeek = provider === 'deepseek';
+    const isOpenRouter = provider === 'openrouter';
     response = await fetch(
-      isDeepSeek ? 'https://api.deepseek.com/chat/completions' : 'https://api.openai.com/v1/chat/completions',
+      isOpenRouter
+        ? 'https://openrouter.ai/api/v1/chat/completions'
+        : isDeepSeek
+          ? 'https://api.deepseek.com/chat/completions'
+          : 'https://api.openai.com/v1/chat/completions',
       {
         method: 'POST',
         headers: {
@@ -180,7 +260,11 @@ async function generateWithAi(
           Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-          model: isDeepSeek ? 'deepseek-chat' : 'gpt-4o-mini',
+          model: isOpenRouter
+            ? openRouterModel.trim() || DEFAULT_OPENROUTER_MODEL
+            : isDeepSeek
+              ? 'deepseek-chat'
+              : 'gpt-4o-mini',
           messages: [
             { role: 'system', content: systemMessage },
             { role: 'user', content: prompt },
@@ -202,6 +286,7 @@ export async function translateWithAi(
   provider: AiProvider,
   apiKey: string,
   text: string,
+  openRouterModel?: string,
 ): Promise<string> {
   return generateWithAi(
     provider,
@@ -209,6 +294,7 @@ export async function translateWithAi(
     translationPrompt(text),
     'Eres un traductor preciso de japonés a español.',
     1024,
+    openRouterModel,
   );
 }
 
@@ -216,13 +302,14 @@ export async function explainWithAi(
   provider: AiProvider,
   apiKey: string,
   text: string,
-  translation: string,
+  openRouterModel?: string,
 ): Promise<string> {
   return generateWithAi(
     provider,
     apiKey,
-    explanationPrompt(text, translation),
+    explanationPrompt(text),
     'Eres un profesor experto de japonés que explica en español de forma clara y precisa.',
     2048,
+    openRouterModel,
   );
 }

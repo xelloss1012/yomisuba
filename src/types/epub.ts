@@ -2,7 +2,7 @@ export type WritingMode = 'vertical-rl' | 'horizontal-tb' | 'auto';
 export type ProgressionDirection = 'rtl' | 'ltr' | 'auto';
 export type ReaderTheme = 'light' | 'sepia' | 'dark' | 'paper';
 export type FontFamily = 'mincho' | 'gothic' | 'serif' | 'sans';
-export type AiProvider = 'gemini' | 'openai' | 'deepseek';
+export type AiProvider = 'gemini' | 'openai' | 'deepseek' | 'openrouter';
 
 export interface BookMetadata {
   title: string;
@@ -54,6 +54,8 @@ export interface ReaderSettingsState {
   lineHeight: number; // multiplier e.g. 1.8
   fontFamily: FontFamily;
   theme: ReaderTheme;
+  autoNightMode: boolean;
   letterSpacing: number; // in em
   aiApiKeys: Partial<Record<AiProvider, string>>;
+  openRouterModel: string;
 }

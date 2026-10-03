@@ -11,8 +11,9 @@
     "android:add": "npm run build && cap add android",
     "android:sync": "npm run build && cap sync android",
     "android:open": "cap open android",
-    "android:build": "npm run build && cap sync android && cap build android",
-    "android:build:debug": "npm run build && cap sync android && node scripts/build-android-debug.mjs",
+    "android:build": "npm run android:build:release",
+    "android:build:release": "npm run build && cap sync android && node scripts/build-android.mjs release",
+    "android:build:debug": "npm run build && cap sync android && node scripts/build-android.mjs debug",
     "dictionary:update": "python scripts/update_jmdict_en.py",
     "icon:generate": "npx @capacitor/assets generate --android",
     "preview": "vite preview"

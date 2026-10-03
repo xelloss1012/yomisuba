@@ -14,8 +14,15 @@ const DEFAULT_SETTINGS: ReaderSettingsState = {
   lineHeight: 1.9,
   fontFamily: 'mincho',
   theme: 'paper',
+  autoNightMode: false,
   letterSpacing: 0.05,
   aiApiKeys: {},
+  openRouterModel: 'openrouter/free',
+};
+
+const isNightTime = () => {
+  const hour = new Date().getHours();
+  return hour >= 20 || hour < 8;
 };
 
 export const App: React.FC = () => {
@@ -33,6 +40,10 @@ export const App: React.FC = () => {
     }
     return DEFAULT_SETTINGS;
   });
+  const [nightTime, setNightTime] = useState(isNightTime);
+  const effectiveSettings = settings.autoNightMode && nightTime
+    ? { ...settings, theme: 'dark' as const }
+    : settings;
 
   // Save settings changes to localStorage
   useEffect(() => {
@@ -41,14 +52,25 @@ export const App: React.FC = () => {
     } catch {
       // ignore
     }
+  }, [settings]);
 
-    // Apply dark class to html document if dark theme
-    if (settings.theme === 'dark') {
+  useEffect(() => {
+    if (effectiveSettings.theme === 'dark') {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
     }
-  }, [settings]);
+  }, [effectiveSettings.theme]);
+
+  useEffect(() => {
+    const updateNightTime = () => setNightTime(isNightTime());
+    const intervalId = window.setInterval(updateNightTime, 60_000);
+    document.addEventListener('visibilitychange', updateNightTime);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', updateNightTime);
+    };
+  }, []);
 
   // Screen Wake Lock to keep screen awake while app is active
   useEffect(() => {
@@ -206,7 +228,8 @@ export const App: React.FC = () => {
         <EpubReader
           epub={currentEpub}
           onCloseBook={handleCloseBook}
-          settings={settings}
+          settings={effectiveSettings}
+          selectedTheme={settings.theme}
           onUpdateSettings={handleUpdateSettings}
         />
       ) : (

@@ -143,6 +143,7 @@ interface Props {
   epub: ParsedEpub;
   onCloseBook: () => void;
   settings: ReaderSettingsState;
+  selectedTheme: ReaderSettingsState['theme'];
   onUpdateSettings: (newSettings: Partial<ReaderSettingsState>) => void;
 }
 
@@ -150,6 +151,7 @@ export const EpubReader: React.FC<Props> = ({
   epub,
   onCloseBook,
   settings,
+  selectedTheme,
   onUpdateSettings,
 }) => {
   const [currentSpineIndex, setCurrentSpineIndex] = useState(0);
@@ -250,7 +252,7 @@ export const EpubReader: React.FC<Props> = ({
   const isVertical = settings.writingMode === 'vertical-rl';
   const isRtl = isVertical || settings.progressionDirection === 'rtl';
   const configuredAiProviders = useMemo(
-    () => (['gemini', 'openai', 'deepseek'] as AiProvider[]).filter(
+    () => (['gemini', 'openai', 'deepseek', 'openrouter'] as AiProvider[]).filter(
       (provider) => Boolean(settings.aiApiKeys[provider]?.trim())
     ),
     [settings.aiApiKeys]
@@ -469,7 +471,7 @@ export const EpubReader: React.FC<Props> = ({
     const imgMaxW = isVertical
       ? `calc(100vw - ${sidePad * 2}px)`
       : mobile ? 'calc(100vw - 28px)' : 'calc(100vw - 88px)';
-    const fontSize = mobile ? Math.min(settings.fontSize, 18) : settings.fontSize;
+    const fontSize = settings.fontSize;
 
     // For vertical-rl multi-column we MUST set height on the scroller
     // and let the browser compute the columns for us.
@@ -2703,6 +2705,7 @@ export const EpubReader: React.FC<Props> = ({
         selectedText={selectedText}
         aiProvider={aiTranslationProvider}
         aiApiKey={aiTranslationProvider ? settings.aiApiKeys[aiTranslationProvider] : undefined}
+        openRouterModel={settings.openRouterModel}
         availableAiProviders={configuredAiProviders}
         aiApiKeys={settings.aiApiKeys}
         onSaveHistory={handleSaveTranslationHistory}
@@ -2833,6 +2836,7 @@ export const EpubReader: React.FC<Props> = ({
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         settings={settings}
+        selectedTheme={selectedTheme}
         onUpdateSettings={onUpdateSettings}
       />
     </div>

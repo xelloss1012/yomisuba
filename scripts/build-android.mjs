@@ -4,6 +4,11 @@ import { spawnSync } from 'node:child_process';
 
 const root = resolve(import.meta.dirname, '..');
 const androidDir = join(root, 'android');
+const buildType = process.argv[2] || 'debug';
+if (!['debug', 'release'].includes(buildType)) {
+  console.error(`Unsupported Android build type: ${buildType}`);
+  process.exit(1);
+}
 
 function readLocalEnvironment() {
   const envFile = join(root, '.env.local');
@@ -40,7 +45,7 @@ if (javaHome) {
 }
 
 const gradleCommand = process.platform === 'win32' ? '.\\gradlew.bat' : './gradlew';
-const gradleArgs = ['assembleDebug'];
+const gradleArgs = [`assemble${buildType[0].toUpperCase()}${buildType.slice(1)}`];
 
 const result = spawnSync(gradleCommand, gradleArgs, {
   cwd: androidDir,
@@ -53,7 +58,8 @@ if (result.status !== 0) {
   process.exit(result.status ?? 1);
 }
 
-const apkPath = join(androidDir, 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk');
+const apkFilename = buildType === 'release' ? 'app-release.apk' : 'app-debug.apk';
+const apkPath = join(androidDir, 'app', 'build', 'outputs', 'apk', buildType, apkFilename);
 if (!existsSync(apkPath)) {
   console.error(`APK not found at ${apkPath}`);
   process.exit(1);
@@ -61,6 +67,9 @@ if (!existsSync(apkPath)) {
 
 const outputDir = join(root, 'dist', 'android');
 mkdirSync(outputDir, { recursive: true });
-const outputPath = join(outputDir, 'ereader-japanese-vertical-debug.apk');
+const outputFilename = buildType === 'release'
+  ? 'ereader-japanese-vertical-release.apk'
+  : 'ereader-japanese-vertical-debug.apk';
+const outputPath = join(outputDir, outputFilename);
 copyFileSync(apkPath, outputPath);
 console.log(`Android APK copied to ${outputPath}`);

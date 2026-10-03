@@ -1,7 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Volume2, Languages, Loader2, Sparkles } from 'lucide-react';
 import { AiProvider } from '../types/epub';
-import { AI_PROVIDER_LABELS, explainWithAi, translateWithAi } from '../utils/aiTranslation';
+import {
+  AI_PROVIDER_LABELS,
+  DEFAULT_OPENROUTER_MODEL,
+  explainWithAi,
+  resolveOpenRouterModel,
+  translateWithAi,
+} from '../utils/aiTranslation';
 import { getCachedTranslation, saveCachedTranslation } from '../utils/translationCache';
 import { DictionaryEntry, getDictionarySearchTerms } from '../utils/dictionary';
 import { MarkdownContent } from './MarkdownContent';
@@ -16,6 +22,7 @@ interface Props {
   selectedText: string;
   aiProvider?: AiProvider;
   aiApiKey?: string;
+  openRouterModel: string;
   availableAiProviders: AiProvider[];
   aiApiKeys: Partial<Record<AiProvider, string>>;
   onSaveHistory: (kind: TranslationHistoryKind, query: string, response: string, provider?: AiProvider) => void;
@@ -27,6 +34,7 @@ export const TranslationModal: React.FC<Props> = ({
   selectedText,
   aiProvider,
   aiApiKey,
+  openRouterModel,
   availableAiProviders,
   aiApiKeys,
   onSaveHistory,
@@ -88,21 +96,25 @@ export const TranslationModal: React.FC<Props> = ({
     const translate = async () => {
       const provider = aiProvider || 'google';
       const providerKey = aiApiKey || '';
-      const cachedTranslation = getCachedTranslation(provider, selectedText, providerKey);
       const resultKind: TranslationHistoryKind = aiProvider ? 'ai' : 'translation';
-      if (cachedTranslation) {
-        if (!cancelled) {
-          setTranslatedText(cachedTranslation);
-          onSaveHistory(resultKind, selectedText, cachedTranslation, aiProvider);
-          setIsLoading(false);
-        }
-        return;
-      }
-
       try {
+        let model = '';
+        if (aiProvider === 'openrouter') {
+          const selection = openRouterModel.trim() || DEFAULT_OPENROUTER_MODEL;
+          model = await resolveOpenRouterModel(selection);
+        }
+        const cachedTranslation = getCachedTranslation(provider, selectedText, providerKey, model);
+        if (cachedTranslation) {
+          if (!cancelled) {
+            setTranslatedText(cachedTranslation);
+            onSaveHistory(resultKind, selectedText, cachedTranslation, aiProvider);
+          }
+          return;
+        }
+
         let result: string;
         if (aiProvider && aiApiKey) {
-          result = await translateWithAi(aiProvider, aiApiKey, selectedText);
+          result = await translateWithAi(aiProvider, aiApiKey, selectedText, model || openRouterModel);
         } else {
           const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=es&dt=t&q=${encodeURIComponent(selectedText)}`;
           const res = await fetch(url);
@@ -115,7 +127,7 @@ export const TranslationModal: React.FC<Props> = ({
         }
         if (cancelled) return;
         setTranslatedText(result);
-        saveCachedTranslation(provider, selectedText, result, providerKey);
+        saveCachedTranslation(provider, selectedText, result, providerKey, model);
         onSaveHistory(resultKind, selectedText, result, aiProvider);
       } catch (err) {
         if (!cancelled) setTranslatedText(err instanceof Error ? err.message : 'Traducción no disponible.');
@@ -126,7 +138,7 @@ export const TranslationModal: React.FC<Props> = ({
 
     void translate();
     return () => { cancelled = true; };
-  }, [aiApiKey, aiProvider, availableAiProviders, isOpen, onSaveHistory, selectedText]);
+  }, [aiApiKey, aiProvider, availableAiProviders, isOpen, onSaveHistory, openRouterModel, selectedText]);
 
   if (!isOpen) return null;
 
@@ -162,7 +174,10 @@ export const TranslationModal: React.FC<Props> = ({
     setExplanationError('');
     setIsExplaining(true);
     try {
-      const result = await explainWithAi(explanationProvider, key, selectedText, translatedText);
+      const model = explanationProvider === 'openrouter'
+        ? await resolveOpenRouterModel(openRouterModel.trim() || DEFAULT_OPENROUTER_MODEL)
+        : openRouterModel;
+      const result = await explainWithAi(explanationProvider, key, selectedText, model);
       if (explanationRequestRef.current === requestId) setExplanation(result);
     } catch (error) {
       if (explanationRequestRef.current === requestId) {
@@ -289,7 +304,7 @@ export const TranslationModal: React.FC<Props> = ({
           {dictionaryTerms && (
             <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/60 dark:bg-emerald-950/20 p-3 text-xs text-emerald-900 dark:text-emerald-200 space-y-3">
               <div className="text-[10px] font-bold uppercase tracking-[0.12em] mb-1.5 text-emerald-700 dark:text-emerald-300">
-                Diccionario JMDict local · español prioritario
+                Diccionario JMDict local · español e inglés
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full bg-emerald-200/80 dark:bg-emerald-900/70 px-2 py-1 font-semibold">
@@ -313,7 +328,7 @@ export const TranslationModal: React.FC<Props> = ({
               ) : (
                 <div className="space-y-2">
                   {dictionaryTerms.entries.map((entry) => (
-                    <div key={entry.id} className="rounded-lg bg-white/75 dark:bg-zinc-900/60 p-2.5">
+                    <div key={`${entry.language}-${entry.id}`} className="rounded-lg bg-white/75 dark:bg-zinc-900/60 p-2.5">
                       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                         <span className="font-semibold text-base text-zinc-900 dark:text-zinc-100">
                           {entry.kanji.length ? entry.kanji.join(' · ') : entry.kana.join(' · ')}

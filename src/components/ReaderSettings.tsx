@@ -1,11 +1,13 @@
 import React from 'react';
 import { AiProvider, FontFamily, ReaderSettingsState, ReaderTheme } from '../types/epub';
 import { X, Type, AlignLeft, Sun, BookOpen, Compass } from 'lucide-react';
+import { DEFAULT_OPENROUTER_MODEL, OPENROUTER_MODEL_PRESETS } from '../utils/aiTranslation';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   settings: ReaderSettingsState;
+  selectedTheme: ReaderTheme;
   onUpdateSettings: (newSettings: Partial<ReaderSettingsState>) => void;
 }
 
@@ -13,6 +15,7 @@ export const ReaderSettings: React.FC<Props> = ({
   isOpen,
   onClose,
   settings,
+  selectedTheme,
   onUpdateSettings,
 }) => {
   if (!isOpen) return null;
@@ -34,6 +37,7 @@ export const ReaderSettings: React.FC<Props> = ({
     { id: 'gemini', label: 'Google Gemini', hint: 'AIza...' },
     { id: 'openai', label: 'ChatGPT / OpenAI', hint: 'sk-...' },
     { id: 'deepseek', label: 'DeepSeek', hint: 'sk-...' },
+    { id: 'openrouter', label: 'OpenRouter', hint: 'sk-or-v1-...' },
   ];
 
   return (
@@ -101,13 +105,27 @@ export const ReaderSettings: React.FC<Props> = ({
                   key={t.id}
                   onClick={() => onUpdateSettings({ theme: t.id })}
                   className={`py-2 px-1 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all ${t.bg} ${t.border} ${t.text} ${
-                    settings.theme === t.id ? 'ring-2 ring-indigo-500 ring-offset-2 dark:ring-offset-zinc-900 font-bold shadow-md' : 'opacity-85 hover:opacity-100'
+                    selectedTheme === t.id ? 'ring-2 ring-indigo-500 ring-offset-2 dark:ring-offset-zinc-900 font-bold shadow-md' : 'opacity-85 hover:opacity-100'
                   }`}
                 >
                   <span className="text-xs font-medium">{t.label}</span>
                 </button>
               ))}
             </div>
+            <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-xl border border-zinc-200 dark:border-zinc-700 p-3 text-zinc-700 dark:text-zinc-300">
+              <input
+                type="checkbox"
+                checked={settings.autoNightMode}
+                onChange={(event) => onUpdateSettings({ autoNightMode: event.target.checked })}
+                className="mt-0.5 h-4 w-4 accent-indigo-600"
+              />
+              <span>
+                <span className="block text-sm font-medium">Modo noche automático</span>
+                <span className="mt-0.5 block text-xs text-zinc-500 dark:text-zinc-400">
+                  Activa Noche de 20:00 a 8:00; el resto del día usa el tema seleccionado.
+                </span>
+              </span>
+            </label>
           </div>
 
           {/* Tipografía */}
@@ -155,7 +173,7 @@ export const ReaderSettings: React.FC<Props> = ({
               <input
                 type="range"
                 min="12"
-                max="36"
+                max="50"
                 step="1"
                 value={settings.fontSize}
                 onChange={(e) => onUpdateSettings({ fontSize: Number(e.target.value) })}
@@ -163,7 +181,7 @@ export const ReaderSettings: React.FC<Props> = ({
               />
               <button
                 type="button"
-                onClick={() => onUpdateSettings({ fontSize: Math.min(42, settings.fontSize + 2) })}
+                onClick={() => onUpdateSettings({ fontSize: Math.min(50, settings.fontSize + 2) })}
                 className="w-10 h-10 rounded-xl bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 flex items-center justify-center text-base font-bold text-zinc-700 dark:text-zinc-300"
               >
                 A+
@@ -232,6 +250,41 @@ export const ReaderSettings: React.FC<Props> = ({
                     />
                   </label>
                 ))}
+                <div>
+                  <span className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+                    Modelos predefinidos de OpenRouter
+                  </span>
+                  <select
+                    value={OPENROUTER_MODEL_PRESETS.some((model) => model.id === settings.openRouterModel)
+                      ? settings.openRouterModel
+                      : 'custom'}
+                    onChange={(event) => {
+                      onUpdateSettings({
+                        openRouterModel: event.target.value === 'custom' ? '' : event.target.value,
+                      });
+                    }}
+                    className="mb-2 w-full rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-2 text-xs text-zinc-800 dark:text-zinc-200 outline-none focus:border-indigo-500"
+                  >
+                    {OPENROUTER_MODEL_PRESETS.map((model) => (
+                      <option key={model.id} value={model.id}>{model.label}</option>
+                    ))}
+                    <option value="custom">ID de modelo personalizado…</option>
+                  </select>
+                  {settings.openRouterModel === '' || !OPENROUTER_MODEL_PRESETS.some((model) => model.id === settings.openRouterModel) ? (
+                    <input
+                      type="text"
+                      value={settings.openRouterModel}
+                      onChange={(event) => onUpdateSettings({ openRouterModel: event.target.value })}
+                      placeholder="proveedor/modelo"
+                      autoComplete="off"
+                      spellCheck={false}
+                      className="w-full rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-2 text-xs text-zinc-800 dark:text-zinc-200 outline-none focus:border-indigo-500"
+                    />
+                  ) : null}
+                  <span className="mt-1 block text-[10px] text-zinc-500 dark:text-zinc-400">
+                    Los modelos «Último disponible» se resuelven desde el catálogo actual de OpenRouter. Predeterminado: {DEFAULT_OPENROUTER_MODEL}.
+                  </span>
+                </div>
               </div>
             </div>
           </div>

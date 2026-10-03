@@ -32,7 +32,6 @@ interface CompactEntry {
 }
 
 const entries = jmdictEntries as CompactEntry[];
-const spanishEntryIds = new Set(entries.map((entry) => entry.id));
 interface DictionaryToken {
   surface_form: string;
   pos: string;
@@ -324,10 +323,9 @@ const toEntry = (entry: CompactEntry, language: DictionaryEntry['language']): Di
   })),
 });
 
-const createIndex = (source: CompactEntry[], excludedIds?: Set<string>): DictionaryIndex => {
+const createIndex = (source: CompactEntry[]): DictionaryIndex => {
   const byForm = new Map<string, CompactEntry[]>();
   for (const entry of source) {
-    if (excludedIds?.has(entry.id)) continue;
     for (const form of unique([...entry.k, ...entry.r])) {
       const matchingEntries = byForm.get(form);
       if (matchingEntries) matchingEntries.push(entry);
@@ -354,7 +352,7 @@ const getEnglishIndex = async (): Promise<DictionaryIndex> => {
       if (!Array.isArray(loadedEntries)) {
         throw new Error('El archivo local de JMdict inglés no tiene un formato válido.');
       }
-      return createIndex(loadedEntries, spanishEntryIds);
+      return createIndex(loadedEntries);
     })();
   }
   return englishIndexPromise;
@@ -502,8 +500,6 @@ export const getDictionarySearchTerms = async (value: string): Promise<Dictionar
       : 'No se pudo cargar el complemento inglés de JMdict.';
   }
 
-  const spanishIds = new Set(spanishResults.map((m) => m.entry.id));
-
   // 4-tier hybrid ranking:
   // priority 0: Spanish complete match (score === 0)
   // priority 1: English complete match (score === 0)
@@ -516,7 +512,6 @@ export const getDictionarySearchTerms = async (value: string): Promise<Dictionar
       priority: m.score === 0 ? 0 : 2,
     })),
     ...englishResults
-      .filter((m) => !spanishIds.has(m.entry.id))
       .map((m) => ({
         entry: toEntry(m.entry, 'en'),
         score: m.score,
@@ -529,7 +524,15 @@ export const getDictionarySearchTerms = async (value: string): Promise<Dictionar
     return left.score - right.score;
   });
 
-  const topEntries = combined.slice(0, 20);
+  const topEntries = [
+    ...combined.filter((item) => item.entry.language === 'es').slice(0, 20),
+    ...combined.filter((item) => item.entry.language === 'en').slice(0, 20),
+  ].sort((left, right) => {
+    if (left.priority !== right.priority) {
+      return left.priority - right.priority;
+    }
+    return left.score - right.score;
+  });
   const hasCompleteMatch = topEntries.some((item) => item.score === 0);
 
   return {
