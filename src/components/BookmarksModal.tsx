@@ -4,6 +4,7 @@ import { Bookmark, Trash2, X } from 'lucide-react';
 export interface ReaderBookmark {
   spineIndex: number;
   page: number;
+  pageCount?: number;
 }
 
 interface BookmarkItem extends ReaderBookmark {

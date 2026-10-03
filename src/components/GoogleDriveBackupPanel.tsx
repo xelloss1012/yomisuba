@@ -148,10 +148,17 @@ export const GoogleDriveBackupPanel: React.FC<Props> = ({
                       onClick={() => onDownloadBook(book)}
                       disabled={busy}
                       className="rounded-md p-1.5 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 dark:text-indigo-300 dark:hover:bg-indigo-900/60"
-                      aria-label={`Descargar ${book.title} y restaurar sus datos de lectura`}
-                      title="Descargar este libro y restaurar su lectura"
+                      aria-label={`${localBooks.some((localBook) => localBook.title === book.title && localBook.creator === book.creator) ? 'Restaurar la última lectura de' : 'Descargar'} ${book.title} desde Google Drive`}
+                      title={localBooks.some((localBook) => localBook.title === book.title && localBook.creator === book.creator)
+                        ? 'Restaurar el último progreso guardado en Drive'
+                        : 'Descargar este libro y restaurar su lectura'}
                     >
                       <CloudDownload className="h-4 w-4" />
+                      <span className="text-[10px] font-semibold">
+                        {localBooks.some((localBook) => localBook.title === book.title && localBook.creator === book.creator)
+                          ? 'Actualizar'
+                          : 'Descargar'}
+                      </span>
                     </button>
                   </div>
                 ))}

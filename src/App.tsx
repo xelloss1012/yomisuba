@@ -5,7 +5,6 @@ import { FileDropZone } from './components/FileDropZone';
 import { EpubReader } from './components/EpubReader';
 import { createBookId, getLastBookId, getRecentBook, listRecentBooks, RecentBook, saveRecentBook, setLastBookId } from './utils/recentBooks';
 import {
-  applyGoogleDriveReaderData,
   downloadGoogleDriveBook,
   getGoogleDriveSettingsDate,
   GoogleDriveBook,
@@ -13,6 +12,7 @@ import {
   googleDriveConfigured,
   listGoogleDriveBooks,
   ReaderBookBackup,
+  applyGoogleDriveReaderData,
   restoreGoogleDriveReaderData,
   restoreGoogleDriveSession,
   restoreGoogleDriveSettings,
@@ -53,6 +53,7 @@ export const App: React.FC = () => {
   const [googleDriveBooks, setGoogleDriveBooks] = useState<GoogleDriveBook[]>([]);
   const [isDriveBusy, setIsDriveBusy] = useState(false);
   const [settingsRevision, setSettingsRevision] = useState(0);
+  const driveSessionRestorePromiseRef = React.useRef<Promise<GoogleDriveSession | null> | null>(null);
 
   const [settings, setSettings] = useState<ReaderSettingsState>(() => {
     try {
@@ -109,25 +110,27 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
-    const restoreDriveSession = async () => {
+    const restoreDriveSession = async (): Promise<GoogleDriveSession | null> => {
       try {
         const session = await restoreGoogleDriveSession();
-        if (!session || cancelled) return;
+        if (!session || cancelled) return null;
         setGoogleDriveSession(session);
         const [settingsDate, books] = await Promise.all([
           getGoogleDriveSettingsDate(session.accessToken),
           listGoogleDriveBooks(session.accessToken),
         ]);
-        if (cancelled) return;
+        if (cancelled) return null;
         setGoogleDriveSettingsDate(settingsDate);
         setGoogleDriveBooks(books);
+        return session;
       } catch (error) {
         if (!cancelled) {
           setErrorMessage(`No se pudo restaurar la sesión de Google Drive: ${error instanceof Error ? error.message : String(error)}`);
         }
+        return null;
       }
     };
-    void restoreDriveSession();
+    driveSessionRestorePromiseRef.current = restoreDriveSession();
     return () => { cancelled = true; };
   }, []);
 
@@ -190,6 +193,16 @@ export const App: React.FC = () => {
 
       const buffer = await fileOrBlob.arrayBuffer();
       const parsed = await parseEpub(buffer);
+      const driveSession = googleDriveSession || await driveSessionRestorePromiseRef.current;
+      if (driveSession) {
+        const bookKey = `ereader_book_${encodeURIComponent(`${parsed.metadata.title}|${parsed.metadata.creator}`)}`;
+        try {
+          const readerData = await restoreGoogleDriveReaderData(driveSession.accessToken, bookKey);
+          if (readerData) applyGoogleDriveReaderData(readerData);
+        } catch (error) {
+          setErrorMessage(`El libro se abrirá con los datos locales; no se pudo actualizar la lectura desde Drive: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
       const name = preferredName || (fileOrBlob instanceof File ? fileOrBlob.name : `${parsed.metadata.title}.epub`);
       const id = preferredId || createBookId(name, parsed.metadata.title, parsed.metadata.creator);
       const recentBook: RecentBook = {
@@ -285,6 +298,7 @@ export const App: React.FC = () => {
   const handleGoogleDriveSignIn = () => {
     void runDriveAction(async () => {
       const session = await signInToGoogleDrive();
+      driveSessionRestorePromiseRef.current = Promise.resolve(session);
       setGoogleDriveSession(session);
       const [settingsDate, books] = await Promise.all([
         getGoogleDriveSettingsDate(session.accessToken),
@@ -298,6 +312,7 @@ export const App: React.FC = () => {
   const handleGoogleDriveSignOut = () => {
     void runDriveAction(async () => {
       await signOutGoogleDrive();
+      driveSessionRestorePromiseRef.current = Promise.resolve(null);
       setGoogleDriveSession(null);
       setGoogleDriveSettingsDate(null);
       setGoogleDriveBooks([]);
@@ -329,9 +344,6 @@ export const App: React.FC = () => {
       const book = recentBooks.find((item) =>
         item.title === cloudBook.title && item.creator === cloudBook.creator
       ) || await downloadGoogleDriveBook(googleDriveSession.accessToken, cloudBook);
-      const bookKey = `ereader_book_${encodeURIComponent(`${book.title}|${book.creator}`)}`;
-      const readerData = await restoreGoogleDriveReaderData(googleDriveSession.accessToken, bookKey);
-      if (readerData) applyGoogleDriveReaderData(readerData);
       setRecentBooks((books) => [book, ...books.filter((item) => item.id !== book.id)].slice(0, 8));
       await openBook(book.blob, book.id, book.name);
     });

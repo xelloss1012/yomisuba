@@ -66,6 +66,12 @@ const readBookmarks = (storageKey: string, spineLength: number): ReadingPosition
   }
 };
 
+const mapPageToLayout = (page: number, savedPageCount: number | undefined, currentPageCount: number) => {
+  if (!savedPageCount || savedPageCount <= 1 || currentPageCount <= 1) return page;
+  const progress = Math.min(1, Math.max(0, page / (savedPageCount - 1)));
+  return Math.round(progress * (currentPageCount - 1));
+};
+
 interface PaginationCacheEntry {
   counts: number[];
   savedAt: number;
@@ -395,7 +401,8 @@ export const EpubReader: React.FC<Props> = ({
   }, [annotationsStorageKey, textAnnotations]);
 
   const isCurrentBookmarked = bookmarks.some((item) =>
-    item.spineIndex === currentSpineIndex && item.page === currentPage
+    item.spineIndex === currentSpineIndex
+      && mapPageToLayout(item.page, item.pageCount, totalPagesRef.current) === currentPage
   );
 
   const handleToggleBookmark = useCallback(() => {
@@ -403,6 +410,7 @@ export const EpubReader: React.FC<Props> = ({
     const currentPosition = {
       spineIndex: currentSpineRef.current,
       page: currentPageRef.current,
+      pageCount: Math.max(1, totalPagesRef.current),
     };
     setBookmarks((existing) => {
       const alreadySaved = existing.some((item) =>
@@ -988,7 +996,7 @@ export const EpubReader: React.FC<Props> = ({
 
   // ─── LOAD CHAPTER ─────────────────────────────────────────────────────────────
   const loadChapter = useCallback(
-    async (spineIndex: number, targetPage = 0) => {
+    async (spineIndex: number, targetPage = 0, targetPageCount?: number) => {
       if (spineIndex < 0 || spineIndex >= epub.spine.length) return;
       setIsLoadingChapter(true);
       setSelectedText('');
@@ -1713,7 +1721,24 @@ export const EpubReader: React.FC<Props> = ({
         let lastPageResolved = !wantsLastPage;
         let targetApplied = false;
 
-        const applyTargetPosition = () => {
+        const applyTargetPosition = (allowEmptyChapter = false) => {
+          updatePagination();
+          const measuredPageCount = totalPagesRef.current;
+          const knownPageCount = chapterPageCountsRef.current[spineIndex] || 0;
+          const fallbackPageCount = Math.max(knownPageCount, targetPageCount || 0);
+          if (
+            !wantsLastPage &&
+            targetPage > 0 &&
+            measuredPageCount <= 1 &&
+            fallbackPageCount <= 1 &&
+            !allowEmptyChapter
+          ) {
+            return false;
+          }
+          const resolvedPageCount = measuredPageCount > 1
+            ? measuredPageCount
+            : Math.max(1, fallbackPageCount);
+
           currentSpineRef.current = spineIndex;
           pageNudgeRef.current = 0;
           setPageNudge(0);
@@ -1728,11 +1753,16 @@ export const EpubReader: React.FC<Props> = ({
             // target counts as resolved, nothing ever put it right again.
             if (!lastPageResolved) currentPageRef.current = 0;
           } else {
-            currentPageRef.current = targetPage;
-            setCurrentPage(targetPage);
+            const resolvedPage = Math.min(
+              mapPageToLayout(targetPage, targetPageCount, resolvedPageCount),
+              Math.max(0, resolvedPageCount - 1),
+            );
+            currentPageRef.current = resolvedPage;
+            setCurrentPage(resolvedPage);
           }
           updatePagination();
           if (lastPageResolved) setIsLoadingChapter(false);
+          return true;
         };
 
         // Resolving "last page" used to happen once, inline, right after
@@ -1851,7 +1881,7 @@ export const EpubReader: React.FC<Props> = ({
         setTimeout(() => {
           if (currentSpineRef.current !== spineIndex) return;
           if (!targetApplied) {
-            logDebugRef.current('target forced');
+            logDebugRef.current('target fallback');
             applyTargetPosition();
           }
           setIsReaderPositioned(true);
@@ -1863,17 +1893,29 @@ export const EpubReader: React.FC<Props> = ({
         setTimeout(() => {
           if (currentSpineRef.current !== spineIndex) return;
           resolveLastPage();
-          setIsLoadingChapter(false);
+          if (lastPageResolved && targetApplied) setIsLoadingChapter(false);
         }, lastPageDeadline + 300);
 
-        // Poll for the measurement instead of relying on layout events, which
-        // may all fire before the columns are ready on a long chapter.
-        if (wantsLastPage) {
+        // Poll for pagination rather than relying only on layout events, which
+        // may fire before a slow device has finished laying out the chapter.
+        if (wantsLastPage || targetPage > 0) {
           const retryLastPage = () => {
-            if (lastPageResolved || currentSpineRef.current !== spineIndex) return;
+            if (
+              (wantsLastPage ? lastPageResolved : targetApplied) ||
+              currentSpineRef.current !== spineIndex
+            ) return;
             updatePagination();
-            resolveLastPage();
-            if (!lastPageResolved) window.setTimeout(retryLastPage, 120);
+            if (wantsLastPage) {
+              resolveLastPage();
+            } else {
+              const elapsed = Date.now() - loadedAt;
+              const allowEmptyChapter = elapsed >= lastPageDeadline + 1000;
+              targetApplied = applyTargetPosition(allowEmptyChapter);
+              if (targetApplied) setIsLoadingChapter(false);
+            }
+            if (wantsLastPage ? !lastPageResolved : !targetApplied) {
+              window.setTimeout(retryLastPage, 120);
+            }
           };
           window.setTimeout(retryLastPage, 80);
         }
@@ -1992,7 +2034,11 @@ export const EpubReader: React.FC<Props> = ({
   }, [handleSaveTranslationHistory, isSelectionAdjusting, selectedText]);
   useEffect(() => {
     if (!isLoadingChapter) {
-      saveReadingPosition({ spineIndex: currentSpineIndex, page: currentPage });
+      saveReadingPosition({
+        spineIndex: currentSpineIndex,
+        page: currentPage,
+        pageCount: Math.max(1, totalPagesRef.current),
+      });
     }
   }, [currentPage, currentSpineIndex, isLoadingChapter, saveReadingPosition]);
 
@@ -2002,8 +2048,15 @@ export const EpubReader: React.FC<Props> = ({
       bookKey: bookStorageKey,
       title: epub.metadata.title,
       creator: epub.metadata.creator,
-      position: { spineIndex: currentSpineIndex, page: currentPage },
-      bookmarks,
+      position: {
+        spineIndex: currentSpineIndex,
+        page: currentPage,
+        pageCount: Math.max(1, totalPagesRef.current),
+      },
+      bookmarks: bookmarks.map((bookmark) => ({
+        ...bookmark,
+        pageCount: bookmark.pageCount || chapterPageCountsRef.current[bookmark.spineIndex],
+      })),
       annotations: textAnnotations,
       translationHistory,
     };
@@ -2074,19 +2127,23 @@ export const EpubReader: React.FC<Props> = ({
   const handleSelectBookmark = useCallback((position: ReadingPosition) => {
     if (position.spineIndex < 0 || position.spineIndex >= epub.spine.length || position.page < 0) return;
     markReaderDataChanged();
-    const maxPage = Math.max(1, chapterPageCountsRef.current[position.spineIndex] || 1) - 1;
-    const targetPage = Math.min(position.page, maxPage);
+    const pageCount = Math.max(1, chapterPageCountsRef.current[position.spineIndex] || 1);
+    const targetPage = Math.min(mapPageToLayout(position.page, position.pageCount, pageCount), pageCount - 1);
     if (position.spineIndex === currentSpineRef.current) {
       currentPageRef.current = targetPage;
       setCurrentPage(targetPage);
       updatePagination();
     } else {
-      loadChapter(position.spineIndex, targetPage);
+      loadChapter(position.spineIndex, targetPage, pageCount);
     }
     setIsBookmarksOpen(false);
   }, [epub.spine.length, loadChapter, markReaderDataChanged, updatePagination]);
 
   const bookmarkItems = bookmarks.map((position) => {
+    const currentCount = chapterPageCountsRef.current[position.spineIndex] || 0;
+    const page = currentCount
+      ? mapPageToLayout(position.page, position.pageCount, currentCount)
+      : position.page;
     const chapterIndex = epub.toc.findIndex(
       (item) => resolveSpineIndex(item.href) === position.spineIndex
     );
@@ -2095,8 +2152,10 @@ export const EpubReader: React.FC<Props> = ({
       : `Capítulo ${getDisplayChapter(position.spineIndex)}`;
     return {
       ...position,
+      page,
+      ...(currentCount ? { pageCount: currentCount } : {}),
       chapterLabel,
-      bookPage: getGlobalPage(position.spineIndex, position.page) + 1,
+      bookPage: getGlobalPage(position.spineIndex, page) + 1,
     };
   });
   // Load the morphological dictionary in its worker while the book is read, so
@@ -2305,7 +2364,13 @@ export const EpubReader: React.FC<Props> = ({
   }, [findHitPage, getLiveHitPage, highlightSearchHit, loadChapter, markReaderDataChanged, updatePagination]);
 
   const bookmarkPageMarkers = isBookPaginationReady
-    ? bookmarks.map((position) => getGlobalPage(position.spineIndex, position.page))
+    ? bookmarks.map((position) => {
+      const currentCount = chapterPageCountsRef.current[position.spineIndex] || 0;
+      const page = currentCount
+        ? mapPageToLayout(position.page, position.pageCount, currentCount)
+        : position.page;
+      return getGlobalPage(position.spineIndex, page);
+    })
     : [];
 
   // Reload the chapter when a style that changes the layout is modified.
@@ -2363,13 +2428,19 @@ export const EpubReader: React.FC<Props> = ({
           savedSpineIndex < epub.spine.length &&
           savedPage >= 0
         ) {
-          position = { spineIndex: savedSpineIndex, page: savedPage };
+          position = {
+            spineIndex: savedSpineIndex,
+            page: savedPage,
+            ...(Number.isInteger(parsed.pageCount) && (parsed.pageCount || 0) > 0
+              ? { pageCount: parsed.pageCount }
+              : {}),
+          };
         }
       }
     } catch {
       // Ignore malformed or unavailable persisted position.
     }
-    loadChapter(position.spineIndex, position.page);
+    loadChapter(position.spineIndex, position.page, position.pageCount);
     void measureBookPagesRef.current();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

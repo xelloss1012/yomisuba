@@ -107,8 +107,10 @@ avanza, añade/elimina marcadores o anotaciones, o modifica el historial. Cada
 libro tiene un archivo de lectura independiente. Los EPUB no se suben solos:
 el usuario elige cada libro que quiere guardar o descargar. La restauración de
 ajustes también es manual; al descargar un libro se restaura su estado si hay
-una copia. No hay base de datos compartida entre usuarios ni archivo ZIP. Todo
-se guarda en el Drive de la cuenta conectada.
+una copia. Para actualizar el progreso de un EPUB ya guardado localmente, usa
+la acción **Actualizar** junto al libro en la lista de Google Drive. No hay
+base de datos compartida entre usuarios ni archivo ZIP. Todo se guarda en el
+Drive de la cuenta conectada.
 
 Para habilitar Drive:
 

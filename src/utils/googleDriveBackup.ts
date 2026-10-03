@@ -37,8 +37,8 @@ export interface ReaderBookBackup {
   bookKey: string;
   title: string;
   creator: string;
-  position: { spineIndex: number; page: number };
-  bookmarks: Array<{ spineIndex: number; page: number }>;
+  position: { spineIndex: number; page: number; pageCount?: number };
+  bookmarks: Array<{ spineIndex: number; page: number; pageCount?: number }>;
   annotations: Array<{ id: string; spineIndex: number; quote: string; prefix: string; suffix: string }>;
   translationHistory: Array<{
     id: string;
@@ -51,6 +51,7 @@ export interface ReaderBookBackup {
 }
 
 let initializePromise: Promise<void> | null = null;
+const readerBackupQueues = new Map<string, Promise<void>>();
 export const googleDriveConfigured = Boolean(import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID);
 
 function initializeGoogleLogin(): Promise<void> {
@@ -302,9 +303,18 @@ export async function saveGoogleDriveReaderData(
 ): Promise<void> {
   const id = await hashText(data.bookKey);
   const name = `${BOOK_STATE_PREFIX}${id}.json`;
-  const existing = await findFile(accessToken, name);
-  const json = JSON.stringify({ formatVersion: 1, ...data });
-  await uploadFile(accessToken, name, SETTINGS_FILE_TYPE, new Blob([json], { type: SETTINGS_FILE_TYPE }), existing);
+  const previous = readerBackupQueues.get(name) || Promise.resolve();
+  const save = previous.catch(() => undefined).then(async () => {
+    const existing = await findFile(accessToken, name);
+    const json = JSON.stringify({ formatVersion: 1, ...data });
+    await uploadFile(accessToken, name, SETTINGS_FILE_TYPE, new Blob([json], { type: SETTINGS_FILE_TYPE }), existing);
+  });
+  readerBackupQueues.set(name, save);
+  try {
+    await save;
+  } finally {
+    if (readerBackupQueues.get(name) === save) readerBackupQueues.delete(name);
+  }
 }
 
 export async function restoreGoogleDriveReaderData(
@@ -358,9 +368,11 @@ function isReaderSettings(value: unknown): value is ReaderSettingsState {
 
 function isReadingPosition(value: unknown): value is ReaderBookBackup['position'] {
   if (!value || typeof value !== 'object') return false;
-  const position = value as { spineIndex?: unknown; page?: unknown };
+  const position = value as { spineIndex?: unknown; page?: unknown; pageCount?: unknown };
   return Number.isInteger(position.spineIndex) && Number(position.spineIndex) >= 0
-    && Number.isInteger(position.page) && Number(position.page) >= 0;
+    && Number.isInteger(position.page) && Number(position.page) >= 0
+    && (position.pageCount === undefined
+      || (Number.isInteger(position.pageCount) && Number(position.pageCount) > 0));
 }
 
 function isReaderBookBackup(value: unknown): value is ReaderBookBackup {
