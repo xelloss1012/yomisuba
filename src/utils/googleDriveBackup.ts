@@ -4,6 +4,9 @@ import { ReaderSettingsState } from '../types/epub';
 import { RecentBook, saveRecentBook } from './recentBooks';
 
 const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+const DRIVE_SESSION_EXPECTED_KEY = 'ereader_google_drive_session_expected';
+const DRIVE_FOLDER_NAME = '.ereader';
+const DRIVE_FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
 const SETTINGS_FILE_NAME = 'EReader settings.json';
 const SETTINGS_FILE_TYPE = 'application/json';
 const BOOK_FILE_PREFIX = 'EReader book - ';
@@ -52,6 +55,7 @@ export interface ReaderBookBackup {
 
 let initializePromise: Promise<void> | null = null;
 const readerBackupQueues = new Map<string, Promise<void>>();
+let driveFolderCache: { accessToken: string; promise: Promise<string> } | null = null;
 export const googleDriveConfigured = Boolean(import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID);
 
 function initializeGoogleLogin(): Promise<void> {
@@ -84,7 +88,9 @@ export async function signInToGoogleDrive(): Promise<GoogleDriveSession> {
   if (!result.result.idToken) {
     throw new Error('Google no devolvió un token de identidad válido. Vuelve a iniciar sesión.');
   }
-  return createGoogleDriveSession(accessToken, result.result.idToken);
+  const session = await createGoogleDriveSession(accessToken, result.result.idToken);
+  localStorage.setItem(DRIVE_SESSION_EXPECTED_KEY, 'true');
+  return session;
 }
 
 async function createGoogleDriveSession(accessToken: string, idToken: string): Promise<GoogleDriveSession> {
@@ -98,25 +104,50 @@ async function createGoogleDriveSession(accessToken: string, idToken: string): P
 
 export async function restoreGoogleDriveSession(): Promise<GoogleDriveSession | null> {
   await initializeGoogleLogin();
+  const expectedSession = localStorage.getItem(DRIVE_SESSION_EXPECTED_KEY) === 'true';
+  if (Capacitor.isNativePlatform() && expectedSession) {
+    try {
+      await SocialLogin.refresh({
+        provider: 'google',
+        options: { scopes: ['email', 'profile', DRIVE_FILE_SCOPE] },
+      });
+    } catch (error) {
+      const { isLoggedIn } = await SocialLogin.isLoggedIn({ provider: 'google' });
+      if (!isLoggedIn) {
+        localStorage.removeItem(DRIVE_SESSION_EXPECTED_KEY);
+        throw new Error('La sesión de Google ha caducado o se ha revocado. Vuelve a conectar la cuenta.');
+      }
+      throw error;
+    }
+  }
   const { isLoggedIn } = await SocialLogin.isLoggedIn({ provider: 'google' });
-  if (!isLoggedIn) return null;
+  if (!isLoggedIn) {
+    if (expectedSession) localStorage.removeItem(DRIVE_SESSION_EXPECTED_KEY);
+    return null;
+  }
 
-  let authorization = await SocialLogin.getAuthorizationCode({ provider: 'google' });
-  if (!authorization.accessToken && Capacitor.isNativePlatform()) {
+  if (Capacitor.isNativePlatform() && !expectedSession) {
     await SocialLogin.refresh({
       provider: 'google',
       options: { scopes: ['email', 'profile', DRIVE_FILE_SCOPE] },
     });
-    authorization = await SocialLogin.getAuthorizationCode({ provider: 'google' });
   }
+  const authorization = await SocialLogin.getAuthorizationCode({ provider: 'google' });
   if (!authorization.accessToken || !authorization.jwt) {
     throw new Error('La sesión de Google no tiene un token válido para Drive. Vuelve a conectar la cuenta.');
   }
-  return createGoogleDriveSession(authorization.accessToken, authorization.jwt);
+  const session = await createGoogleDriveSession(authorization.accessToken, authorization.jwt);
+  localStorage.setItem(DRIVE_SESSION_EXPECTED_KEY, 'true');
+  return session;
+}
+
+export async function refreshGoogleDriveSession(): Promise<GoogleDriveSession | null> {
+  return restoreGoogleDriveSession();
 }
 
 export async function signOutGoogleDrive(): Promise<void> {
   await SocialLogin.logout({ provider: 'google' });
+  localStorage.removeItem(DRIVE_SESSION_EXPECTED_KEY);
 }
 
 async function driveRequest(accessToken: string, url: string, init: RequestInit = {}): Promise<Response> {
@@ -144,9 +175,41 @@ async function hashBlob(blob: Blob): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
+async function getDriveFolderId(accessToken: string): Promise<string> {
+  if (driveFolderCache?.accessToken !== accessToken) {
+    const pending = (async () => {
+      const query = new URLSearchParams({
+        q: `name = '${DRIVE_FOLDER_NAME}' and mimeType = '${DRIVE_FOLDER_MIME_TYPE}' and 'root' in parents and trashed = false`,
+        spaces: 'drive',
+        pageSize: '100',
+        fields: 'files(id)',
+      });
+      const response = await driveRequest(accessToken, `https://www.googleapis.com/drive/v3/files?${query}`);
+      const result = await response.json() as { files?: Array<{ id: string }> };
+      if (result.files?.[0]) return result.files[0].id;
+
+      const created = await driveRequest(accessToken, 'https://www.googleapis.com/drive/v3/files?fields=id', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=UTF-8' },
+        body: JSON.stringify({ name: DRIVE_FOLDER_NAME, mimeType: DRIVE_FOLDER_MIME_TYPE }),
+      });
+      const folder = await created.json() as { id?: string };
+      if (!folder.id) throw new Error('Google Drive no devolvió el identificador de la carpeta de copias.');
+      return folder.id;
+    })();
+    const promise = pending.catch((error: unknown) => {
+      if (driveFolderCache?.accessToken === accessToken) driveFolderCache = null;
+      throw error;
+    });
+    driveFolderCache = { accessToken, promise };
+  }
+  return driveFolderCache.promise;
+}
+
 async function findFile(accessToken: string, name: string): Promise<DriveFile | null> {
+  const folderId = await getDriveFolderId(accessToken);
   const query = new URLSearchParams({
-    q: `name = '${name.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}' and trashed = false`,
+    q: `name = '${name.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}' and '${folderId}' in parents and trashed = false`,
     spaces: 'drive',
     pageSize: '100',
     fields: 'files(id,name,description,size,modifiedTime)',
@@ -158,8 +221,9 @@ async function findFile(accessToken: string, name: string): Promise<DriveFile | 
 }
 
 async function listFiles(accessToken: string, prefix: string): Promise<DriveFile[]> {
+  const folderId = await getDriveFolderId(accessToken);
   const query = new URLSearchParams({
-    q: `name contains '${prefix}' and trashed = false`,
+    q: `name contains '${prefix}' and '${folderId}' in parents and trashed = false`,
     spaces: 'drive',
     pageSize: '1000',
     fields: 'nextPageToken,files(id,name,description,size,modifiedTime)',
@@ -185,17 +249,24 @@ async function uploadFile(
   existing: DriveFile | null,
   description?: string,
 ): Promise<DriveFile> {
+  const folderId = await getDriveFolderId(accessToken);
   const baseUrl = existing
     ? `https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(existing.id)}`
     : 'https://www.googleapis.com/upload/drive/v3/files';
-  const response = await driveRequest(accessToken, `${baseUrl}?uploadType=resumable&fields=id,name,modifiedTime`, {
+  const uploadQuery = new URLSearchParams({ uploadType: 'resumable', fields: 'id,name,modifiedTime' });
+  const response = await driveRequest(accessToken, `${baseUrl}?${uploadQuery}`, {
     method: existing ? 'PATCH' : 'POST',
     headers: {
       'Content-Type': 'application/json; charset=UTF-8',
       'X-Upload-Content-Type': mimeType,
       'X-Upload-Content-Length': String(blob.size),
     },
-    body: JSON.stringify({ name, mimeType, ...(description ? { description } : {}) }),
+    body: JSON.stringify({
+      name,
+      mimeType,
+      ...(!existing ? { parents: [folderId] } : {}),
+      ...(description ? { description } : {}),
+    }),
   });
   const uploadUrl = response.headers.get('Location');
   if (!uploadUrl) throw new Error('Google Drive no devolvió la dirección para subir el archivo.');
@@ -234,10 +305,22 @@ export async function restoreGoogleDriveSettings(accessToken: string): Promise<R
   const file = await findFile(accessToken, SETTINGS_FILE_NAME);
   if (!file) throw new Error('No hay una copia de ajustes en esta cuenta de Google Drive.');
   const data: unknown = JSON.parse(await (await downloadFile(accessToken, file)).text());
-  if (!data || typeof data !== 'object' || !isReaderSettings((data as { settings?: unknown }).settings)) {
+  const savedSettings = data && typeof data === 'object'
+    ? (data as { settings?: unknown }).settings
+    : undefined;
+  if (!savedSettings || typeof savedSettings !== 'object' || Array.isArray(savedSettings)) {
     throw new Error('El archivo de ajustes de Google Drive no tiene un formato válido.');
   }
-  return (data as { settings: ReaderSettingsState }).settings;
+  const settings = {
+    autoNightMode: false,
+    aiApiKeys: {},
+    openRouterModel: 'openrouter/free',
+    ...(savedSettings as Record<string, unknown>),
+  };
+  if (!isReaderSettings(settings)) {
+    throw new Error('El archivo de ajustes de Google Drive no tiene un formato válido.');
+  }
+  return settings;
 }
 
 export async function getGoogleDriveSettingsDate(accessToken: string): Promise<string | null> {

@@ -16,6 +16,7 @@ import {
   restoreGoogleDriveReaderData,
   restoreGoogleDriveSession,
   restoreGoogleDriveSettings,
+  refreshGoogleDriveSession,
   saveGoogleDriveReaderData,
   saveGoogleDriveSettings,
   signInToGoogleDrive,
@@ -49,11 +50,15 @@ export const App: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [recentBooks, setRecentBooks] = useState<RecentBook[]>([]);
   const [googleDriveSession, setGoogleDriveSession] = useState<GoogleDriveSession | null>(null);
+  const googleDriveSessionRef = React.useRef<GoogleDriveSession | null>(null);
   const [googleDriveSettingsDate, setGoogleDriveSettingsDate] = useState<string | null>(null);
   const [googleDriveBooks, setGoogleDriveBooks] = useState<GoogleDriveBook[]>([]);
   const [isDriveBusy, setIsDriveBusy] = useState(false);
   const [settingsRevision, setSettingsRevision] = useState(0);
+  const [driveSettingsReady, setDriveSettingsReady] = useState(false);
   const driveSessionRestorePromiseRef = React.useRef<Promise<GoogleDriveSession | null> | null>(null);
+  const driveSessionRefreshPromiseRef = React.useRef<Promise<void> | null>(null);
+  googleDriveSessionRef.current = googleDriveSession;
 
   const [settings, setSettings] = useState<ReaderSettingsState>(() => {
     try {
@@ -79,7 +84,7 @@ export const App: React.FC = () => {
   }, [settings]);
 
   useEffect(() => {
-    if (!googleDriveSession || settingsRevision === 0) return;
+    if (!googleDriveSession || !driveSettingsReady || settingsRevision === 0) return;
     const timer = window.setTimeout(() => {
       void saveGoogleDriveSettings(googleDriveSession.accessToken, settings)
         .then(setGoogleDriveSettingsDate)
@@ -88,7 +93,7 @@ export const App: React.FC = () => {
         });
     }, 900);
     return () => window.clearTimeout(timer);
-  }, [googleDriveSession, settings, settingsRevision]);
+  }, [googleDriveSession, driveSettingsReady, settings, settingsRevision]);
 
   useEffect(() => {
     if (effectiveSettings.theme === 'dark') {
@@ -110,28 +115,69 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
+    const initializeDriveSession = async (session: GoogleDriveSession): Promise<void> => {
+      setDriveSettingsReady(false);
+      setGoogleDriveSession(session);
+      driveSessionRestorePromiseRef.current = Promise.resolve(session);
+      const [settingsDate, books] = await Promise.all([
+        getGoogleDriveSettingsDate(session.accessToken),
+        listGoogleDriveBooks(session.accessToken),
+      ]);
+      if (cancelled) return;
+      setGoogleDriveSettingsDate(settingsDate);
+      setGoogleDriveBooks(books);
+      if (settingsDate) {
+        const restored = await restoreGoogleDriveSettings(session.accessToken);
+        if (cancelled) return;
+        setSettings({ ...DEFAULT_SETTINGS, ...restored });
+      }
+      setDriveSettingsReady(true);
+      setSettingsRevision((revision) => revision + 1);
+    };
     const restoreDriveSession = async (): Promise<GoogleDriveSession | null> => {
       try {
         const session = await restoreGoogleDriveSession();
         if (!session || cancelled) return null;
-        setGoogleDriveSession(session);
-        const [settingsDate, books] = await Promise.all([
-          getGoogleDriveSettingsDate(session.accessToken),
-          listGoogleDriveBooks(session.accessToken),
-        ]);
-        if (cancelled) return null;
-        setGoogleDriveSettingsDate(settingsDate);
-        setGoogleDriveBooks(books);
+        await initializeDriveSession(session);
         return session;
       } catch (error) {
         if (!cancelled) {
-          setErrorMessage(`No se pudo restaurar la sesión de Google Drive: ${error instanceof Error ? error.message : String(error)}`);
+          setErrorMessage(`No se pudieron cargar los datos de Google Drive: ${error instanceof Error ? error.message : String(error)}`);
         }
         return null;
       }
     };
     driveSessionRestorePromiseRef.current = restoreDriveSession();
     return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'visible' || !googleDriveSessionRef.current || driveSessionRefreshPromiseRef.current) return;
+      const refresh = refreshGoogleDriveSession()
+        .then((session) => {
+          if (session) {
+            googleDriveSessionRef.current = session;
+            driveSessionRestorePromiseRef.current = Promise.resolve(session);
+            setGoogleDriveSession(session);
+          } else {
+            googleDriveSessionRef.current = null;
+            setGoogleDriveSession(null);
+            setDriveSettingsReady(false);
+            setGoogleDriveSettingsDate(null);
+            setGoogleDriveBooks([]);
+          }
+        })
+        .catch((error: unknown) => {
+          setErrorMessage(`No se pudo renovar la sesión de Google: ${error instanceof Error ? error.message : String(error)}`);
+        })
+        .finally(() => {
+          driveSessionRefreshPromiseRef.current = null;
+        });
+      driveSessionRefreshPromiseRef.current = refresh;
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, []);
 
   // Screen Wake Lock to keep screen awake while app is active
@@ -298,14 +344,22 @@ export const App: React.FC = () => {
   const handleGoogleDriveSignIn = () => {
     void runDriveAction(async () => {
       const session = await signInToGoogleDrive();
-      driveSessionRestorePromiseRef.current = Promise.resolve(session);
+      setDriveSettingsReady(false);
       setGoogleDriveSession(session);
+      googleDriveSessionRef.current = session;
+      driveSessionRestorePromiseRef.current = Promise.resolve(session);
       const [settingsDate, books] = await Promise.all([
         getGoogleDriveSettingsDate(session.accessToken),
         listGoogleDriveBooks(session.accessToken),
       ]);
       setGoogleDriveSettingsDate(settingsDate);
       setGoogleDriveBooks(books);
+      if (settingsDate) {
+        const restored = await restoreGoogleDriveSettings(session.accessToken);
+        setSettings({ ...DEFAULT_SETTINGS, ...restored });
+      }
+      setDriveSettingsReady(true);
+      setSettingsRevision((revision) => revision + 1);
     });
   };
 
@@ -313,7 +367,9 @@ export const App: React.FC = () => {
     void runDriveAction(async () => {
       await signOutGoogleDrive();
       driveSessionRestorePromiseRef.current = Promise.resolve(null);
+      googleDriveSessionRef.current = null;
       setGoogleDriveSession(null);
+      setDriveSettingsReady(false);
       setGoogleDriveSettingsDate(null);
       setGoogleDriveBooks([]);
     });
@@ -324,6 +380,7 @@ export const App: React.FC = () => {
     void runDriveAction(async () => {
       const restored = await restoreGoogleDriveSettings(googleDriveSession.accessToken);
       setSettings({ ...DEFAULT_SETTINGS, ...restored });
+      setDriveSettingsReady(true);
       setSettingsRevision((revision) => revision + 1);
     });
   };

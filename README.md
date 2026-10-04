@@ -103,14 +103,16 @@ localmente.
 La aplicación continúa funcionando y guardando datos localmente sin iniciar
 sesión. Al conectar Google, los ajustes (incluidas las claves IA) se guardan
 automáticamente cuando cambian, y los datos de lectura cuando el usuario
-avanza, añade/elimina marcadores o anotaciones, o modifica el historial. Cada
-libro tiene un archivo de lectura independiente. Los EPUB no se suben solos:
-el usuario elige cada libro que quiere guardar o descargar. La restauración de
-ajustes también es manual; al descargar un libro se restaura su estado si hay
-una copia. Para actualizar el progreso de un EPUB ya guardado localmente, usa
-la acción **Actualizar** junto al libro en la lista de Google Drive. No hay
-base de datos compartida entre usuarios ni archivo ZIP. Todo se guarda en el
-Drive de la cuenta conectada.
+avanza, añade/elimina marcadores o anotaciones, o modifica el historial. Los
+ajustes se restauran automáticamente al conectar una cuenta, y también pueden
+restaurarse manualmente. Cada libro tiene un archivo de lectura independiente.
+Los EPUB no se suben solos: el usuario elige cada libro que quiere guardar o
+descargar. Su estado se restaura al abrirlo si hay una copia. Para actualizar el
+progreso de un EPUB ya guardado localmente, usa la acción **Actualizar** junto
+al libro en la lista de Google Drive. No hay base de datos compartida entre
+usuarios ni archivo ZIP. Todo se guarda en el Drive de la cuenta conectada,
+dentro de la carpeta `.ereader`. Solo se detectan los archivos guardados en esa
+carpeta.
 
 Para habilitar Drive:
 
@@ -130,11 +132,12 @@ Para habilitar Drive:
 Google pedirá autorización para acceder a los archivos creados por EReader.
 El permiso `drive.file` permite crear y actualizar archivos de EReader. La app
 usa el ID de cliente web también en Android; el cliente OAuth Android autoriza
-el paquete y certificado de firma. El token se mantiene solo en memoria y
-puede ser necesario volver a conectar Google si caduca. Los ajustes y datos de
-lectura son JSON, y los EPUB son archivos individuales; no están cifrados por
-la app. La configuración incluye cualquier clave IA guardada y queda sujeta a
-la seguridad de la cuenta Google y Drive.
+el paquete y certificado de firma. En Android se restaura la sesión nativa y se
+renueva el token al volver a la app; Google puede volver a pedir autorización si
+la cuenta revoca el acceso o caducan las credenciales de inicio de sesión. Los
+ajustes y datos de lectura son JSON, y los EPUB son archivos individuales; no
+están cifrados por la app. La configuración incluye cualquier clave IA guardada
+y queda sujeta a la seguridad de la cuenta Google y Drive.
 
 ---
 
