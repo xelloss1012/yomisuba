@@ -29,6 +29,94 @@ function resolveRelativePath(basePath: string, relativePath: string): string {
   return resolvedSegments.join('/');
 }
 
+function isImageMediaType(mediaType: string): boolean {
+  return mediaType.startsWith('image/');
+}
+
+function findCoverManifestItem(
+  opfDoc: Document,
+  manifestMap: Record<string, ManifestItem>
+): ManifestItem | undefined {
+  const byProperty = Object.values(manifestMap).find((item) =>
+    item.properties?.split(/\s+/).includes('cover-image')
+  );
+  if (byProperty) return byProperty;
+
+  const coverMeta =
+    opfDoc.querySelector('meta[name="cover"]') ||
+    opfDoc.querySelector('meta[property="cover"]');
+  const coverMetaId = coverMeta?.getAttribute('content')?.trim();
+  if (coverMetaId && manifestMap[coverMetaId]) return manifestMap[coverMetaId];
+
+  return Object.values(manifestMap).find((item) => {
+    if (!isImageMediaType(item.mediaType)) return false;
+    return /cover|titlepage/i.test(`${item.id} ${item.href}`);
+  });
+}
+
+async function readCoverBlob(
+  zip: JSZip,
+  opfDoc: Document,
+  rootPath: string,
+  manifestMap: Record<string, ManifestItem>
+): Promise<Blob | undefined> {
+  const coverItem = findCoverManifestItem(opfDoc, manifestMap);
+  if (!coverItem) return undefined;
+
+  const coverPath = resolveRelativePath(rootPath, coverItem.href);
+  const coverZipFile = zip.file(coverPath);
+  if (!coverZipFile) return undefined;
+
+  const coverBlob = await coverZipFile.async('blob');
+  const mediaType = coverItem.mediaType || getMimeType(coverPath);
+  return coverBlob.type ? coverBlob : new Blob([coverBlob], { type: mediaType });
+}
+
+async function loadOpfFromZip(zip: JSZip): Promise<{
+  opfDoc: Document;
+  rootPath: string;
+  manifestMap: Record<string, ManifestItem>;
+} | null> {
+  const containerFile = zip.file('META-INF/container.xml');
+  if (!containerFile) return null;
+
+  const containerXml = await containerFile.async('text');
+  const domParser = new DOMParser();
+  const containerDoc = domParser.parseFromString(containerXml, 'application/xml');
+  const opfPath = containerDoc.querySelector('rootfile')?.getAttribute('full-path');
+  if (!opfPath) return null;
+
+  const opfFile = zip.file(opfPath);
+  if (!opfFile) return null;
+
+  const opfXml = await opfFile.async('text');
+  const opfDoc = domParser.parseFromString(opfXml, 'application/xml');
+  const rootPath = opfPath.includes('/') ? opfPath.substring(0, opfPath.lastIndexOf('/') + 1) : '';
+  const manifestMap: Record<string, ManifestItem> = {};
+  opfDoc.querySelectorAll('manifest > item').forEach((item) => {
+    const id = item.getAttribute('id') || '';
+    const href = item.getAttribute('href') || '';
+    const mediaType = item.getAttribute('media-type') || '';
+    const properties = item.getAttribute('properties') || '';
+    if (id && href) {
+      manifestMap[id] = { id, href, mediaType, properties };
+    }
+  });
+
+  return { opfDoc, rootPath, manifestMap };
+}
+
+export async function extractEpubCoverBlob(data: ArrayBuffer | Blob): Promise<Blob | undefined> {
+  try {
+    const zip = await JSZip.loadAsync(data);
+    const opf = await loadOpfFromZip(zip);
+    if (!opf) return undefined;
+    return readCoverBlob(zip, opf.opfDoc, opf.rootPath, opf.manifestMap);
+  } catch {
+    return undefined;
+  }
+}
+
 // Get mime type by extension
 function getMimeType(filename: string): string {
   const ext = filename.split('.').pop()?.toLowerCase();
@@ -116,7 +204,6 @@ export async function parseEpub(data: ArrayBuffer | Blob): Promise<ParsedEpub> {
   // Manifest
   const manifestMap: Record<string, ManifestItem> = {};
   const manifestItems = opfDoc.querySelectorAll('manifest > item');
-  let coverId: string | null = null;
 
   manifestItems.forEach((item) => {
     const id = item.getAttribute('id') || '';
@@ -126,9 +213,6 @@ export async function parseEpub(data: ArrayBuffer | Blob): Promise<ParsedEpub> {
 
     if (id && href) {
       manifestMap[id] = { id, href, mediaType, properties };
-      if (properties.includes('cover-image') || id.toLowerCase().includes('cover')) {
-        coverId = id;
-      }
     }
   });
 
@@ -151,17 +235,9 @@ export async function parseEpub(data: ArrayBuffer | Blob): Promise<ParsedEpub> {
     }
   });
 
-  // Cover URL helper
-  let coverUrl: string | undefined = undefined;
-  if (coverId && manifestMap[coverId]) {
-    const coverPath = resolveRelativePath(rootPath, manifestMap[coverId].href);
-    const coverZipFile = zip.file(coverPath);
-    if (coverZipFile) {
-      const coverBlob = await coverZipFile.async('blob');
-      coverUrl = URL.createObjectURL(coverBlob);
-      createdBlobUrls.push(coverUrl);
-    }
-  }
+  const coverBlob = await readCoverBlob(zip, opfDoc, rootPath, manifestMap);
+  const coverUrl = coverBlob ? URL.createObjectURL(coverBlob) : undefined;
+  if (coverUrl) createdBlobUrls.push(coverUrl);
 
   // TOC (Table of Contents)
   let toc: TocItem[] = [];
@@ -356,6 +432,7 @@ export async function parseEpub(data: ArrayBuffer | Blob): Promise<ParsedEpub> {
     toc,
     manifest: manifestMap,
     rootPath,
+    coverBlob,
     getChapterContent,
     getResourceBlobUrl,
     close,

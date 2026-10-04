@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ParsedEpub, ReaderSettingsState } from './types/epub';
-import { parseEpub } from './utils/epubParser';
+import { extractEpubCoverBlob, parseEpub } from './utils/epubParser';
 import { FileDropZone } from './components/FileDropZone';
 import { EpubReader } from './components/EpubReader';
 import { createBookId, getLastBookId, getRecentBook, listRecentBooks, RecentBook, saveRecentBook, setLastBookId } from './utils/recentBooks';
@@ -258,6 +258,7 @@ export const App: React.FC = () => {
         creator: parsed.metadata.creator,
         lastOpened: Date.now(),
         blob: new Blob([buffer], { type: 'application/epub+zip' }),
+        cover: parsed.coverBlob,
       };
       try {
         await saveRecentBook(recentBook);
@@ -301,7 +302,28 @@ export const App: React.FC = () => {
       try {
         const books = await listRecentBooks();
         if (cancelled) return;
-        setRecentBooks(books.slice(0, 8));
+        const visibleBooks = books.slice(0, 8);
+        setRecentBooks(visibleBooks);
+
+        const hydrateCovers = async () => {
+          for (const book of visibleBooks) {
+            if (book.cover) continue;
+            const cover = await extractEpubCoverBlob(book.blob);
+            if (cancelled || !cover) continue;
+            try {
+              const stored = await getRecentBook(book.id);
+              await saveRecentBook({ ...(stored || book), cover: stored?.cover || cover });
+            } catch {
+              // Cover display still works from memory if persistence fails.
+            }
+            if (cancelled) return;
+            setRecentBooks((current) =>
+              current.map((item) => (item.id === book.id && !item.cover ? { ...item, cover } : item))
+            );
+          }
+        };
+        void hydrateCovers();
+
         const lastBookId = getLastBookId();
         if (lastBookId) {
           const lastBook = books.find((book) => book.id === lastBookId) || await getRecentBook(lastBookId);

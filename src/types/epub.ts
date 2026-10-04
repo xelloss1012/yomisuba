@@ -42,6 +42,7 @@ export interface ParsedEpub {
   toc: TocItem[];
   manifest: Record<string, ManifestItem>;
   rootPath: string; // Directory containing OPF file
+  coverBlob?: Blob;
   getChapterContent: (href: string) => Promise<string>;
   getResourceBlobUrl: (href: string) => Promise<string | null>;
   close: () => void;

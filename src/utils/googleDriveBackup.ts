@@ -2,6 +2,7 @@ import { Capacitor } from '@capacitor/core';
 import { SocialLogin } from '@capgo/capacitor-social-login';
 import { ReaderSettingsState } from '../types/epub';
 import { RecentBook, saveRecentBook } from './recentBooks';
+import { extractEpubCoverBlob } from './epubParser';
 
 const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const DRIVE_READONLY_SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
@@ -421,6 +422,7 @@ export async function downloadGoogleDriveBook(accessToken: string, cloudBook: Go
     throw new Error(`El EPUB supera el límite de descarga de ${Math.round(MAX_BOOK_SIZE / 1024 / 1024)} MB.`);
   }
   const blob = await downloadFile(accessToken, file);
+  const cover = await extractEpubCoverBlob(blob);
   const book: RecentBook = {
     id: encodeURIComponent(`${file.id}|${file.name}`),
     name: file.name,
@@ -428,6 +430,7 @@ export async function downloadGoogleDriveBook(accessToken: string, cloudBook: Go
     creator: cloudBook.creator,
     lastOpened: Date.now(),
     blob: new Blob([blob], { type: 'application/epub+zip' }),
+    cover,
   };
   await saveRecentBook(book);
   return book;

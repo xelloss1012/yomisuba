@@ -5,6 +5,7 @@ export interface RecentBook {
   creator: string;
   lastOpened: number;
   blob: Blob;
+  cover?: Blob;
 }
 
 const DB_NAME = 'ereader_library';
