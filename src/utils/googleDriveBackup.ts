@@ -4,9 +4,10 @@ import { ReaderSettingsState } from '../types/epub';
 import { RecentBook, saveRecentBook } from './recentBooks';
 
 const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+const DRIVE_READONLY_SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
 const DRIVE_SESSION_EXPECTED_KEY = 'ereader_google_drive_session_expected';
 const DRIVE_FOLDER_NAME = '.ereader';
-const READER_FOLDER_NAME = '.reader';
+const READER_FOLDER_NAME = DRIVE_FOLDER_NAME;
 const BOOKS_FOLDER_NAME = 'books';
 const DRIVE_FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
 const SETTINGS_FILE_NAME = 'EReader settings.json';
@@ -59,50 +60,7 @@ let initializePromise: Promise<void> | null = null;
 const readerBackupQueues = new Map<string, Promise<void>>();
 const driveFolderCache = new Map<string, Promise<string>>();
 export const googleDriveConfigured = Boolean(import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID);
-export const googleDrivePickerConfigured = Boolean(import.meta.env.VITE_GOOGLE_API_KEY);
-
-interface PickerDocument {
-  id: string;
-  name: string;
-  mimeType?: string;
-}
-
-interface PickerResponse {
-  action: string;
-  docs?: PickerDocument[];
-}
-
-interface PickerDocsView {
-  setParent(folderId: string): PickerDocsView;
-  setIncludeFolders(include: boolean): PickerDocsView;
-}
-
-interface PickerBuilder {
-  addView(view: PickerDocsView): PickerBuilder;
-  setOAuthToken(token: string): PickerBuilder;
-  setDeveloperKey(key: string): PickerBuilder;
-  setAppId(appId: string): PickerBuilder;
-  setOrigin(origin: string): PickerBuilder;
-  setTitle(title: string): PickerBuilder;
-  setCallback(callback: (response: PickerResponse) => void): PickerBuilder;
-  build(): { setVisible(visible: boolean): void };
-}
-
-declare global {
-  interface Window {
-    gapi?: { load(api: string, callback: () => void): void };
-    google?: {
-      picker: {
-        Action: { PICKED: string; CANCEL: string };
-        ViewId: { DOCS: string };
-        DocsView: new (viewId: string) => PickerDocsView;
-        PickerBuilder: new () => PickerBuilder;
-      };
-    };
-  }
-}
-
-let pickerLoadPromise: Promise<void> | null = null;
+const DRIVE_SCOPES = ['email', 'profile', DRIVE_FILE_SCOPE, DRIVE_READONLY_SCOPE];
 
 function initializeGoogleLogin(): Promise<void> {
   const webClientId = import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID;
@@ -122,7 +80,7 @@ export async function signInToGoogleDrive(): Promise<GoogleDriveSession> {
   await initializeGoogleLogin();
   const result = await SocialLogin.login({
     provider: 'google',
-    options: { scopes: ['email', 'profile', DRIVE_FILE_SCOPE] },
+    options: { scopes: DRIVE_SCOPES },
   });
   if (result.result.responseType !== 'online') {
     throw new Error('Google devolvió una respuesta de inicio de sesión no compatible.');
@@ -155,7 +113,7 @@ export async function restoreGoogleDriveSession(): Promise<GoogleDriveSession | 
     try {
       await SocialLogin.refresh({
         provider: 'google',
-        options: { scopes: ['email', 'profile', DRIVE_FILE_SCOPE] },
+        options: { scopes: DRIVE_SCOPES },
       });
     } catch (error) {
       const { isLoggedIn } = await SocialLogin.isLoggedIn({ provider: 'google' });
@@ -175,7 +133,7 @@ export async function restoreGoogleDriveSession(): Promise<GoogleDriveSession | 
   if (Capacitor.isNativePlatform() && !expectedSession) {
     await SocialLogin.refresh({
       provider: 'google',
-      options: { scopes: ['email', 'profile', DRIVE_FILE_SCOPE] },
+      options: { scopes: DRIVE_SCOPES },
     });
   }
   const authorization = await SocialLogin.getAuthorizationCode({ provider: 'google' });
@@ -355,84 +313,6 @@ async function getDriveFile(accessToken: string, id: string): Promise<DriveFile>
     `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?${query}`,
   );
   return await response.json() as DriveFile;
-}
-
-async function loadGooglePicker(): Promise<void> {
-  if (window.google?.picker && window.gapi) return;
-  if (!pickerLoadPromise) {
-    pickerLoadPromise = new Promise<void>((resolve, reject) => {
-      const script = document.createElement('script');
-      script.src = 'https://apis.google.com/js/api.js';
-      script.async = true;
-      script.onload = () => {
-        if (!window.gapi) {
-          reject(new Error('Google Picker no se pudo inicializar.'));
-          return;
-        }
-        window.gapi.load('picker', () => {
-          if (window.google?.picker) resolve();
-          else reject(new Error('Google Picker no está disponible.'));
-        });
-      };
-      script.onerror = () => reject(new Error('No se pudo cargar Google Picker.'));
-      document.head.appendChild(script);
-    }).catch((error: unknown) => {
-      pickerLoadPromise = null;
-      throw error;
-    });
-  }
-  await pickerLoadPromise;
-}
-
-export async function pickGoogleDriveBook(accessToken: string): Promise<GoogleDriveBook | null> {
-  const apiKey = import.meta.env.VITE_GOOGLE_API_KEY;
-  if (!apiKey) throw new Error('Falta configurar VITE_GOOGLE_API_KEY para seleccionar libros en Drive.');
-  await loadGooglePicker();
-  const folderId = await getReaderBooksFolderId(accessToken);
-  const projectNumber = (import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID || '').split('-')[0];
-
-  return new Promise<GoogleDriveBook | null>((resolve, reject) => {
-    const view = new window.google!.picker.DocsView(window.google!.picker.ViewId.DOCS)
-      .setParent(folderId)
-      .setIncludeFolders(false);
-    const builder = new window.google!.picker.PickerBuilder()
-      .addView(view)
-      .setOAuthToken(accessToken)
-      .setDeveloperKey(apiKey)
-      .setOrigin(window.location.origin)
-      .setTitle('Seleccionar un EPUB de .reader/books')
-      .setCallback((response) => {
-        if (response.action === window.google!.picker.Action.CANCEL) {
-          resolve(null);
-          return;
-        }
-        if (response.action !== window.google!.picker.Action.PICKED) {
-          reject(new Error('Google Picker devolvió una respuesta no compatible.'));
-          return;
-        }
-        const selected = response.docs?.[0];
-        if (!selected) {
-          reject(new Error('Google Picker no devolvió el archivo seleccionado.'));
-          return;
-        }
-        if (!selected.name.toLowerCase().endsWith('.epub')) {
-          reject(new Error('Selecciona un archivo con extensión .epub.'));
-          return;
-        }
-        void getDriveFile(accessToken, selected.id)
-          .then((file) => resolve({
-            id: file.id,
-            name: file.name,
-            title: file.name.replace(/\.epub$/i, ''),
-            creator: '',
-            size: Number(file.size || 0),
-            modifiedTime: file.modifiedTime || null,
-          }))
-          .catch(reject);
-      });
-    if (/^\d+$/.test(projectNumber)) builder.setAppId(projectNumber);
-    builder.build().setVisible(true);
-  });
 }
 
 export async function saveGoogleDriveSettings(

@@ -10,7 +10,6 @@ import {
   GoogleDriveBook,
   GoogleDriveSession,
   googleDriveConfigured,
-  pickGoogleDriveBook,
   listGoogleDriveBooks,
   ReaderBookBackup,
   applyGoogleDriveReaderData,
@@ -399,21 +398,7 @@ export const App: React.FC = () => {
       `Descargar «${cloudBook.title}» y restaurar sus datos de lectura locales?`
     )) return;
     void runDriveAction(async () => {
-      const book = recentBooks.find((item) =>
-        item.title === cloudBook.title && item.creator === cloudBook.creator
-      ) || await downloadGoogleDriveBook(googleDriveSession.accessToken, cloudBook);
-      setRecentBooks((books) => [book, ...books.filter((item) => item.id !== book.id)].slice(0, 8));
-      await openBook(book.blob, book.id, book.name);
-    });
-  };
-
-  const handleImportDriveBook = () => {
-    if (!googleDriveSession) return;
-    void runDriveAction(async () => {
-      const selected = await pickGoogleDriveBook(googleDriveSession.accessToken);
-      if (!selected) return;
-      const book = await downloadGoogleDriveBook(googleDriveSession.accessToken, selected);
-      setGoogleDriveBooks(await listGoogleDriveBooks(googleDriveSession.accessToken));
+      const book = await downloadGoogleDriveBook(googleDriveSession.accessToken, cloudBook);
       setRecentBooks((books) => [book, ...books.filter((item) => item.id !== book.id)].slice(0, 8));
       await openBook(book.blob, book.id, book.name);
     });
@@ -473,7 +458,6 @@ export const App: React.FC = () => {
           onRestoreDriveSettings={handleRestoreDriveSettings}
           onUploadDriveBook={handleUploadDriveBook}
           onDownloadDriveBook={handleDownloadDriveBook}
-          onImportDriveBook={handleImportDriveBook}
           onRefreshDriveBooks={handleRefreshDriveBooks}
         />
       )}

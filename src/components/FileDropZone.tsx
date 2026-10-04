@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { UploadCloud, BookOpen, Sparkles, FileText, CheckCircle2, Clock3 } from 'lucide-react';
 import { createSampleJapaneseEpub } from '../utils/sampleBook';
 import { RecentBook } from '../utils/recentBooks';
-import { GoogleDriveBook, GoogleDriveSession, googleDrivePickerConfigured } from '../utils/googleDriveBackup';
+import { GoogleDriveBook, GoogleDriveSession } from '../utils/googleDriveBackup';
 import { GoogleDriveBackupPanel } from './GoogleDriveBackupPanel';
 
 interface Props {
@@ -20,7 +20,6 @@ interface Props {
   onRestoreDriveSettings: () => void;
   onUploadDriveBook: (book: RecentBook) => void;
   onDownloadDriveBook: (book: GoogleDriveBook) => void;
-  onImportDriveBook: () => void;
   onRefreshDriveBooks: () => void;
 }
 
@@ -39,7 +38,6 @@ export const FileDropZone: React.FC<Props> = ({
   onRestoreDriveSettings,
   onUploadDriveBook,
   onDownloadDriveBook,
-  onImportDriveBook,
   onRefreshDriveBooks,
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
@@ -86,7 +84,6 @@ export const FileDropZone: React.FC<Props> = ({
 
         <GoogleDriveBackupPanel
           configured={googleDriveConfigured}
-          pickerConfigured={googleDrivePickerConfigured}
           session={googleDriveSession}
           settingsDate={googleDriveSettingsDate}
           localBooks={recentBooks}
@@ -97,13 +94,12 @@ export const FileDropZone: React.FC<Props> = ({
           onRestoreSettings={onRestoreDriveSettings}
           onUploadBook={onUploadDriveBook}
           onDownloadBook={onDownloadDriveBook}
-          onImportBook={onImportDriveBook}
           onRefreshBooks={onRefreshDriveBooks}
         />
 
         {/* Drop Zone */}
         <div
-          className={`relative mt-6 border-2 border-dashed rounded-2xl p-8 transition-all cursor-pointer flex flex-col items-center justify-center ${
+          className={`relative mt-6 border-2 border-dashed rounded-2xl p-4 transition-all cursor-pointer flex flex-col items-center justify-center sm:p-8 ${
             isDragOver
               ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/30 scale-[1.02]'
               : 'border-zinc-300 dark:border-zinc-700 hover:border-indigo-400 dark:hover:border-indigo-600 bg-zinc-50/50 dark:bg-zinc-800/30'
@@ -137,10 +133,10 @@ export const FileDropZone: React.FC<Props> = ({
 
           <button
             type="button"
-            className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-semibold shadow-md transition-all flex items-center gap-2"
+            className="flex min-h-11 w-full max-w-xs items-center justify-center gap-2 rounded-xl bg-indigo-600 px-3 py-2.5 text-center text-xs font-semibold text-white shadow-md transition-all hover:bg-indigo-700 active:scale-95"
           >
-            <FileText className="w-4 h-4" />
-            Seleccionar archivo EPUB
+            <FileText className="h-4 w-4 shrink-0" />
+            <span className="min-w-0">Seleccionar archivo EPUB</span>
           </button>
         </div>
 
@@ -159,10 +155,10 @@ export const FileDropZone: React.FC<Props> = ({
             type="button"
             onClick={handleLoadSample}
             disabled={isLoading}
-            className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 text-xs font-semibold border border-zinc-300 dark:border-zinc-700 transition-all flex items-center justify-center gap-2 shadow-sm"
+            className="flex min-h-11 w-full min-w-0 items-center justify-center gap-2 rounded-xl border border-zinc-300 bg-stone-100 px-3 py-2.5 text-center text-xs font-semibold text-zinc-800 shadow-sm transition-all hover:bg-stone-200 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700 sm:w-auto sm:max-w-full"
           >
             <Sparkles className="w-4 h-4 text-amber-500" />
-            <span>Cargar libro de prueba japonés</span>
+            <span className="min-w-0">Cargar libro de prueba japonés</span>
           </button>
         </div>
 

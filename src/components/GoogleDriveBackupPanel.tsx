@@ -1,11 +1,10 @@
 import React from 'react';
-import { CloudDownload, CloudUpload, FolderOpen, LogIn, LogOut, RefreshCw } from 'lucide-react';
+import { CloudDownload, CloudUpload, LogIn, LogOut, RefreshCw } from 'lucide-react';
 import { GoogleDriveBook, GoogleDriveSession } from '../utils/googleDriveBackup';
 import { RecentBook } from '../utils/recentBooks';
 
 interface Props {
   configured: boolean;
-  pickerConfigured: boolean;
   session: GoogleDriveSession | null;
   settingsDate: string | null;
   localBooks: RecentBook[];
@@ -16,13 +15,11 @@ interface Props {
   onRestoreSettings: () => void;
   onUploadBook: (book: RecentBook) => void;
   onDownloadBook: (book: GoogleDriveBook) => void;
-  onImportBook: () => void;
   onRefreshBooks: () => void;
 }
 
 export const GoogleDriveBackupPanel: React.FC<Props> = ({
   configured,
-  pickerConfigured,
   session,
   settingsDate,
   localBooks,
@@ -33,12 +30,11 @@ export const GoogleDriveBackupPanel: React.FC<Props> = ({
   onRestoreSettings,
   onUploadBook,
   onDownloadBook,
-  onImportBook,
   onRefreshBooks,
 }) => (
-  <section className="mt-6 rounded-2xl border border-indigo-200 bg-indigo-50/60 p-4 text-left dark:border-indigo-900/60 dark:bg-indigo-950/20">
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <div>
+  <section className="mt-6 w-full min-w-0 rounded-2xl border border-indigo-200 bg-indigo-50/60 p-3 text-left dark:border-indigo-900/60 dark:bg-indigo-950/20 sm:p-4">
+    <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+      <div className="min-w-0 flex-1">
         <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">Copias en tu Google Drive</h2>
         <p className="mt-1 text-[11px] text-zinc-600 dark:text-zinc-400">
           Ajustes y lectura se respaldan automáticamente. Para copiar un EPUB, pulsa «Subir a Drive» junto al libro.
@@ -49,21 +45,21 @@ export const GoogleDriveBackupPanel: React.FC<Props> = ({
           type="button"
           onClick={onSignIn}
           disabled={!configured || busy}
-          className="flex items-center gap-2 rounded-xl bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex min-h-10 max-w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
           title={!configured ? 'Configura el cliente OAuth de Google para activar las copias' : undefined}
         >
           <LogIn className="h-4 w-4" /> Conectar con Google
         </button>
       ) : (
-        <div className="flex items-center gap-2">
-          <span className="max-w-48 truncate text-xs text-zinc-600 dark:text-zinc-300">
+        <div className="flex max-w-full min-w-0 items-center gap-2">
+          <span className="min-w-0 max-w-48 truncate text-xs text-zinc-600 dark:text-zinc-300">
             {session.name || session.email || 'Cuenta Google'}
           </span>
           <button
             type="button"
             onClick={onSignOut}
             disabled={busy}
-            className="flex items-center gap-1 rounded-lg border border-zinc-300 px-2.5 py-2 text-xs text-zinc-700 hover:bg-white dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            className="inline-flex min-h-10 shrink-0 items-center justify-center gap-1 rounded-lg border border-zinc-300 px-2.5 py-2 text-xs text-zinc-700 hover:bg-white dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
           >
             <LogOut className="h-3.5 w-3.5" /> Salir
           </button>
@@ -79,8 +75,8 @@ export const GoogleDriveBackupPanel: React.FC<Props> = ({
 
     {session && (
       <div className="mt-4 space-y-4 border-t border-indigo-200 pt-4 dark:border-indigo-900/60">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="mr-auto text-[11px] text-zinc-600 dark:text-zinc-400">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="w-full min-w-0 text-[11px] text-zinc-600 dark:text-zinc-400 sm:w-auto sm:flex-1">
             Ajustes y progreso se guardan al cambiar. Último respaldo de ajustes:{' '}
             {settingsDate ? new Date(settingsDate).toLocaleString() : 'todavía no creado'}.
           </span>
@@ -88,7 +84,7 @@ export const GoogleDriveBackupPanel: React.FC<Props> = ({
             type="button"
             onClick={onRestoreSettings}
             disabled={busy || !settingsDate}
-            className="flex items-center gap-1.5 rounded-lg border border-indigo-300 px-2.5 py-2 text-[11px] font-semibold text-indigo-800 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 dark:border-indigo-800 dark:text-indigo-200 dark:hover:bg-zinc-900"
+            className="inline-flex min-h-10 w-full shrink-0 items-center justify-center gap-1.5 rounded-lg border border-indigo-300 px-2.5 py-2 text-[11px] font-semibold text-indigo-800 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 dark:border-indigo-800 dark:text-indigo-200 dark:hover:bg-zinc-900 sm:w-auto"
           >
             <CloudDownload className="h-3.5 w-3.5" /> Restaurar ajustes
           </button>
@@ -106,7 +102,7 @@ export const GoogleDriveBackupPanel: React.FC<Props> = ({
                       type="button"
                       onClick={() => onUploadBook(book)}
                       disabled={busy}
-                      className="inline-flex max-w-full self-end items-center justify-center gap-1 rounded-md bg-indigo-100/70 px-2.5 py-1.5 text-[10px] font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 dark:bg-indigo-900/40 dark:text-indigo-300 dark:hover:bg-indigo-900/60"
+                      className="inline-flex min-h-10 w-full max-w-full self-stretch items-center justify-center gap-1.5 rounded-md bg-indigo-100/70 px-2.5 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 dark:bg-indigo-900/40 dark:text-indigo-300 dark:hover:bg-indigo-900/60 sm:w-auto sm:self-end"
                       aria-label={`Guardar ${book.title} en Google Drive`}
                       title="Subir este libro a Drive"
                     >
@@ -123,22 +119,13 @@ export const GoogleDriveBackupPanel: React.FC<Props> = ({
           </div>
 
           <div>
-            <div className="mb-2 flex items-center gap-2">
-              <h3 className="mr-auto text-xs font-semibold text-zinc-700 dark:text-zinc-200">Libros en Google Drive</h3>
-              <button
-                type="button"
-                onClick={onImportBook}
-                disabled={busy || !pickerConfigured}
-                className="inline-flex items-center gap-1 rounded-md border border-indigo-200 px-2 py-1 text-[10px] font-semibold text-indigo-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 dark:border-indigo-800 dark:text-indigo-300 dark:hover:bg-zinc-800"
-                title={pickerConfigured ? 'Seleccionar un EPUB de .reader/books' : 'Configura VITE_GOOGLE_API_KEY para activar Google Picker'}
-              >
-                <FolderOpen className="h-3.5 w-3.5" /> Importar
-              </button>
+            <div className="mb-2 flex min-w-0 items-center gap-2">
+              <h3 className="mr-auto min-w-0 text-xs font-semibold text-zinc-700 dark:text-zinc-200">Libros en Google Drive</h3>
               <button
                 type="button"
                 onClick={onRefreshBooks}
                 disabled={busy}
-                className="rounded-md p-1 text-zinc-500 hover:bg-white disabled:opacity-50 dark:hover:bg-zinc-800"
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-zinc-500 hover:bg-white disabled:opacity-50 dark:hover:bg-zinc-800"
                 aria-label="Actualizar lista de libros de Drive"
                 title="Actualizar lista"
               >
@@ -146,13 +133,12 @@ export const GoogleDriveBackupPanel: React.FC<Props> = ({
               </button>
             </div>
             <p className="mb-2 text-[10px] text-zinc-500 dark:text-zinc-400">
-              Copia archivos .epub a Drive/.reader/books y selecciónalos aquí; no requieren un nombre especial ni firma.
-              {!pickerConfigured && ' Configura VITE_GOOGLE_API_KEY para activar el selector.'}
+              Los EPUB de Drive/.ereader/books aparecen aquí, incluidos los copiados manualmente.
             </p>
             {cloudBooks.length ? (
               <div className="max-h-56 space-y-2 overflow-y-auto">
                 {cloudBooks.map((book) => (
-                  <div key={book.id} className="flex min-w-0 items-center gap-2 rounded-lg bg-white/70 px-2.5 py-2 dark:bg-zinc-900/60">
+                  <div key={book.id} className="flex min-w-0 flex-col gap-2 rounded-lg bg-white/70 px-2.5 py-2 dark:bg-zinc-900/60 sm:flex-row sm:items-center">
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[11px] text-zinc-700 dark:text-zinc-300">{book.title}</span>
                       <span className="block text-[10px] text-zinc-500 dark:text-zinc-400">
@@ -164,7 +150,7 @@ export const GoogleDriveBackupPanel: React.FC<Props> = ({
                       type="button"
                       onClick={() => onDownloadBook(book)}
                       disabled={busy}
-                      className="rounded-md p-1.5 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 dark:text-indigo-300 dark:hover:bg-indigo-900/60"
+                      className="inline-flex min-h-10 w-full shrink-0 items-center justify-center gap-1.5 rounded-md bg-indigo-100/70 px-2.5 py-2 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 dark:bg-indigo-900/40 dark:text-indigo-300 dark:hover:bg-indigo-900/60 sm:w-auto"
                       aria-label={`${localBooks.some((localBook) => localBook.title === book.title && localBook.creator === book.creator) ? 'Restaurar la última lectura de' : 'Descargar'} ${book.title} desde Google Drive`}
                       title={localBooks.some((localBook) => localBook.title === book.title && localBook.creator === book.creator)
                         ? 'Restaurar el último progreso guardado en Drive'
