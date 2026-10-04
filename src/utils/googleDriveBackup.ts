@@ -15,6 +15,9 @@ const SETTINGS_FILE_NAME = 'EReader settings.json';
 const SETTINGS_FILE_TYPE = 'application/json';
 const BOOK_STATE_PREFIX = 'EReader reading data - ';
 const MAX_BOOK_SIZE = 100 * 1024 * 1024;
+const COVER_THUMBNAIL_MAX_WIDTH = 160;
+const COVER_THUMBNAIL_QUALITY = 0.72;
+const MAX_COVER_METADATA_LENGTH = 32 * 1024;
 
 interface DriveFile {
   id: string;
@@ -38,6 +41,7 @@ export interface GoogleDriveBook {
   creator: string;
   size: number;
   modifiedTime: string | null;
+  coverDataUrl?: string;
 }
 
 export interface ReaderBookBackup {
@@ -307,6 +311,35 @@ async function downloadFile(accessToken: string, file: DriveFile): Promise<Blob>
   return response.blob();
 }
 
+export async function createCoverThumbnailDataUrl(cover: Blob): Promise<string | undefined> {
+  if (typeof document === 'undefined') return undefined;
+  const url = URL.createObjectURL(cover);
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const element = new Image();
+      element.onload = () => resolve(element);
+      element.onerror = () => reject(new Error('No se pudo leer la imagen de portada.'));
+      element.src = url;
+    });
+    const width = image.naturalWidth || image.width;
+    const height = image.naturalHeight || image.height;
+    if (!width || !height) return undefined;
+    const scale = Math.min(1, COVER_THUMBNAIL_MAX_WIDTH / width);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(width * scale));
+    canvas.height = Math.max(1, Math.round(height * scale));
+    const context = canvas.getContext('2d');
+    if (!context) return undefined;
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL('image/jpeg', COVER_THUMBNAIL_QUALITY);
+    return dataUrl.startsWith('data:image/') ? dataUrl : undefined;
+  } catch {
+    return undefined;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 async function getDriveFile(accessToken: string, id: string): Promise<DriveFile> {
   const query = new URLSearchParams({ fields: 'id,name,description,size,modifiedTime,mimeType' });
   const response = await driveRequest(
@@ -374,6 +407,9 @@ export async function listGoogleDriveBooks(accessToken: string): Promise<GoogleD
       creator: typeof metadata.creator === 'string' ? metadata.creator : '',
       size: Number(file.size || 0),
       modifiedTime: file.modifiedTime || null,
+      coverDataUrl: typeof metadata.coverDataUrl === 'string' && metadata.coverDataUrl.startsWith('data:image/')
+        ? metadata.coverDataUrl
+        : undefined,
     };
   });
 }
@@ -403,7 +439,17 @@ export async function uploadGoogleDriveBook(accessToken: string, book: RecentBoo
     throw new Error(`El EPUB supera el límite de ${Math.round(MAX_BOOK_SIZE / 1024 / 1024)} MB.`);
   }
   const existing = await findBookFileByMetadata(accessToken, book);
-  const description = JSON.stringify({ ereaderManaged: true, title: book.title, creator: book.creator });
+  const cover = book.cover || await extractEpubCoverBlob(book.blob);
+  const coverDataUrl = cover ? await createCoverThumbnailDataUrl(cover) : undefined;
+  // Persist the cover in the file description only when it is small enough that
+  // Drive happily accepts it; a big cover must never block the whole upload.
+  const storedCover = coverDataUrl && coverDataUrl.length <= MAX_COVER_METADATA_LENGTH ? coverDataUrl : undefined;
+  const description = JSON.stringify({
+    ereaderManaged: true,
+    title: book.title,
+    creator: book.creator,
+    ...(storedCover ? { coverDataUrl: storedCover } : {}),
+  });
   await uploadFile(
     accessToken,
     book.name,
@@ -434,6 +480,54 @@ export async function downloadGoogleDriveBook(accessToken: string, cloudBook: Go
   };
   await saveRecentBook(book);
   return book;
+}
+
+export async function updateGoogleDriveBookCover(
+  accessToken: string,
+  cloudBook: GoogleDriveBook,
+  coverDataUrl: string,
+): Promise<void> {
+  if (coverDataUrl.length > MAX_COVER_METADATA_LENGTH) return;
+  const file = await getDriveFile(accessToken, cloudBook.id);
+  let metadata: Record<string, unknown> = {};
+  try {
+    const parsed: unknown = JSON.parse(file.description || '{}');
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      metadata = parsed as Record<string, unknown>;
+    }
+  } catch {
+    // Rebuild a clean metadata document if the stored one is malformed.
+  }
+  const query = new URLSearchParams({ fields: 'id' });
+  await driveRequest(
+    accessToken,
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(cloudBook.id)}?${query}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json; charset=UTF-8' },
+      body: JSON.stringify({ description: JSON.stringify({ ...metadata, coverDataUrl }) }),
+    },
+  );
+}
+
+export async function loadGoogleDriveBookCover(
+  accessToken: string,
+  cloudBook: GoogleDriveBook,
+): Promise<string | undefined> {
+  const file = await getDriveFile(accessToken, cloudBook.id);
+  if (!file.name.toLowerCase().endsWith('.epub')) return undefined;
+  if (Number(file.size || 0) > MAX_BOOK_SIZE) return undefined;
+  const blob = await downloadFile(accessToken, file);
+  const cover = await extractEpubCoverBlob(blob);
+  if (!cover) return undefined;
+  const coverDataUrl = await createCoverThumbnailDataUrl(cover);
+  if (!coverDataUrl) return undefined;
+  try {
+    await updateGoogleDriveBookCover(accessToken, cloudBook, coverDataUrl);
+  } catch {
+    // Showing the cover matters more than persisting it to Drive metadata.
+  }
+  return coverDataUrl;
 }
 
 export async function saveGoogleDriveReaderData(

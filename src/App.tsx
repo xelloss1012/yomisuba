@@ -11,6 +11,9 @@ import {
   GoogleDriveSession,
   googleDriveConfigured,
   listGoogleDriveBooks,
+  loadGoogleDriveBookCover,
+  createCoverThumbnailDataUrl,
+  updateGoogleDriveBookCover,
   ReaderBookBackup,
   applyGoogleDriveReaderData,
   restoreGoogleDriveReaderData,
@@ -53,12 +56,15 @@ export const App: React.FC = () => {
   const googleDriveSessionRef = React.useRef<GoogleDriveSession | null>(null);
   const [googleDriveSettingsDate, setGoogleDriveSettingsDate] = useState<string | null>(null);
   const [googleDriveBooks, setGoogleDriveBooks] = useState<GoogleDriveBook[]>([]);
+  const recentBooksRef = React.useRef<RecentBook[]>([]);
+  const cloudCoverAttemptsRef = React.useRef<Set<string>>(new Set());
   const [isDriveBusy, setIsDriveBusy] = useState(false);
   const [settingsRevision, setSettingsRevision] = useState(0);
   const [driveSettingsReady, setDriveSettingsReady] = useState(false);
   const driveSessionRestorePromiseRef = React.useRef<Promise<GoogleDriveSession | null> | null>(null);
   const driveSessionRefreshPromiseRef = React.useRef<Promise<void> | null>(null);
   googleDriveSessionRef.current = googleDriveSession;
+  recentBooksRef.current = recentBooks;
 
   const [settings, setSettings] = useState<ReaderSettingsState>(() => {
     try {
@@ -179,6 +185,45 @@ export const App: React.FC = () => {
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, []);
+
+  // Show the cover of every Google Drive book. Books uploaded by EReader already
+  // carry a cover in their metadata; the rest are downloaded once, read, and
+  // cached back into the file metadata so they are never fetched twice.
+  useEffect(() => {
+    if (!googleDriveSession) return;
+    const pending = googleDriveBooks.filter(
+      (book) => !book.coverDataUrl && !cloudCoverAttemptsRef.current.has(book.id),
+    );
+    if (!pending.length) return;
+    let cancelled = false;
+    const hydrateDriveCovers = async () => {
+      for (const cloudBook of pending) {
+        if (cancelled) return;
+        cloudCoverAttemptsRef.current.add(cloudBook.id);
+        const localBook = recentBooksRef.current.find(
+          (book) => book.cover && book.title === cloudBook.title && book.creator === cloudBook.creator,
+        );
+        const localCover = localBook?.cover;
+        try {
+          const coverDataUrl = localCover
+            ? await createCoverThumbnailDataUrl(localCover)
+            : await loadGoogleDriveBookCover(googleDriveSession.accessToken, cloudBook);
+          if (cancelled || !coverDataUrl) continue;
+          if (localCover) {
+            void updateGoogleDriveBookCover(googleDriveSession.accessToken, cloudBook, coverDataUrl)
+              .catch(() => undefined);
+          }
+          setGoogleDriveBooks((books) =>
+            books.map((item) => (item.id === cloudBook.id ? { ...item, coverDataUrl } : item)),
+          );
+        } catch {
+          // Keep the placeholder icon when a cover cannot be read from Drive.
+        }
+      }
+    };
+    void hydrateDriveCovers();
+    return () => { cancelled = true; };
+  }, [googleDriveSession, googleDriveBooks]);
 
   // Screen Wake Lock to keep screen awake while app is active
   useEffect(() => {

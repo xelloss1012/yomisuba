@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { UploadCloud, BookOpen, Sparkles, FileText, CheckCircle2, Clock3 } from 'lucide-react';
 import { createSampleJapaneseEpub } from '../utils/sampleBook';
 import { RecentBook } from '../utils/recentBooks';
 import { GoogleDriveBook, GoogleDriveSession } from '../utils/googleDriveBackup';
 import { GoogleDriveBackupPanel } from './GoogleDriveBackupPanel';
+import { BookCoverThumbnail } from './BookCoverThumbnail';
 
 interface Props {
   onFileLoaded: (file: File | Blob) => void;
@@ -22,32 +23,6 @@ interface Props {
   onDownloadDriveBook: (book: GoogleDriveBook) => void;
   onRefreshDriveBooks: () => void;
 }
-
-const RecentBookCover: React.FC<{ cover?: Blob; title: string }> = ({ cover, title }) => {
-  const [src, setSrc] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!cover) {
-      setSrc(null);
-      return;
-    }
-    const url = URL.createObjectURL(cover);
-    setSrc(url);
-    return () => URL.revokeObjectURL(url);
-  }, [cover]);
-
-  return (
-    <span className="relative h-16 w-11 shrink-0 overflow-hidden rounded-md border border-zinc-200 bg-zinc-100 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
-      {src ? (
-        <img src={src} alt={`Portada de ${title}`} className="h-full w-full object-cover" />
-      ) : (
-        <span className="flex h-full w-full items-center justify-center text-indigo-600 dark:text-indigo-400">
-          <BookOpen className="h-4 w-4" />
-        </span>
-      )}
-    </span>
-  );
-};
 
 export const FileDropZone: React.FC<Props> = ({
   onFileLoaded,
@@ -204,7 +179,7 @@ export const FileDropZone: React.FC<Props> = ({
                   className="w-full rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white/70 dark:bg-zinc-800/60 px-3 py-2.5 text-left hover:border-indigo-400 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/30 transition-colors disabled:opacity-50"
                 >
                   <div className="flex items-center gap-3">
-                    <RecentBookCover cover={book.cover} title={book.title} />
+                    <BookCoverThumbnail cover={book.cover} title={book.title} />
                     <span className="min-w-0">
                       <span className="block truncate text-xs font-semibold text-zinc-800 dark:text-zinc-200">{book.title}</span>
                       <span className="block truncate text-[11px] text-zinc-500 dark:text-zinc-400">{book.creator} · {book.name}</span>

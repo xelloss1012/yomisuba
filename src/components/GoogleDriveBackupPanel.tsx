@@ -1,6 +1,7 @@
 import React from 'react';
 import { CloudDownload, CloudUpload, LogIn, LogOut, RefreshCw } from 'lucide-react';
 import { GoogleDriveBook, GoogleDriveSession } from '../utils/googleDriveBackup';
+import { BookCoverThumbnail } from './BookCoverThumbnail';
 import { RecentBook } from '../utils/recentBooks';
 
 interface Props {
@@ -139,6 +140,7 @@ export const GoogleDriveBackupPanel: React.FC<Props> = ({
               <div className="max-h-56 space-y-2 overflow-y-auto">
                 {cloudBooks.map((book) => (
                   <div key={book.id} className="flex min-w-0 flex-col gap-2 rounded-lg bg-white/70 px-2.5 py-2 dark:bg-zinc-900/60 sm:flex-row sm:items-center">
+                    <BookCoverThumbnail src={book.coverDataUrl} title={book.title} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[11px] text-zinc-700 dark:text-zinc-300">{book.title}</span>
                       <span className="block text-[10px] text-zinc-500 dark:text-zinc-400">
