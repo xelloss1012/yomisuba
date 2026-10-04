@@ -6,10 +6,11 @@ import { RecentBook, saveRecentBook } from './recentBooks';
 const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const DRIVE_SESSION_EXPECTED_KEY = 'ereader_google_drive_session_expected';
 const DRIVE_FOLDER_NAME = '.ereader';
+const READER_FOLDER_NAME = '.reader';
+const BOOKS_FOLDER_NAME = 'books';
 const DRIVE_FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
 const SETTINGS_FILE_NAME = 'EReader settings.json';
 const SETTINGS_FILE_TYPE = 'application/json';
-const BOOK_FILE_PREFIX = 'EReader book - ';
 const BOOK_STATE_PREFIX = 'EReader reading data - ';
 const MAX_BOOK_SIZE = 100 * 1024 * 1024;
 
@@ -19,6 +20,7 @@ interface DriveFile {
   description?: string;
   size?: string;
   modifiedTime?: string;
+  mimeType?: string;
 }
 
 export interface GoogleDriveSession {
@@ -55,8 +57,52 @@ export interface ReaderBookBackup {
 
 let initializePromise: Promise<void> | null = null;
 const readerBackupQueues = new Map<string, Promise<void>>();
-let driveFolderCache: { accessToken: string; promise: Promise<string> } | null = null;
+const driveFolderCache = new Map<string, Promise<string>>();
 export const googleDriveConfigured = Boolean(import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID);
+export const googleDrivePickerConfigured = Boolean(import.meta.env.VITE_GOOGLE_API_KEY);
+
+interface PickerDocument {
+  id: string;
+  name: string;
+  mimeType?: string;
+}
+
+interface PickerResponse {
+  action: string;
+  docs?: PickerDocument[];
+}
+
+interface PickerDocsView {
+  setParent(folderId: string): PickerDocsView;
+  setIncludeFolders(include: boolean): PickerDocsView;
+}
+
+interface PickerBuilder {
+  addView(view: PickerDocsView): PickerBuilder;
+  setOAuthToken(token: string): PickerBuilder;
+  setDeveloperKey(key: string): PickerBuilder;
+  setAppId(appId: string): PickerBuilder;
+  setOrigin(origin: string): PickerBuilder;
+  setTitle(title: string): PickerBuilder;
+  setCallback(callback: (response: PickerResponse) => void): PickerBuilder;
+  build(): { setVisible(visible: boolean): void };
+}
+
+declare global {
+  interface Window {
+    gapi?: { load(api: string, callback: () => void): void };
+    google?: {
+      picker: {
+        Action: { PICKED: string; CANCEL: string };
+        ViewId: { DOCS: string };
+        DocsView: new (viewId: string) => PickerDocsView;
+        PickerBuilder: new () => PickerBuilder;
+      };
+    };
+  }
+}
+
+let pickerLoadPromise: Promise<void> | null = null;
 
 function initializeGoogleLogin(): Promise<void> {
   const webClientId = import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID;
@@ -170,40 +216,55 @@ async function hashText(value: string): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-async function hashBlob(blob: Blob): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+async function getOrCreateDriveFolder(
+  accessToken: string,
+  name: string,
+  parentId?: string,
+): Promise<string> {
+  const cacheKey = `${accessToken}:${parentId || 'root'}:${name}`;
+  const cached = driveFolderCache.get(cacheKey);
+  if (cached) return cached;
+
+  const pending = (async () => {
+    const parentQuery = parentId ? `'${parentId}' in parents` : "'root' in parents";
+    const query = new URLSearchParams({
+      q: `name = '${name}' and mimeType = '${DRIVE_FOLDER_MIME_TYPE}' and ${parentQuery} and trashed = false`,
+      spaces: 'drive',
+      pageSize: '100',
+      fields: 'files(id)',
+    });
+    const response = await driveRequest(accessToken, `https://www.googleapis.com/drive/v3/files?${query}`);
+    const result = await response.json() as { files?: Array<{ id: string }> };
+    if (result.files?.[0]) return result.files[0].id;
+
+    const created = await driveRequest(accessToken, 'https://www.googleapis.com/drive/v3/files?fields=id', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=UTF-8' },
+      body: JSON.stringify({
+        name,
+        mimeType: DRIVE_FOLDER_MIME_TYPE,
+        ...(parentId ? { parents: [parentId] } : {}),
+      }),
+    });
+    const folder = await created.json() as { id?: string };
+    if (!folder.id) throw new Error(`Google Drive no devolvió el identificador de la carpeta «${name}».`);
+    return folder.id;
+  })();
+  const promise = pending.catch((error: unknown) => {
+    driveFolderCache.delete(cacheKey);
+    throw error;
+  });
+  driveFolderCache.set(cacheKey, promise);
+  return promise;
 }
 
 async function getDriveFolderId(accessToken: string): Promise<string> {
-  if (driveFolderCache?.accessToken !== accessToken) {
-    const pending = (async () => {
-      const query = new URLSearchParams({
-        q: `name = '${DRIVE_FOLDER_NAME}' and mimeType = '${DRIVE_FOLDER_MIME_TYPE}' and 'root' in parents and trashed = false`,
-        spaces: 'drive',
-        pageSize: '100',
-        fields: 'files(id)',
-      });
-      const response = await driveRequest(accessToken, `https://www.googleapis.com/drive/v3/files?${query}`);
-      const result = await response.json() as { files?: Array<{ id: string }> };
-      if (result.files?.[0]) return result.files[0].id;
+  return getOrCreateDriveFolder(accessToken, DRIVE_FOLDER_NAME);
+}
 
-      const created = await driveRequest(accessToken, 'https://www.googleapis.com/drive/v3/files?fields=id', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json; charset=UTF-8' },
-        body: JSON.stringify({ name: DRIVE_FOLDER_NAME, mimeType: DRIVE_FOLDER_MIME_TYPE }),
-      });
-      const folder = await created.json() as { id?: string };
-      if (!folder.id) throw new Error('Google Drive no devolvió el identificador de la carpeta de copias.');
-      return folder.id;
-    })();
-    const promise = pending.catch((error: unknown) => {
-      if (driveFolderCache?.accessToken === accessToken) driveFolderCache = null;
-      throw error;
-    });
-    driveFolderCache = { accessToken, promise };
-  }
-  return driveFolderCache.promise;
+async function getReaderBooksFolderId(accessToken: string): Promise<string> {
+  const readerFolderId = await getOrCreateDriveFolder(accessToken, READER_FOLDER_NAME);
+  return getOrCreateDriveFolder(accessToken, BOOKS_FOLDER_NAME, readerFolderId);
 }
 
 async function findFile(accessToken: string, name: string): Promise<DriveFile | null> {
@@ -220,14 +281,14 @@ async function findFile(accessToken: string, name: string): Promise<DriveFile | 
   return result.files?.[0] || null;
 }
 
-async function listFiles(accessToken: string, prefix: string): Promise<DriveFile[]> {
-  const folderId = await getDriveFolderId(accessToken);
+async function listBookFiles(accessToken: string): Promise<DriveFile[]> {
+  const folderId = await getReaderBooksFolderId(accessToken);
   const query = new URLSearchParams({
-    q: `name contains '${prefix}' and '${folderId}' in parents and trashed = false`,
+    q: `'${folderId}' in parents and trashed = false`,
     spaces: 'drive',
     pageSize: '1000',
-    fields: 'nextPageToken,files(id,name,description,size,modifiedTime)',
-    orderBy: 'modifiedTime desc',
+    fields: 'nextPageToken,files(id,name,description,size,modifiedTime,mimeType)',
+    orderBy: 'name',
   });
   const files: DriveFile[] = [];
   let pageToken: string | undefined;
@@ -238,7 +299,7 @@ async function listFiles(accessToken: string, prefix: string): Promise<DriveFile
     files.push(...(result.files || []));
     pageToken = result.nextPageToken;
   } while (pageToken);
-  return files;
+  return files.filter((file) => file.name.toLowerCase().endsWith('.epub'));
 }
 
 async function uploadFile(
@@ -248,8 +309,9 @@ async function uploadFile(
   blob: Blob,
   existing: DriveFile | null,
   description?: string,
+  parentFolderId?: string,
 ): Promise<DriveFile> {
-  const folderId = await getDriveFolderId(accessToken);
+  const folderId = parentFolderId || await getDriveFolderId(accessToken);
   const baseUrl = existing
     ? `https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(existing.id)}`
     : 'https://www.googleapis.com/upload/drive/v3/files';
@@ -284,6 +346,93 @@ async function downloadFile(accessToken: string, file: DriveFile): Promise<Blob>
     `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}?alt=media`,
   );
   return response.blob();
+}
+
+async function getDriveFile(accessToken: string, id: string): Promise<DriveFile> {
+  const query = new URLSearchParams({ fields: 'id,name,description,size,modifiedTime,mimeType' });
+  const response = await driveRequest(
+    accessToken,
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?${query}`,
+  );
+  return await response.json() as DriveFile;
+}
+
+async function loadGooglePicker(): Promise<void> {
+  if (window.google?.picker && window.gapi) return;
+  if (!pickerLoadPromise) {
+    pickerLoadPromise = new Promise<void>((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://apis.google.com/js/api.js';
+      script.async = true;
+      script.onload = () => {
+        if (!window.gapi) {
+          reject(new Error('Google Picker no se pudo inicializar.'));
+          return;
+        }
+        window.gapi.load('picker', () => {
+          if (window.google?.picker) resolve();
+          else reject(new Error('Google Picker no está disponible.'));
+        });
+      };
+      script.onerror = () => reject(new Error('No se pudo cargar Google Picker.'));
+      document.head.appendChild(script);
+    }).catch((error: unknown) => {
+      pickerLoadPromise = null;
+      throw error;
+    });
+  }
+  await pickerLoadPromise;
+}
+
+export async function pickGoogleDriveBook(accessToken: string): Promise<GoogleDriveBook | null> {
+  const apiKey = import.meta.env.VITE_GOOGLE_API_KEY;
+  if (!apiKey) throw new Error('Falta configurar VITE_GOOGLE_API_KEY para seleccionar libros en Drive.');
+  await loadGooglePicker();
+  const folderId = await getReaderBooksFolderId(accessToken);
+  const projectNumber = (import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID || '').split('-')[0];
+
+  return new Promise<GoogleDriveBook | null>((resolve, reject) => {
+    const view = new window.google!.picker.DocsView(window.google!.picker.ViewId.DOCS)
+      .setParent(folderId)
+      .setIncludeFolders(false);
+    const builder = new window.google!.picker.PickerBuilder()
+      .addView(view)
+      .setOAuthToken(accessToken)
+      .setDeveloperKey(apiKey)
+      .setOrigin(window.location.origin)
+      .setTitle('Seleccionar un EPUB de .reader/books')
+      .setCallback((response) => {
+        if (response.action === window.google!.picker.Action.CANCEL) {
+          resolve(null);
+          return;
+        }
+        if (response.action !== window.google!.picker.Action.PICKED) {
+          reject(new Error('Google Picker devolvió una respuesta no compatible.'));
+          return;
+        }
+        const selected = response.docs?.[0];
+        if (!selected) {
+          reject(new Error('Google Picker no devolvió el archivo seleccionado.'));
+          return;
+        }
+        if (!selected.name.toLowerCase().endsWith('.epub')) {
+          reject(new Error('Selecciona un archivo con extensión .epub.'));
+          return;
+        }
+        void getDriveFile(accessToken, selected.id)
+          .then((file) => resolve({
+            id: file.id,
+            name: file.name,
+            title: file.name.replace(/\.epub$/i, ''),
+            creator: '',
+            size: Number(file.size || 0),
+            modifiedTime: file.modifiedTime || null,
+          }))
+          .catch(reject);
+      });
+    if (/^\d+$/.test(projectNumber)) builder.setAppId(projectNumber);
+    builder.build().setVisible(true);
+  });
 }
 
 export async function saveGoogleDriveSettings(
@@ -329,48 +478,72 @@ export async function getGoogleDriveSettingsDate(accessToken: string): Promise<s
 }
 
 export async function listGoogleDriveBooks(accessToken: string): Promise<GoogleDriveBook[]> {
-  const files = await listFiles(accessToken, BOOK_FILE_PREFIX);
-  return files.flatMap((file) => {
-    const match = file.name.match(/^EReader book - ([a-f0-9]{64})\.epub$/);
-    if (!match) return [];
+  const files = await listBookFiles(accessToken);
+  return files.map((file) => {
     let metadata: Partial<GoogleDriveBook> = {};
     try {
       metadata = JSON.parse(file.description || '{}') as Partial<GoogleDriveBook>;
     } catch {
       // Show the file using its name if old metadata is malformed.
     }
-    return [{
-      id: match[1],
-      name: typeof metadata.name === 'string' ? metadata.name : file.name,
-      title: typeof metadata.title === 'string' ? metadata.title : file.name,
+    return {
+      id: file.id,
+      name: file.name,
+      title: typeof metadata.title === 'string' ? metadata.title : file.name.replace(/\.epub$/i, ''),
       creator: typeof metadata.creator === 'string' ? metadata.creator : '',
       size: Number(file.size || 0),
       modifiedTime: file.modifiedTime || null,
-    }];
+    };
   });
+}
+
+async function findBookFileByMetadata(accessToken: string, book: RecentBook): Promise<DriveFile | null> {
+  const files = await listBookFiles(accessToken);
+  for (const file of files) {
+    if (file.name !== book.name) continue;
+    try {
+      const metadata = JSON.parse(file.description || '{}') as {
+        ereaderManaged?: unknown;
+        title?: unknown;
+        creator?: unknown;
+      };
+      if (metadata.ereaderManaged === true && metadata.title === book.title && metadata.creator === book.creator) {
+        return file;
+      }
+    } catch {
+      // Leave files without EReader metadata untouched.
+    }
+  }
+  return null;
 }
 
 export async function uploadGoogleDriveBook(accessToken: string, book: RecentBook): Promise<void> {
   if (book.blob.size > MAX_BOOK_SIZE) {
     throw new Error(`El EPUB supera el límite de ${Math.round(MAX_BOOK_SIZE / 1024 / 1024)} MB.`);
   }
-  const id = await hashBlob(book.blob);
-  const name = `${BOOK_FILE_PREFIX}${id}.epub`;
-  const existing = await findFile(accessToken, name);
-  const description = JSON.stringify({ name: book.name, title: book.title, creator: book.creator });
-  await uploadFile(accessToken, name, 'application/epub+zip', book.blob, existing, description);
+  const existing = await findBookFileByMetadata(accessToken, book);
+  const description = JSON.stringify({ ereaderManaged: true, title: book.title, creator: book.creator });
+  await uploadFile(
+    accessToken,
+    book.name,
+    'application/epub+zip',
+    book.blob,
+    existing,
+    description,
+    await getReaderBooksFolderId(accessToken),
+  );
 }
 
 export async function downloadGoogleDriveBook(accessToken: string, cloudBook: GoogleDriveBook): Promise<RecentBook> {
-  const file = await findFile(accessToken, `${BOOK_FILE_PREFIX}${cloudBook.id}.epub`);
-  if (!file) throw new Error('No se encontró ese EPUB en Google Drive.');
+  const file = await getDriveFile(accessToken, cloudBook.id);
+  if (!file.name.toLowerCase().endsWith('.epub')) throw new Error('El archivo seleccionado no tiene extensión .epub.');
   if (Number(file.size || 0) > MAX_BOOK_SIZE) {
     throw new Error(`El EPUB supera el límite de descarga de ${Math.round(MAX_BOOK_SIZE / 1024 / 1024)} MB.`);
   }
   const blob = await downloadFile(accessToken, file);
   const book: RecentBook = {
-    id: encodeURIComponent(`${cloudBook.name}|${cloudBook.title}|${cloudBook.creator}`),
-    name: cloudBook.name,
+    id: encodeURIComponent(`${file.id}|${file.name}`),
+    name: file.name,
     title: cloudBook.title,
     creator: cloudBook.creator,
     lastOpened: Date.now(),

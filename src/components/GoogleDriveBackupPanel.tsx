@@ -1,10 +1,11 @@
 import React from 'react';
-import { CloudDownload, CloudUpload, LogIn, LogOut, RefreshCw } from 'lucide-react';
+import { CloudDownload, CloudUpload, FolderOpen, LogIn, LogOut, RefreshCw } from 'lucide-react';
 import { GoogleDriveBook, GoogleDriveSession } from '../utils/googleDriveBackup';
 import { RecentBook } from '../utils/recentBooks';
 
 interface Props {
   configured: boolean;
+  pickerConfigured: boolean;
   session: GoogleDriveSession | null;
   settingsDate: string | null;
   localBooks: RecentBook[];
@@ -15,11 +16,13 @@ interface Props {
   onRestoreSettings: () => void;
   onUploadBook: (book: RecentBook) => void;
   onDownloadBook: (book: GoogleDriveBook) => void;
+  onImportBook: () => void;
   onRefreshBooks: () => void;
 }
 
 export const GoogleDriveBackupPanel: React.FC<Props> = ({
   configured,
+  pickerConfigured,
   session,
   settingsDate,
   localBooks,
@@ -30,6 +33,7 @@ export const GoogleDriveBackupPanel: React.FC<Props> = ({
   onRestoreSettings,
   onUploadBook,
   onDownloadBook,
+  onImportBook,
   onRefreshBooks,
 }) => (
   <section className="mt-6 rounded-2xl border border-indigo-200 bg-indigo-50/60 p-4 text-left dark:border-indigo-900/60 dark:bg-indigo-950/20">
@@ -123,6 +127,15 @@ export const GoogleDriveBackupPanel: React.FC<Props> = ({
               <h3 className="mr-auto text-xs font-semibold text-zinc-700 dark:text-zinc-200">Libros en Google Drive</h3>
               <button
                 type="button"
+                onClick={onImportBook}
+                disabled={busy || !pickerConfigured}
+                className="inline-flex items-center gap-1 rounded-md border border-indigo-200 px-2 py-1 text-[10px] font-semibold text-indigo-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 dark:border-indigo-800 dark:text-indigo-300 dark:hover:bg-zinc-800"
+                title={pickerConfigured ? 'Seleccionar un EPUB de .reader/books' : 'Configura VITE_GOOGLE_API_KEY para activar Google Picker'}
+              >
+                <FolderOpen className="h-3.5 w-3.5" /> Importar
+              </button>
+              <button
+                type="button"
                 onClick={onRefreshBooks}
                 disabled={busy}
                 className="rounded-md p-1 text-zinc-500 hover:bg-white disabled:opacity-50 dark:hover:bg-zinc-800"
@@ -132,6 +145,10 @@ export const GoogleDriveBackupPanel: React.FC<Props> = ({
                 <RefreshCw className="h-3.5 w-3.5" />
               </button>
             </div>
+            <p className="mb-2 text-[10px] text-zinc-500 dark:text-zinc-400">
+              Copia archivos .epub a Drive/.reader/books y selecciónalos aquí; no requieren un nombre especial ni firma.
+              {!pickerConfigured && ' Configura VITE_GOOGLE_API_KEY para activar el selector.'}
+            </p>
             {cloudBooks.length ? (
               <div className="max-h-56 space-y-2 overflow-y-auto">
                 {cloudBooks.map((book) => (

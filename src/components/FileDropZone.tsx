@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { UploadCloud, BookOpen, Sparkles, FileText, CheckCircle2, Clock3 } from 'lucide-react';
 import { createSampleJapaneseEpub } from '../utils/sampleBook';
 import { RecentBook } from '../utils/recentBooks';
-import { GoogleDriveBook, GoogleDriveSession } from '../utils/googleDriveBackup';
+import { GoogleDriveBook, GoogleDriveSession, googleDrivePickerConfigured } from '../utils/googleDriveBackup';
 import { GoogleDriveBackupPanel } from './GoogleDriveBackupPanel';
 
 interface Props {
@@ -20,6 +20,7 @@ interface Props {
   onRestoreDriveSettings: () => void;
   onUploadDriveBook: (book: RecentBook) => void;
   onDownloadDriveBook: (book: GoogleDriveBook) => void;
+  onImportDriveBook: () => void;
   onRefreshDriveBooks: () => void;
 }
 
@@ -38,6 +39,7 @@ export const FileDropZone: React.FC<Props> = ({
   onRestoreDriveSettings,
   onUploadDriveBook,
   onDownloadDriveBook,
+  onImportDriveBook,
   onRefreshDriveBooks,
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
@@ -84,6 +86,7 @@ export const FileDropZone: React.FC<Props> = ({
 
         <GoogleDriveBackupPanel
           configured={googleDriveConfigured}
+          pickerConfigured={googleDrivePickerConfigured}
           session={googleDriveSession}
           settingsDate={googleDriveSettingsDate}
           localBooks={recentBooks}
@@ -94,6 +97,7 @@ export const FileDropZone: React.FC<Props> = ({
           onRestoreSettings={onRestoreDriveSettings}
           onUploadBook={onUploadDriveBook}
           onDownloadBook={onDownloadDriveBook}
+          onImportBook={onImportDriveBook}
           onRefreshBooks={onRefreshDriveBooks}
         />
 

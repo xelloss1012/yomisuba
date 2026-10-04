@@ -10,6 +10,7 @@ import {
   GoogleDriveBook,
   GoogleDriveSession,
   googleDriveConfigured,
+  pickGoogleDriveBook,
   listGoogleDriveBooks,
   ReaderBookBackup,
   applyGoogleDriveReaderData,
@@ -406,6 +407,18 @@ export const App: React.FC = () => {
     });
   };
 
+  const handleImportDriveBook = () => {
+    if (!googleDriveSession) return;
+    void runDriveAction(async () => {
+      const selected = await pickGoogleDriveBook(googleDriveSession.accessToken);
+      if (!selected) return;
+      const book = await downloadGoogleDriveBook(googleDriveSession.accessToken, selected);
+      setGoogleDriveBooks(await listGoogleDriveBooks(googleDriveSession.accessToken));
+      setRecentBooks((books) => [book, ...books.filter((item) => item.id !== book.id)].slice(0, 8));
+      await openBook(book.blob, book.id, book.name);
+    });
+  };
+
   const handleBookDataChange = (data: ReaderBookBackup) => {
     if (!googleDriveSession) return;
     void saveGoogleDriveReaderData(googleDriveSession.accessToken, data).catch((error: unknown) => {
@@ -460,6 +473,7 @@ export const App: React.FC = () => {
           onRestoreDriveSettings={handleRestoreDriveSettings}
           onUploadDriveBook={handleUploadDriveBook}
           onDownloadDriveBook={handleDownloadDriveBook}
+          onImportDriveBook={handleImportDriveBook}
           onRefreshDriveBooks={handleRefreshDriveBooks}
         />
       )}

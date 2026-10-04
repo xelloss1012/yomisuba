@@ -110,13 +110,15 @@ Los EPUB no se suben solos: el usuario elige cada libro que quiere guardar o
 descargar. Su estado se restaura al abrirlo si hay una copia. Para actualizar el
 progreso de un EPUB ya guardado localmente, usa la acción **Actualizar** junto
 al libro en la lista de Google Drive. No hay base de datos compartida entre
-usuarios ni archivo ZIP. Todo se guarda en el Drive de la cuenta conectada,
-dentro de la carpeta `.ereader`. Solo se detectan los archivos guardados en esa
-carpeta.
+usuarios ni archivo ZIP. Los ajustes y los datos de lectura se guardan en
+`.ereader`; los EPUB se guardan con su nombre original en `.reader/books`.
+La app lista los EPUB de esa carpeta y el selector permite importar los que se
+hayan copiado allí manualmente.
 
 Para habilitar Drive:
 
 1. En Google Cloud Console crea un proyecto, activa **Google Drive API** y
+   **Google Picker API**, y
    configura la pantalla de consentimiento OAuth. Si permanece en modo
    **Testing**, añade las cuentas que probarán la app como usuarios de prueba.
 2. Crea un cliente OAuth de tipo **Web application**. En web, añade los
@@ -126,11 +128,14 @@ Para habilitar Drive:
    ambos).
 3. Copia `.env.example` a `.env.local` y asigna a
    `VITE_GOOGLE_WEB_CLIENT_ID` el ID del cliente web (`...apps.googleusercontent.com`).
-   No se necesita Firebase ni un `google-services.json`.
+   Crea también una clave de API restringida a Google Picker API y asígnala a
+   `VITE_GOOGLE_API_KEY`. No se necesita Firebase ni un `google-services.json`.
 4. Ejecuta `npm run android:sync` y vuelve a compilar la aplicación.
 
-Google pedirá autorización para acceder a los archivos creados por EReader.
-El permiso `drive.file` permite crear y actualizar archivos de EReader. La app
+Google pedirá autorización para acceder a los archivos que EReader crea o que
+el usuario selecciona en Google Picker. El permiso `drive.file` permite crear y
+actualizar estos archivos sin solicitar acceso general a todo Drive. Los EPUB
+subidos desde la app conservan su nombre original. La app
 usa el ID de cliente web también en Android; el cliente OAuth Android autoriza
 el paquete y certificado de firma. En Android se restaura la sesión nativa y se
 renueva el token al volver a la app; Google puede volver a pedir autorización si
