@@ -117,7 +117,7 @@ export const createSearchLocator = (root: Node, doc: Document) => {
     return range;
   };
 
-  return { locate };
+  return { locate, length: total };
 };
 
 /** Range covering `length` searchable characters from offset `start`. */
@@ -176,6 +176,38 @@ export const pageOfRange = (
   const base = scroller.getBoundingClientRect();
   if (vertical) return Math.max(0, Math.floor((rect.top - base.top + 1) / viewportHeight));
   return Math.max(0, Math.floor((rect.left - base.left + 1) / viewportWidth));
+};
+
+/** Searchable-text offset of the first character on a page, if it has text. */
+export const textOffsetOfPage = (
+  root: Node,
+  doc: Document,
+  page: number,
+  scroller: HTMLElement,
+  vertical: boolean,
+  viewportWidth: number,
+  viewportHeight: number,
+  existingLocator?: ReturnType<typeof createSearchLocator>,
+): number | null => {
+  const locator = existingLocator || createSearchLocator(root, doc);
+  if (!locator.length) return null;
+
+  let low = 0;
+  let high = locator.length - 1;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    const range = locator.locate(middle, 1);
+    if (!range || pageOfRange(range, scroller, vertical, viewportWidth, viewportHeight) < page) {
+      low = middle + 1;
+    } else {
+      high = middle;
+    }
+  }
+
+  const range = locator.locate(low, 1);
+  return range && pageOfRange(range, scroller, vertical, viewportWidth, viewportHeight) === page
+    ? low
+    : null;
 };
 
 // ── Recent searches ──────────────────────────────────────────────────────────

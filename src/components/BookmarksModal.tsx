@@ -5,6 +5,7 @@ export interface ReaderBookmark {
   spineIndex: number;
   page: number;
   pageCount?: number;
+  textOffset?: number;
 }
 
 interface BookmarkItem extends ReaderBookmark {

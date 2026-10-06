@@ -48,8 +48,8 @@ export interface ReaderBookBackup {
   bookKey: string;
   title: string;
   creator: string;
-  position: { spineIndex: number; page: number; pageCount?: number };
-  bookmarks: Array<{ spineIndex: number; page: number; pageCount?: number }>;
+  position: { spineIndex: number; page: number; pageCount?: number; textOffset?: number };
+  bookmarks: Array<{ spineIndex: number; page: number; pageCount?: number; textOffset?: number }>;
   annotations: Array<{ id: string; spineIndex: number; quote: string; prefix: string; suffix: string }>;
   translationHistory: Array<{
     id: string;
@@ -601,11 +601,18 @@ function isReaderSettings(value: unknown): value is ReaderSettingsState {
 
 function isReadingPosition(value: unknown): value is ReaderBookBackup['position'] {
   if (!value || typeof value !== 'object') return false;
-  const position = value as { spineIndex?: unknown; page?: unknown; pageCount?: unknown };
+  const position = value as {
+    spineIndex?: unknown;
+    page?: unknown;
+    pageCount?: unknown;
+    textOffset?: unknown;
+  };
   return Number.isInteger(position.spineIndex) && Number(position.spineIndex) >= 0
     && Number.isInteger(position.page) && Number(position.page) >= 0
     && (position.pageCount === undefined
-      || (Number.isInteger(position.pageCount) && Number(position.pageCount) > 0));
+      || (Number.isInteger(position.pageCount) && Number(position.pageCount) > 0))
+    && (position.textOffset === undefined
+      || (Number.isInteger(position.textOffset) && Number(position.textOffset) >= 0));
 }
 
 function isReaderBookBackup(value: unknown): value is ReaderBookBackup {

@@ -37,6 +37,7 @@ import {
   readRecentSearches,
   removeRecentSearch,
   SearchHit,
+  textOffsetOfPage,
 } from '../utils/bookSearch';
 
 type ReadingPosition = ReaderBookmark;
@@ -54,7 +55,9 @@ const readBookmarks = (storageKey: string, spineLength: number): ReadingPosition
         && Number.isInteger(candidate.page)
         && (candidate.spineIndex as number) >= 0
         && (candidate.spineIndex as number) < spineLength
-        && (candidate.page as number) >= 0;
+        && (candidate.page as number) >= 0
+        && (candidate.textOffset === undefined
+          || (Number.isInteger(candidate.textOffset) && (candidate.textOffset as number) >= 0));
     });
     return valid.filter((item, index) =>
       valid.findIndex((candidate) =>
@@ -238,6 +241,11 @@ export const EpubReader: React.FC<Props> = ({
   const currentSpineRef = useRef(0);
   const chapterPageCountsRef = useRef<number[]>([]);
   const bookPageOffsetsRef = useRef<number[]>([]);
+  const positionLocatorRef = useRef<{
+    spineIndex: number;
+    doc: Document;
+    locator: ReturnType<typeof createSearchLocator>;
+  } | null>(null);
   const measurementVersionRef = useRef(0);
   const shownPageRef = useRef<{ spine: number; page: number } | null>(null);
   const imageDragRef = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null);
@@ -313,6 +321,49 @@ export const EpubReader: React.FC<Props> = ({
   const getGlobalPage = useCallback((spineIndex: number, page: number) => {
     return (bookPageOffsetsRef.current[spineIndex] || 0) + page;
   }, []);
+
+  const getPositionLocator = useCallback((spineIndex: number, doc: Document, scroller: HTMLElement) => {
+    const cached = positionLocatorRef.current;
+    if (cached?.spineIndex === spineIndex && cached.doc === doc) return cached.locator;
+    const locator = createSearchLocator(scroller, doc);
+    positionLocatorRef.current = { spineIndex, doc, locator };
+    return locator;
+  }, []);
+
+  const getTextOffsetForPage = useCallback((spineIndex: number, page: number) => {
+    if (currentSpineRef.current !== spineIndex) return undefined;
+    const iframe = iframeRef.current;
+    const doc = iframe?.contentDocument;
+    const scroller = doc?.getElementById('reader-scroller');
+    if (!iframe || !doc || !scroller) return undefined;
+    return textOffsetOfPage(
+      scroller,
+      doc,
+      page,
+      scroller,
+      isVertical,
+      iframe.clientWidth || window.innerWidth,
+      iframe.clientHeight || window.innerHeight,
+      getPositionLocator(spineIndex, doc, scroller),
+    ) ?? undefined;
+  }, [getPositionLocator, isVertical]);
+
+  const getPageForTextOffset = useCallback((spineIndex: number, textOffset: number) => {
+    if (currentSpineRef.current !== spineIndex) return null;
+    const iframe = iframeRef.current;
+    const doc = iframe?.contentDocument;
+    const scroller = doc?.getElementById('reader-scroller');
+    if (!iframe || !doc || !scroller) return null;
+    const range = getPositionLocator(spineIndex, doc, scroller).locate(textOffset, 1);
+    if (!range) return null;
+    return pageOfRange(
+      range,
+      scroller,
+      isVertical,
+      iframe.clientWidth || window.innerWidth,
+      iframe.clientHeight || window.innerHeight,
+    );
+  }, [getPositionLocator, isVertical]);
 
   const saveReadingPosition = useCallback((position: ReadingPosition) => {
     try {
@@ -393,6 +444,7 @@ export const EpubReader: React.FC<Props> = ({
     const iframe = iframeRef.current;
     const scroller = iframe?.contentDocument?.getElementById('reader-scroller');
     if (scroller) {
+      positionLocatorRef.current = null;
       applyTextAnnotations(
         scroller,
         textAnnotations.filter((annotation) => annotation.spineIndex === currentSpineRef.current)
@@ -411,6 +463,7 @@ export const EpubReader: React.FC<Props> = ({
       spineIndex: currentSpineRef.current,
       page: currentPageRef.current,
       pageCount: Math.max(1, totalPagesRef.current),
+      textOffset: getTextOffsetForPage(currentSpineRef.current, currentPageRef.current),
     };
     setBookmarks((existing) => {
       const alreadySaved = existing.some((item) =>
@@ -424,7 +477,7 @@ export const EpubReader: React.FC<Props> = ({
           a.spineIndex - b.spineIndex || a.page - b.page
         );
     });
-  }, [markReaderDataChanged]);
+  }, [getTextOffsetForPage, markReaderDataChanged]);
 
   const handleRemoveBookmark = useCallback((position: ReadingPosition) => {
     markReaderDataChanged();
@@ -781,6 +834,7 @@ export const EpubReader: React.FC<Props> = ({
         const rawHtml = await epub.getChapterContent(epub.spine[index].href);
         const doc = frame.contentDocument;
         if (!doc) break;
+        positionLocatorRef.current = null;
         doc.open();
         doc.write(buildChapterDocument(rawHtml).html);
         doc.close();
@@ -962,13 +1016,25 @@ export const EpubReader: React.FC<Props> = ({
       pageNudgeRef.current = 0;
       setPageNudge(0);
       currentPageRef.current = page + 1;
+      saveReadingPosition({
+        spineIndex: spine,
+        page: page + 1,
+        pageCount: pages,
+        textOffset: getTextOffsetForPage(spine, page + 1),
+      });
       setCurrentPage(page + 1);
       updatePagination();
     } else if (spine < epub.spine.length - 1) {
       loadChapter(spine + 1, 0);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [epub.spine.length, markReaderDataChanged, updatePagination]);
+  }, [
+    epub.spine.length,
+    getTextOffsetForPage,
+    markReaderDataChanged,
+    saveReadingPosition,
+    updatePagination,
+  ]);
 
   const doPrevPage = useCallback(() => {
     markReaderDataChanged();
@@ -979,6 +1045,12 @@ export const EpubReader: React.FC<Props> = ({
       pageNudgeRef.current = 0;
       setPageNudge(0);
       currentPageRef.current = page - 1;
+      saveReadingPosition({
+        spineIndex: spine,
+        page: page - 1,
+        pageCount: totalPagesRef.current,
+        textOffset: getTextOffsetForPage(spine, page - 1),
+      });
       setCurrentPage(page - 1);
       updatePagination();
     } else if (spine > 0) {
@@ -987,7 +1059,12 @@ export const EpubReader: React.FC<Props> = ({
       loadChapter(spine - 1, -1);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [markReaderDataChanged, updatePagination]);
+  }, [
+    getTextOffsetForPage,
+    markReaderDataChanged,
+    saveReadingPosition,
+    updatePagination,
+  ]);
 
   const doNextRef = useRef(doNextPage);
   const doPrevRef = useRef(doPrevPage);
@@ -996,7 +1073,12 @@ export const EpubReader: React.FC<Props> = ({
 
   // ─── LOAD CHAPTER ─────────────────────────────────────────────────────────────
   const loadChapter = useCallback(
-    async (spineIndex: number, targetPage = 0, targetPageCount?: number) => {
+    async (
+      spineIndex: number,
+      targetPage = 0,
+      targetPageCount?: number,
+      targetTextOffset?: number,
+    ) => {
       if (spineIndex < 0 || spineIndex >= epub.spine.length) return;
       setIsLoadingChapter(true);
       setSelectedText('');
@@ -1736,8 +1818,12 @@ export const EpubReader: React.FC<Props> = ({
             // target counts as resolved, nothing ever put it right again.
             if (!lastPageResolved) currentPageRef.current = 0;
           } else {
+            const hasMatchingPagination = targetPageCount === resolvedPageCount;
+            const anchoredPage = targetTextOffset === undefined || hasMatchingPagination
+              ? null
+              : getPageForTextOffset(spineIndex, targetTextOffset);
             const resolvedPage = Math.min(
-              mapPageToLayout(targetPage, targetPageCount, resolvedPageCount),
+              anchoredPage ?? mapPageToLayout(targetPage, targetPageCount, resolvedPageCount),
               Math.max(0, resolvedPageCount - 1),
             );
             currentPageRef.current = resolvedPage;
@@ -2021,9 +2107,16 @@ export const EpubReader: React.FC<Props> = ({
         spineIndex: currentSpineIndex,
         page: currentPage,
         pageCount: Math.max(1, totalPagesRef.current),
+        textOffset: getTextOffsetForPage(currentSpineIndex, currentPage),
       });
     }
-  }, [currentPage, currentSpineIndex, isLoadingChapter, saveReadingPosition]);
+  }, [
+    currentPage,
+    currentSpineIndex,
+    getTextOffsetForPage,
+    isLoadingChapter,
+    saveReadingPosition,
+  ]);
 
   useEffect(() => {
     if (!onBookDataChange || !backupDirtyRef.current || isLoadingChapter || !isReaderPositioned) return;
@@ -2035,6 +2128,7 @@ export const EpubReader: React.FC<Props> = ({
         spineIndex: currentSpineIndex,
         page: currentPage,
         pageCount: Math.max(1, totalPagesRef.current),
+        textOffset: getTextOffsetForPage(currentSpineIndex, currentPage),
       },
       bookmarks: bookmarks.map((bookmark) => ({
         ...bookmark,
@@ -2057,6 +2151,7 @@ export const EpubReader: React.FC<Props> = ({
     currentSpineIndex,
     epub.metadata.creator,
     epub.metadata.title,
+    getTextOffsetForPage,
     isLoadingChapter,
     isReaderPositioned,
     onBookDataChange,
@@ -2110,17 +2205,34 @@ export const EpubReader: React.FC<Props> = ({
   const handleSelectBookmark = useCallback((position: ReadingPosition) => {
     if (position.spineIndex < 0 || position.spineIndex >= epub.spine.length || position.page < 0) return;
     markReaderDataChanged();
-    const pageCount = Math.max(1, chapterPageCountsRef.current[position.spineIndex] || 1);
-    const targetPage = Math.min(mapPageToLayout(position.page, position.pageCount, pageCount), pageCount - 1);
+    const pageCount = Math.max(
+      1,
+      position.spineIndex === currentSpineRef.current
+        ? totalPagesRef.current
+        : chapterPageCountsRef.current[position.spineIndex] || 1,
+    );
+    const targetPage = Math.min(
+      position.textOffset === undefined || position.pageCount === pageCount
+        ? mapPageToLayout(position.page, position.pageCount, pageCount)
+        : getPageForTextOffset(position.spineIndex, position.textOffset)
+          ?? mapPageToLayout(position.page, position.pageCount, pageCount),
+      pageCount - 1,
+    );
     if (position.spineIndex === currentSpineRef.current) {
       currentPageRef.current = targetPage;
       setCurrentPage(targetPage);
       updatePagination();
     } else {
-      loadChapter(position.spineIndex, targetPage, pageCount);
+      loadChapter(position.spineIndex, targetPage, pageCount, position.textOffset);
     }
     setIsBookmarksOpen(false);
-  }, [epub.spine.length, loadChapter, markReaderDataChanged, updatePagination]);
+  }, [
+    epub.spine.length,
+    getPageForTextOffset,
+    loadChapter,
+    markReaderDataChanged,
+    updatePagination,
+  ]);
 
   const bookmarkItems = bookmarks.map((position) => {
     const currentCount = chapterPageCountsRef.current[position.spineIndex] || 0;
@@ -2417,13 +2529,16 @@ export const EpubReader: React.FC<Props> = ({
             ...(Number.isInteger(parsed.pageCount) && (parsed.pageCount || 0) > 0
               ? { pageCount: parsed.pageCount }
               : {}),
+            ...(Number.isInteger(parsed.textOffset) && (parsed.textOffset || 0) >= 0
+              ? { textOffset: parsed.textOffset }
+              : {}),
           };
         }
       }
     } catch {
       // Ignore malformed or unavailable persisted position.
     }
-    loadChapter(position.spineIndex, position.page, position.pageCount);
+    loadChapter(position.spineIndex, position.page, position.pageCount, position.textOffset);
     void measureBookPagesRef.current();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
