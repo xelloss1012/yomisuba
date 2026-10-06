@@ -9,7 +9,18 @@ import { TextSelectionMenu, SelectionPosition } from './TextSelectionMenu';
 import { TranslationModal } from './TranslationModal';
 import { TranslationHistoryModal } from './TranslationHistoryModal';
 import { BookmarksModal, ReaderBookmark } from './BookmarksModal';
-import { Loader2, Menu, X, Minus, Plus, RotateCcw, Bookmark, BookmarkCheck } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  Loader2,
+  Menu,
+  X,
+  Minus,
+  Plus,
+  RotateCcw,
+  Bookmark,
+  BookmarkCheck,
+} from 'lucide-react';
 import {
   applyTextAnnotations,
   captureTextAnnotation,
@@ -178,6 +189,11 @@ export const EpubReader: React.FC<Props> = ({
   const [isReaderPositioned, setIsReaderPositioned] = useState(false);
   const [isLoadingChapter, setIsLoadingChapter] = useState(true);
   const [showUi, setShowUi] = useState(false);
+  const [selectionEdgeIndicator, setSelectionEdgeIndicator] = useState<{
+    direction: 'next' | 'previous';
+    x: number;
+    y: number;
+  } | null>(null);
   const [readerFit, setReaderFit] = useState({ scale: 1, offsetY: 0 });
   const [isBookmarksOpen, setIsBookmarksOpen] = useState(false);
   const [isTocOpen, setIsTocOpen] = useState(false);
@@ -255,6 +271,8 @@ export const EpubReader: React.FC<Props> = ({
   const onBookDataChangeRef = useRef(onBookDataChange);
   onBookDataChangeRef.current = onBookDataChange;
   const selectionRangeRef = useRef<Range | null>(null);
+  const selectionEdgeIndicatorRef = useRef<typeof selectionEdgeIndicator>(null);
+  const selectionEdgeTurnRef = useRef<(direction: 'next' | 'previous') => void>(() => {});
   const selectionAnnotationRef = useRef<Omit<TextAnnotation, 'id'> | null>(null);
   const selectedTextAnnotationIdRef = useRef<string | null>(null);
   const openOverlayRef = useRef(false);
@@ -1070,7 +1088,55 @@ export const EpubReader: React.FC<Props> = ({
   const doPrevRef = useRef(doPrevPage);
   useEffect(() => { doNextRef.current = doNextPage; }, [doNextPage]);
   useEffect(() => { doPrevRef.current = doPrevPage; }, [doPrevPage]);
+  useEffect(() => {
+    let nativeTouchActive = false;
+    let edgeTurnTriggered = false;
+    let lastEdgeX = 0;
+    let lastEdgeY = 0;
+    const onNativeTouchTrace = (event: Event) => {
+      const { action, x, y, inside } = (event as CustomEvent<{
+        action: string;
+        x: number;
+        y: number;
+        inside: boolean;
+      }>).detail;
 
+      if (action === 'DOWN') {
+        nativeTouchActive = true;
+        edgeTurnTriggered = false;
+        return;
+      }
+      if (action === 'UP' || action === 'CANCEL') {
+        nativeTouchActive = false;
+        edgeTurnTriggered = false;
+        return;
+      }
+      if (action !== 'MOVE' || !nativeTouchActive || !inside || !selectedTextRef.current) return;
+
+      const indicator = selectionEdgeIndicatorRef.current;
+      if (edgeTurnTriggered) {
+        if (Math.hypot(x - lastEdgeX, y - lastEdgeY) > 60) edgeTurnTriggered = false;
+        else return;
+      }
+      if (!indicator) return;
+      const distance = Math.hypot(x - indicator.x, y - indicator.y);
+      logDebugRef.current(
+        `native edge ${indicator.direction} d=${Math.round(distance)} at=${Math.round(x)},${Math.round(y)}`,
+      );
+      if (distance > 44) return;
+
+      edgeTurnTriggered = true;
+      lastEdgeX = x;
+      lastEdgeY = y;
+      logDebugRef.current(`native edge reached ${indicator.direction}`);
+      selectionEdgeTurnRef.current(indicator.direction);
+    };
+
+    window.addEventListener('ereader-native-touch', onNativeTouchTrace);
+    return () => {
+      window.removeEventListener('ereader-native-touch', onNativeTouchTrace);
+    };
+  }, []);
   // ─── LOAD CHAPTER ─────────────────────────────────────────────────────────────
   const loadChapter = useCallback(
     async (
@@ -1080,6 +1146,8 @@ export const EpubReader: React.FC<Props> = ({
       targetTextOffset?: number,
     ) => {
       if (spineIndex < 0 || spineIndex >= epub.spine.length) return;
+      selectionEdgeIndicatorRef.current = null;
+      setSelectionEdgeIndicator(null);
       setIsLoadingChapter(true);
       setSelectedText('');
       setSelectionPos(null);
@@ -1104,7 +1172,7 @@ export const EpubReader: React.FC<Props> = ({
         const doc = iframe.contentDocument || iframe.contentWindow?.document;
         if (!doc) return;
 
-        const { html: fullHtml, sidePad, fontSize } = buildChapterDocument(rawHtml);
+        const { html: fullHtml } = buildChapterDocument(rawHtml);
 
         doc.open();
         doc.write(fullHtml);
@@ -1124,82 +1192,26 @@ export const EpubReader: React.FC<Props> = ({
         const gestureAdjustmentEnabled = false;
         const nudgeLimit = 72;
         const pageSwipeThreshold = 96;
-        // Extra lateral push required once the selection has reached the very end
-        // of the visible page. Reaching the last column must not paginate: only
-        // insisting in the same direction does.
-        const selectionPushDistance = 50;
-        const selectionPushReset = 16;
-        const selectionHoldDelay = 1000;
-        const selectionGuardDuration = 650;
-        // The reading flow of a page grows towards this side, so the next page
-        // always lives beyond it. vertical-rl is anchored right and grows left.
-        const forwardSide: 'left' | 'right' = isVertical ? 'left' : 'right';
 
         let sx = 0, sy = 0, st = 0, moved = false, selecting = false;
         let gestureNudgeStart = 0;
         let selectionOrOverlayAtStart = false;
-        let pointerX = 0;
-        let pointerTracked = false;
-        let pointerDrivenSelection = false;
-        let edgePush = 0;
-        let edgePushDirection: 'next' | 'previous' | null = null;
-        let selectionHoldTimer: number | undefined;
-        let selectionHoldDirection: 'next' | 'previous' | null = null;
-        let selectionBaseline = '';
-        let selectionBaselineReady = false;
-        let selectionAdjustmentStarted = false;
-        let selectionBaselineTimer: number | undefined;
-        let selectionTurnBusy = false;
-        let ignoreSelectionChange = false;
-        let selectionGuard:
-          | {
-            node: Node;
-            offset: number;
-            until: number;
-          }
-          | null = null;
 
-        const getPageWidth = () => iframe.clientWidth || window.innerWidth;
-
-        const clearSelectionHold = (reason = '') => {
-          if (selectionHoldTimer !== undefined) {
-            window.clearTimeout(selectionHoldTimer);
-            selectionHoldTimer = undefined;
-            logDebugRef.current(`hold cancelled ${reason}`);
-          }
-          selectionHoldDirection = null;
+        const clearSelectionEdgeIndicator = () => {
+          selectionEdgeIndicatorRef.current = null;
+          setSelectionEdgeIndicator(null);
         };
-
-        const getSelectionSignature = (selection: Selection) =>
-          `${selection.toString()}|${selection.anchorOffset}|${selection.focusOffset}`;
-
-        const resetSelectionTracking = () => {
-          clearSelectionHold('reset');
-          if (selectionBaselineTimer !== undefined) {
-            window.clearTimeout(selectionBaselineTimer);
-            selectionBaselineTimer = undefined;
-          }
-          selectionBaseline = '';
-          selectionBaselineReady = false;
-          selectionAdjustmentStarted = false;
-        };
-
         const isSelectionBackwards = (selection: Selection) => {
           const { anchorNode, focusNode } = selection;
           if (!anchorNode || !focusNode) return false;
           if (anchorNode === focusNode) return selection.focusOffset < selection.anchorOffset;
-          const position = anchorNode.compareDocumentPosition(focusNode);
-          return Boolean(position & Node.DOCUMENT_POSITION_PRECEDING);
+          return Boolean(anchorNode.compareDocumentPosition(focusNode) & Node.DOCUMENT_POSITION_PRECEDING);
         };
-
-        // Rect of the character immediately after (or before) the caret in
-        // document order. Ruby annotations are skipped because they are not
-        // selectable and would report the position of their base text.
         const getAdjacentCharRect = (node: Node | null, offset: number, forward: boolean) => {
           const scroller = doc.getElementById('reader-scroller');
           if (!node || node.nodeType !== Node.TEXT_NODE || !scroller?.contains(node)) return null;
           const walker = doc.createTreeWalker(scroller, NodeFilter.SHOW_TEXT, {
-            acceptNode: (candidate: Node) =>
+            acceptNode: (candidate) =>
               (candidate.nodeValue || '').trim() && !(candidate.parentElement?.closest('rt'))
                 ? NodeFilter.FILTER_ACCEPT
                 : NodeFilter.FILTER_REJECT,
@@ -1226,192 +1238,70 @@ export const EpubReader: React.FC<Props> = ({
           }
           return null;
         };
-
-        // Returns a direction when the caret sits on the page boundary: the
-        // next character of the flow is already off-screen.
-        // `tolerant` also accepts a caret standing on the last line of the
-        // page. Native selection handles follow the finger, which cannot
-        // always reach the very last character in the corner, so the handle
-        // path needs the looser test; the pointer path keeps the strict one,
-        // because there insisting with the finger is what confirms the turn.
-        const getSelectionEdgeDirection = (tolerant = false): 'next' | 'previous' | null => {
+        const getSelectionEdgeDirection = (): 'next' | 'previous' | null => {
           const selection = iframe.contentWindow?.getSelection();
           if (!selection?.rangeCount || !selection.toString()) return null;
           const backwards = isSelectionBackwards(selection);
-          const pageWidth = getPageWidth();
+          const neighbor = getAdjacentCharRect(
+            selection.focusNode,
+            selection.focusOffset,
+            !backwards,
+          );
+          if (!neighbor) return null;
+          const pageWidth = iframe.clientWidth || window.innerWidth;
           const pageHeight = iframe.clientHeight || window.innerHeight;
-          const rect = getAdjacentCharRect(selection.focusNode, selection.focusOffset, !backwards);
-          // Where the neighbouring character lies relative to the visible page.
-          // Vertical pages are stacked downwards: the following page is below
-          // the screen and the previous one above it.
-          let side: 'forward' | 'backward' | null = null;
-          if (rect) {
-            if (isVertical) {
-              if (rect.top >= pageHeight - 1) side = 'forward';
-              else if (rect.bottom <= 1) side = 'backward';
-            } else if (rect.left >= pageWidth - 1) side = 'forward';
-            else if (rect.right <= 1) side = 'backward';
+          let forward = false;
+          let backward = false;
+          if (isVertical) {
+            forward = neighbor.top >= pageHeight - 1;
+            backward = neighbor.bottom <= 1;
+          } else {
+            forward = neighbor.left >= pageWidth - 1;
+            backward = neighbor.right <= 1;
           }
-          if (!side && tolerant) {
-            const focusRect = getAdjacentCharRect(selection.focusNode, selection.focusOffset, backwards);
-            if (focusRect) {
-              // A page ends on its last line: the leftmost one in vertical-rl,
-              // the rightmost column edge in horizontal.
-              const lastLine = sidePad + fontSize * settings.lineHeight * 1.2;
-              const nearLeft = focusRect.left <= lastLine;
-              const nearRight = focusRect.right >= pageWidth - lastLine;
-              if (isVertical) side = nearLeft ? 'forward' : nearRight ? 'backward' : null;
-              else side = nearRight ? 'forward' : nearLeft ? 'backward' : null;
-            }
-          }
-          if (!side) return null;
-          if (!backwards) return side === 'forward' ? 'next' : null;
-          return side === 'backward' ? 'previous' : null;
-        };
-
-        const canTurnSelectionPage = (direction: 'next' | 'previous') =>
-          direction === 'next'
-            ? currentPageRef.current < totalPagesRef.current - 1
-            : currentPageRef.current > 0;
-
-        // Caret where reading enters the page that is about to become visible.
-        const getPageEntryCaret = (direction: 'next' | 'previous') => {
-          const caretFromPoint = (doc as Document & {
-            caretRangeFromPoint?: (x: number, y: number) => Range | null;
-          }).caretRangeFromPoint;
-          if (!caretFromPoint) return null;
-          const pageWidth = getPageWidth();
-          const pageHeight = iframe.clientHeight || window.innerHeight;
-          // Reading starts on the right in vertical-rl and on the left otherwise;
-          // going back lands on the opposite corner, where the page ends.
-          const startsRight = isVertical;
-          const useRightSide = direction === 'next' ? startsRight : !startsRight;
-          const ys = direction === 'next'
-            ? [pageHeight * 0.06, pageHeight * 0.18, pageHeight * 0.5]
-            : [pageHeight * 0.94, pageHeight * 0.82, pageHeight * 0.5];
-          // Start inside the column: the outer band is the column gap, and a
-          // point there resolves to the neighbouring column, i.e. the page we
-          // just left.
-          const columnStart = sidePad + 6;
-          const columnSpan = Math.max(1, pageWidth - sidePad * 2 - 6);
-          for (const y of ys) {
-            for (let step = 0; step < 12; step += 1) {
-              const inset = columnStart + step * columnSpan * 0.08;
-              const x = useRightSide ? pageWidth - inset : inset;
-              const range = caretFromPoint.call(doc, x, y);
-              const container = range?.startContainer;
-              if (!range || container?.nodeType !== Node.TEXT_NODE) continue;
-              // Reject carets that resolved onto an off-screen column.
-              const probe = doc.createRange();
-              probe.setStart(container, range.startOffset);
-              probe.setEnd(container, Math.min(range.startOffset + 1, (container.nodeValue || '').length));
-              const rect = probe.getBoundingClientRect();
-              if (!rect.width && !rect.height) continue;
-              if (rect.right <= 1 || rect.left >= pageWidth - 1) continue;
-              if (rect.bottom <= 1 || rect.top >= pageHeight - 1) continue;
-              return { node: container, offset: range.startOffset };
-            }
-          }
+          if (!backwards && forward) return 'next';
+          if (backwards && backward) return 'previous';
           return null;
         };
-
-        const turnSelectionPage = (direction: 'next' | 'previous') => {
+        const placeSelectionEdgeIndicator = (direction: 'next' | 'previous') => {
           const selection = iframe.contentWindow?.getSelection();
-          if (selectionTurnBusy || !selection?.rangeCount || !canTurnSelectionPage(direction)) {
-            logDebugRef.current(
-              `turn refused busy=${selectionTurnBusy ? 1 : 0} sel=${selection?.rangeCount || 0} can=${canTurnSelectionPage(direction) ? 1 : 0}`
-            );
-            return;
-          }
-          const nativeHandleIsDragging = pointerDrivenSelection;
-          clearSelectionHold('turning');
-          selectionAdjustmentStarted = true;
-          // Block further boundary checks until the page transition settles,
-          // otherwise the mid-animation layout reports the edge again and the
-          // reader would skip several pages at once.
-          selectionTurnBusy = true;
-          edgePush = 0;
-          edgePushDirection = null;
-          logDebugRef.current(`TURN ${direction} from p${currentPageRef.current + 1}`);
+          if (!selection?.focusNode) return;
+          const selectedCharRect = getAdjacentCharRect(
+            selection.focusNode,
+            selection.focusOffset,
+            isSelectionBackwards(selection),
+          );
+          if (!selectedCharRect) return;
+          const frame = iframe.getBoundingClientRect();
+          const scaleX = frame.width / Math.max(1, iframe.clientWidth);
+          const scaleY = frame.height / Math.max(1, iframe.clientHeight);
+          const advance = direction === 'next' ? 1 : -1;
+          const focusX = (selectedCharRect.left + selectedCharRect.right) / 2;
+          const focusY = (selectedCharRect.top + selectedCharRect.bottom) / 2;
+          const x = isVertical
+            ? focusX
+            : Math.max(20, Math.min(iframe.clientWidth - 20, focusX - advance * 42));
+          const y = isVertical
+            ? Math.max(24, Math.min(iframe.clientHeight - 24, focusY + advance * 52))
+            : focusY;
+          const indicator = {
+            direction,
+            x: frame.left + x * scaleX,
+            y: frame.top + y * scaleY,
+          };
+          selectionEdgeIndicatorRef.current = indicator;
+          setSelectionEdgeIndicator(indicator);
+          logDebugRef.current(
+            `selection edge ${direction} indicator=${Math.round(indicator.x)},${Math.round(indicator.y)}`,
+          );
+        };
+        selectionEdgeTurnRef.current = (direction) => {
+          clearSelectionEdgeIndicator();
           if (direction === 'next') doNextRef.current();
           else doPrevRef.current();
-
-          // Once the page transition settles, pin the caret to the edge where
-          // the new page starts. Without this the selection would jump a whole
-          // column at once, because the pointer already rests on the far side.
-          window.setTimeout(() => {
-            selectionTurnBusy = false;
-            if (currentSpineRef.current !== spineIndex) return;
-            const live = iframe.contentWindow?.getSelection();
-            if (!live?.rangeCount || !live.toString()) return;
-            // Do not move the focus with Selection.extend while Android is
-            // dragging a native handle; that takes over the range and hides
-            // the handles before the user can continue adjusting it.
-            if (nativeHandleIsDragging) {
-              handleSelection();
-              return;
-            }
-            const caret = getPageEntryCaret(direction);
-            if (!caret) return;
-            // Never let the re-anchoring destroy the selection: if the caret
-            // lands on the anchor itself the selection would collapse.
-            const previous = live.getRangeAt(0).cloneRange();
-            const previousLength = live.toString().length;
-            try {
-              live.extend(caret.node, caret.offset);
-            } catch {
-              return;
-            }
-            if (live.toString().length < previousLength) {
-              live.removeAllRanges();
-              live.addRange(previous);
-              return;
-            }
-            selectionGuard = {
-              node: caret.node,
-              offset: caret.offset,
-              until: Date.now() + selectionGuardDuration,
-            };
-            handleSelection();
-          }, 260);
-        };
-
-        // Android's native selection handles do not emit touch events, so the
-        // boundary is watched through selectionchange and confirmed by holding.
-        const scheduleSelectionHold = (direction: 'next' | 'previous') => {
-          // Merely creating a selection at the edge must never turn the page.
-          // The hold is only valid after a later selection change proves that
-          // the user is dragging a handle to extend the selection.
-          if (!selectionAdjustmentStarted) {
-            logDebugRef.current(`hold skipped, selection not adjusting`);
-            return;
-          }
-          if (selectionHoldTimer !== undefined && selectionHoldDirection === direction) return;
-          clearSelectionHold('rearm');
-          if (!canTurnSelectionPage(direction)) {
-            logDebugRef.current(`hold skipped, cannot turn ${direction}`);
-            return;
-          }
-          selectionHoldDirection = direction;
-          logDebugRef.current(`hold armed ${direction}`);
-          selectionHoldTimer = window.setTimeout(() => {
-            selectionHoldTimer = undefined;
-            selectionHoldDirection = null;
-            logDebugRef.current(`hold fired busy=${selectionTurnBusy ? 1 : 0}`);
-            if (currentSpineRef.current !== spineIndex) {
-              logDebugRef.current('hold dropped (chapter)');
-              return;
-            }
-            if (getSelectionEdgeDirection() !== direction) {
-              logDebugRef.current('hold dropped (off edge)');
-              return;
-            }
-            turnSelectionPage(direction);
-          }, selectionHoldDelay);
         };
 
         const handleIframeSelectionChange = () => {
-          if (ignoreSelectionChange) return;
           const selection = iframe.contentWindow?.getSelection();
           if (selection && selection.rangeCount > 0) {
             const node = selection.anchorNode;
@@ -1438,10 +1328,7 @@ export const EpubReader: React.FC<Props> = ({
           }
 
           if (!selection?.rangeCount || !selection.toString()) {
-            resetSelectionTracking();
-            selectionGuard = null;
-            edgePush = 0;
-            edgePushDirection = null;
+            clearSelectionEdgeIndicator();
             setSelectedText('');
             setSelectionPos(null);
             selectionRangeRef.current = null;
@@ -1467,6 +1354,7 @@ export const EpubReader: React.FC<Props> = ({
             focusNode === doc.documentElement ||
             anchorNode === doc.documentElement
           ) {
+            clearSelectionEdgeIndicator();
             return;
           }
 
@@ -1475,65 +1363,14 @@ export const EpubReader: React.FC<Props> = ({
             selectionRangeRef.current = range.cloneRange();
           }
 
-          const signature = getSelectionSignature(selection);
-          if (!selectionBaseline) {
-            selectionBaseline = signature;
-            selectionBaselineReady = false;
-            if (selectionBaselineTimer !== undefined) window.clearTimeout(selectionBaselineTimer);
-            selectionBaselineTimer = window.setTimeout(() => {
-              selectionBaselineReady = true;
-              const current = iframe.contentWindow?.getSelection();
-              if (current?.rangeCount && current.toString()) {
-                selectionBaseline = getSelectionSignature(current);
-              }
-              selectionBaselineTimer = undefined;
-            }, 180);
-          } else if (selectionBaselineReady && signature !== selectionBaseline) {
-            selectionAdjustmentStarted = true;
-            selectionBaseline = signature;
-          }
-
-          if (selectionGuard) {
-            if (Date.now() < selectionGuard.until && !pointerDrivenSelection) {
-              if (
-                selection.focusNode !== selectionGuard.node ||
-                selection.focusOffset !== selectionGuard.offset
-              ) {
-                try {
-                  selection.extend(selectionGuard.node, selectionGuard.offset);
-                } catch {
-                  selectionGuard = null;
-                }
-              }
-              handleSelection();
-              return;
-            }
-            selectionGuard = null;
-          }
-
           handleSelection();
-          if (selectionTurnBusy) return;
-          // Do not use the tolerant last-line check here. A selection can
-          // legitimately end in the penultimate column; only an adjacent
-          // character that is actually outside the viewport is a boundary.
-          const direction = getSelectionEdgeDirection();
-          logDebugRef.current(
-            `sel ${selection.toString().length} edge=${direction || '-'} p${currentPageRef.current + 1}/${totalPagesRef.current} pd=${pointerDrivenSelection ? 1 : 0}`
-          );
-          if (direction) scheduleSelectionHold(direction);
-          else clearSelectionHold('off edge');
+          const edgeDirection = getSelectionEdgeDirection();
+          if (edgeDirection) placeSelectionEdgeIndicator(edgeDirection);
+          else clearSelectionEdgeIndicator();
         };
 
         const onStart = (cx: number, cy: number) => {
-          clearSelectionHold('start');
           sx = cx; sy = cy; st = Date.now(); moved = false; selecting = false;
-          pointerX = cx;
-          pointerTracked = true;
-          pointerDrivenSelection = false;
-          selectionGuard = null;
-          resetSelectionTracking();
-          edgePush = 0;
-          edgePushDirection = null;
           gestureNudgeStart = pageNudgeRef.current;
           selectionOrOverlayAtStart = Boolean(
             selectedTextRef.current.trim() ||
@@ -1567,63 +1404,7 @@ export const EpubReader: React.FC<Props> = ({
           selecting = true;
         };
 
-        // Runs on pointermove, which is what the native selection handles
-        // deliver. It only handles pushing the selection past the page edge;
-        // paging gestures stay on the touch/mouse path above.
-        const onSelectionPointerMove = (cx: number) => {
-          const selection = iframe.contentWindow?.getSelection();
-          if (!selection?.rangeCount || !selection.toString()) {
-            pointerTracked = false;
-            return;
-          }
-          selectionAdjustmentStarted = true;
-          pointerDrivenSelection = true;
-          clearSelectionHold('push');
-
-          // A handle drag can arrive with no start event at all, so the first
-          // sample only establishes where the finger is.
-          const step = pointerTracked ? cx - pointerX : 0;
-          pointerX = cx;
-          pointerTracked = true;
-
-          if (selectionGuard) {
-            // A new native-handle movement is an intentional range adjustment,
-            // not a stale caret position to pin after a page turn.
-            selectionGuard = null;
-          }
-
-          if (selectionTurnBusy) return;
-          const direction = getSelectionEdgeDirection();
-          if (!direction) {
-            edgePush = 0;
-            edgePushDirection = null;
-            return;
-          }
-          const pushSign = direction === 'next'
-            ? (forwardSide === 'left' ? -1 : 1)
-            : (forwardSide === 'left' ? 1 : -1);
-          if (edgePushDirection !== direction) {
-            edgePushDirection = direction;
-            edgePush = 0;
-          }
-          const advance = step * pushSign;
-          if (advance > 0) edgePush += advance;
-          else if (advance < -selectionPushReset) edgePush = 0;
-          logDebugRef.current(`push ${Math.round(edgePush)} ${direction} x=${Math.round(cx)}`);
-          if (edgePush >= selectionPushDistance) turnSelectionPage(direction);
-        };
         const onEnd = (cx: number, allowTapNavigation = true) => {
-          // Releasing the gesture also cancels any pending boundary hold, so
-          // finishing a selection at the end of a page never turns it.
-          clearSelectionHold('end');
-          if (selectionBaselineTimer !== undefined) {
-            window.clearTimeout(selectionBaselineTimer);
-            selectionBaselineTimer = undefined;
-          }
-          pointerDrivenSelection = false;
-          selectionGuard = null;
-          edgePush = 0;
-          edgePushDirection = null;
           const dt = Date.now() - st;
           const dx = cx - sx;
 
@@ -1705,15 +1486,13 @@ export const EpubReader: React.FC<Props> = ({
           nativeSelectionTookOverRef.current = false;
           lastPointerActivityRef.current = Date.now();
         }, { passive: true });
-        doc.addEventListener('pointermove', (e) => {
+        doc.addEventListener('pointermove', () => {
           countDebugRef.current('pmove');
           lastPointerActivityRef.current = Date.now();
-          onSelectionPointerMove(e.clientX);
         }, { passive: true });
         doc.addEventListener('pointerup', () => {
           countDebugRef.current('pup');
           pointerActiveRef.current = false;
-          pointerDrivenSelection = false;
         }, { passive: true });
         // The browser cancels the pointer as soon as a long-press turns into a
         // native selection. That must not be read as "the finger left the
@@ -1723,7 +1502,6 @@ export const EpubReader: React.FC<Props> = ({
           countDebugRef.current('pcancel');
           nativeSelectionTookOverRef.current = true;
           lastPointerActivityRef.current = Date.now();
-          pointerTracked = false;
         }, { passive: true });
         document.addEventListener('selectionchange', () => countDebugRef.current('selchg-top'));
         doc.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -1759,7 +1537,9 @@ export const EpubReader: React.FC<Props> = ({
         doc.addEventListener('touchmove', (e) => {
           countDebugRef.current('tmove');
           lastPointerActivityRef.current = Date.now();
-          if (e.touches[0]) onMove(e.touches[0].clientX, e.touches[0].clientY);
+          if (e.touches[0]) {
+            onMove(e.touches[0].clientX, e.touches[0].clientY);
+          }
         }, { passive: true });
         doc.addEventListener('touchend', (e) => {
           countDebugRef.current('tend');
@@ -2013,6 +1793,20 @@ export const EpubReader: React.FC<Props> = ({
   useEffect(() => {
     if (!debugEnabled) return;
 
+    const onNativeTouchTrace = (event: Event) => {
+      const { action, x, y, pointers, inside, rawX, rawY } = (event as CustomEvent<{
+        action: string;
+        x: number;
+        y: number;
+        pointers: number;
+        inside: boolean;
+        rawX: number;
+        rawY: number;
+      }>).detail;
+      logDebugRef.current(
+        `native.${action} css=${Math.round(x)},${Math.round(y)} in=${inside ? 1 : 0} raw=${Math.round(rawX)},${Math.round(rawY)} p=${pointers}`,
+      );
+    };
     const traceInputEvent = (event: Event) => {
       const target = event.target && 'tagName' in event.target
         ? String(event.target.tagName).toLowerCase()
@@ -2033,6 +1827,7 @@ export const EpubReader: React.FC<Props> = ({
     inputEvents.forEach((type) => {
       document.addEventListener(type, traceInputEvent, { capture: true, passive: true });
     });
+    window.addEventListener('ereader-native-touch', onNativeTouchTrace);
     const traceWindowEvent = (event: Event) => traceInputEvent(event);
     window.addEventListener('blur', traceWindowEvent);
     window.addEventListener('focus', traceWindowEvent);
@@ -2042,6 +1837,7 @@ export const EpubReader: React.FC<Props> = ({
       inputEvents.forEach((type) => {
         document.removeEventListener(type, traceInputEvent, { capture: true });
       });
+      window.removeEventListener('ereader-native-touch', onNativeTouchTrace);
       window.removeEventListener('blur', traceWindowEvent);
       window.removeEventListener('focus', traceWindowEvent);
       document.removeEventListener('visibilitychange', traceInputEvent);
@@ -2791,6 +2587,22 @@ export const EpubReader: React.FC<Props> = ({
         settings={settings}
         onUpdateSettings={onUpdateSettings}
       />
+
+      {selectionEdgeIndicator && isSelectionAdjusting && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none fixed z-[75] flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 animate-pulse items-center justify-center rounded-full border-2 border-white bg-indigo-600 text-white shadow-[0_0_18px_rgba(79,70,229,0.85)]"
+          style={{ left: selectionEdgeIndicator.x, top: selectionEdgeIndicator.y }}
+        >
+          {(isVertical || isRtl)
+            ? selectionEdgeIndicator.direction === 'next'
+              ? <ArrowLeft className="h-5 w-5" />
+              : <ArrowRight className="h-5 w-5" />
+            : selectionEdgeIndicator.direction === 'next'
+              ? <ArrowRight className="h-5 w-5" />
+              : <ArrowLeft className="h-5 w-5" />}
+        </div>
+      )}
 
       {/* Compact progress stays available without opening the full controls. */}
       <div
