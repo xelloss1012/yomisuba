@@ -743,7 +743,7 @@ export const EpubReader: React.FC<Props> = ({
       const turned = shown && shown.spine === spine && shown.page !== page;
       shownPageRef.current = { spine, page };
       const reduceMotion = iframe.contentWindow?.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-      if (turned && !reduceMotion && typeof scroller.animate === 'function') {
+      if (turned && !selectedTextRef.current.trim() && !reduceMotion && typeof scroller.animate === 'function') {
         const from = (page > shown.page ? -1 : 1) * vw * 0.35;
         scroller.getAnimations().forEach((animation) => animation.cancel());
         scroller.animate(
@@ -1039,6 +1039,7 @@ export const EpubReader: React.FC<Props> = ({
         }
 
         // ── Gesture & tap handlers attached inside the iframe ──
+        const gestureAdjustmentEnabled = false;
         const nudgeLimit = 72;
         const pageSwipeThreshold = 96;
         // Extra lateral push required once the selection has reached the very end
@@ -1048,7 +1049,6 @@ export const EpubReader: React.FC<Props> = ({
         const selectionPushReset = 16;
         const selectionHoldDelay = 1000;
         const selectionGuardDuration = 650;
-        const selectionResumeDistance = 24;
         // The reading flow of a page grows towards this side, so the next page
         // always lives beyond it. vertical-rl is anchored right and grows left.
         const forwardSide: 'left' | 'right' = isVertical ? 'left' : 'right';
@@ -1073,9 +1073,6 @@ export const EpubReader: React.FC<Props> = ({
           | {
             node: Node;
             offset: number;
-            pointerX: number;
-            pushSign: number;
-            direction: 'next' | 'previous';
             until: number;
           }
           | null = null;
@@ -1244,6 +1241,7 @@ export const EpubReader: React.FC<Props> = ({
             );
             return;
           }
+          const nativeHandleIsDragging = pointerDrivenSelection;
           clearSelectionHold('turning');
           selectionAdjustmentStarted = true;
           // Block further boundary checks until the page transition settles,
@@ -1252,9 +1250,6 @@ export const EpubReader: React.FC<Props> = ({
           selectionTurnBusy = true;
           edgePush = 0;
           edgePushDirection = null;
-          const pushSign = direction === 'next'
-            ? (forwardSide === 'left' ? -1 : 1)
-            : (forwardSide === 'left' ? 1 : -1);
           logDebugRef.current(`TURN ${direction} from p${currentPageRef.current + 1}`);
           if (direction === 'next') doNextRef.current();
           else doPrevRef.current();
@@ -1267,6 +1262,13 @@ export const EpubReader: React.FC<Props> = ({
             if (currentSpineRef.current !== spineIndex) return;
             const live = iframe.contentWindow?.getSelection();
             if (!live?.rangeCount || !live.toString()) return;
+            // Do not move the focus with Selection.extend while Android is
+            // dragging a native handle; that takes over the range and hides
+            // the handles before the user can continue adjusting it.
+            if (nativeHandleIsDragging) {
+              handleSelection();
+              return;
+            }
             const caret = getPageEntryCaret(direction);
             if (!caret) return;
             // Never let the re-anchoring destroy the selection: if the caret
@@ -1286,9 +1288,6 @@ export const EpubReader: React.FC<Props> = ({
             selectionGuard = {
               node: caret.node,
               offset: caret.offset,
-              pointerX,
-              pushSign,
-              direction,
               until: Date.now() + selectionGuardDuration,
             };
             handleSelection();
@@ -1413,7 +1412,7 @@ export const EpubReader: React.FC<Props> = ({
           }
 
           if (selectionGuard) {
-            if (Date.now() < selectionGuard.until) {
+            if (Date.now() < selectionGuard.until && !pointerDrivenSelection) {
               if (
                 selection.focusNode !== selectionGuard.node ||
                 selection.focusOffset !== selectionGuard.offset
@@ -1468,7 +1467,7 @@ export const EpubReader: React.FC<Props> = ({
           const selection = iframe.contentWindow?.getSelection();
           const hasSelection = Boolean(selection?.rangeCount && selection.toString());
 
-          if (!hasSelection && !selecting && Math.abs(dx) > 8 && Math.abs(dx) <= nudgeLimit && Math.abs(dx) > Math.abs(dy)) {
+          if (gestureAdjustmentEnabled && !hasSelection && !selecting && Math.abs(dx) > 8 && Math.abs(dx) <= nudgeLimit && Math.abs(dx) > Math.abs(dy)) {
             const nudge = Math.max(-nudgeLimit, Math.min(nudgeLimit, gestureNudgeStart + dx));
             pageNudgeRef.current = nudge;
             const page = currentPageRef.current;
@@ -1506,20 +1505,9 @@ export const EpubReader: React.FC<Props> = ({
           pointerTracked = true;
 
           if (selectionGuard) {
-            // Selection resumes freely as soon as the pointer travels back
-            // towards the inside of the page that was just turned to.
-            const inward = (cx - selectionGuard.pointerX) * -selectionGuard.pushSign;
-            if (inward > selectionResumeDistance) {
-              selectionGuard = null;
-              return;
-            }
-            if (Date.now() < selectionGuard.until) return;
-            // Still pushing against the same edge: chain another page keeping
-            // the caret anchored, instead of releasing it onto the far column.
-            const held = selectionGuard;
+            // A new native-handle movement is an intentional range adjustment,
+            // not a stale caret position to pin after a page turn.
             selectionGuard = null;
-            turnSelectionPage(held.direction);
-            return;
           }
 
           if (selectionTurnBusy) return;
@@ -1557,7 +1545,7 @@ export const EpubReader: React.FC<Props> = ({
           const dt = Date.now() - st;
           const dx = cx - sx;
 
-          if (moved && Math.abs(dx) <= nudgeLimit) {
+          if (gestureAdjustmentEnabled && moved && Math.abs(dx) <= nudgeLimit) {
             setPageNudge(pageNudgeRef.current);
             return;
           }
@@ -1592,13 +1580,7 @@ export const EpubReader: React.FC<Props> = ({
               if (Date.now() - lastSelectionTime.current < 400) return;
               const vw = iframe.clientWidth || window.innerWidth;
               const ratio = cx / vw;
-              if (ratio < 0.28) {
-                // Left tap
-                if (isRtl) doNextRef.current(); else doPrevRef.current();
-              } else if (ratio > 0.72) {
-                // Right tap
-                if (isRtl) doPrevRef.current(); else doNextRef.current();
-              } else {
+              if (ratio >= 0.28 && ratio <= 0.72) {
                 setShowUi(p => !p);
               }
             }
@@ -1649,6 +1631,7 @@ export const EpubReader: React.FC<Props> = ({
         doc.addEventListener('pointerup', () => {
           countDebugRef.current('pup');
           pointerActiveRef.current = false;
+          pointerDrivenSelection = false;
         }, { passive: true });
         // The browser cancels the pointer as soon as a long-press turns into a
         // native selection. That must not be read as "the finger left the
