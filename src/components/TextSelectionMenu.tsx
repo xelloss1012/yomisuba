@@ -130,6 +130,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
 
   return (
     <div
+      data-selection-menu
       style={style}
       // Opacity is driven by classes alone, with no CSS animation involved.
       // animate-fade-in ends in `forwards`, and an animation outranks normal
@@ -138,8 +139,8 @@ export const TextSelectionMenu: React.FC<Props> = ({
       // over the text — the very thing it is meant to get out of the way of.
       // Mixing the two states (animation on one branch, class on the other)
       // is just as unreliable, so the fade now comes from the transition.
-      className={`z-[60] select-none transition-opacity duration-200 ${
-        isAdjusting ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'
+      className={`z-[60] select-none transition-opacity ${
+        isAdjusting ? 'duration-0 opacity-0 pointer-events-none' : 'duration-200 opacity-100 pointer-events-auto'
       } ${isMobile ? 'max-w-md mx-auto shadow-2xl' : 'shadow-2xl'}`}
       onClick={(e) => e.stopPropagation()}
     >

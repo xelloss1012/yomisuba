@@ -1,5 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { App as CapacitorApp } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
 import { AiProvider, ParsedEpub, ReaderSettingsState } from '../types/epub';
 import { ReaderNavbar } from './ReaderNavbar';
 import { ReaderFooter } from './ReaderFooter';
@@ -271,6 +272,8 @@ export const EpubReader: React.FC<Props> = ({
   const onBookDataChangeRef = useRef(onBookDataChange);
   onBookDataChangeRef.current = onBookDataChange;
   const selectionRangeRef = useRef<Range | null>(null);
+  const handleSelectionRef = useRef<() => void>(() => {});
+  const nativeTouchPositionRef = useRef<{ x: number; y: number } | null>(null);
   const selectionEdgeIndicatorRef = useRef<typeof selectionEdgeIndicator>(null);
   const selectionEdgeTurnRef = useRef<(direction: 'next' | 'previous') => void>(() => {});
   const selectionAnnotationRef = useRef<Omit<TextAnnotation, 'id'> | null>(null);
@@ -290,6 +293,7 @@ export const EpubReader: React.FC<Props> = ({
 
   const isVertical = settings.writingMode === 'vertical-rl';
   const isRtl = isVertical || settings.progressionDirection === 'rtl';
+  const isNativeAndroid = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
   const configuredAiProviders = useMemo(
     () => (['gemini', 'openai', 'deepseek', 'openrouter'] as AiProvider[]).filter(
       (provider) => Boolean(settings.aiApiKeys[provider]?.trim())
@@ -925,42 +929,34 @@ export const EpubReader: React.FC<Props> = ({
     const text = sel.toString().trim();
     const rect = range.getBoundingClientRect();
     const iRect = iframe.getBoundingClientRect();
+    selectedTextRef.current = text;
 
     lastSelectionTime.current = Date.now();
     // Fold the menu away while the selection is being made, and only bring it
     // back once the finger is off the screen and the selection has settled.
     // A time-only rule revealed the menu in the pause between the long-press
     // and grabbing a handle, which is exactly when it gets in the way.
-    setIsSelectionAdjusting(true);
-    if (selectionSettleRef.current !== undefined) window.clearTimeout(selectionSettleRef.current);
-    lastPointerActivityRef.current = Date.now();
     // Dragging a native handle produces selection changes but no pointerdown,
     // so a change while the native selection owns the pointer means the finger
     // is on screen again, even if a previous silence had marked it released.
-    if (nativeSelectionTookOverRef.current) pointerActiveRef.current = true;
-    const releaseSilence = 500;
-    const releaseFallbackSilence = 1500;
+    if (nativeSelectionTookOverRef.current && !isNativeAndroid) {
+      pointerActiveRef.current = true;
+    }
+    if (!isNativeAndroid || pointerActiveRef.current) {
+      setIsSelectionAdjusting(true);
+    }
+    if (selectionSettleRef.current !== undefined) window.clearTimeout(selectionSettleRef.current);
+    lastPointerActivityRef.current = Date.now();
     const revealWhenReleased = () => {
       if (!pointerActiveRef.current) {
         logDebugRef.current('selection menu revealed after release');
         setIsSelectionAdjusting(false);
         return;
       }
-      // Native selection has the pointer: no up/end event will ever arrive, so
-      // a short silence (no pointer move, no selection change) means release.
-      if (
-        nativeSelectionTookOverRef.current &&
-        Date.now() - lastPointerActivityRef.current >= releaseSilence
-      ) {
-        logDebugRef.current('selection menu revealed after native selection went quiet');
-        pointerActiveRef.current = false;
-        setIsSelectionAdjusting(false);
-        return;
-      }
-      // Safety net: whatever events the device did or did not send, a menu that
-      // stays folded with no input at all would leave the reader without it.
+      if (isNativeAndroid) return;
+      const releaseFallbackSilence = 1500;
       if (Date.now() - lastPointerActivityRef.current >= releaseFallbackSilence) {
-        logDebugRef.current('selection menu revealed after silence fallback');
+        logDebugRef.current('selection menu revealed after web fallback');
         pointerActiveRef.current = false;
         setIsSelectionAdjusting(false);
         return;
@@ -968,7 +964,9 @@ export const EpubReader: React.FC<Props> = ({
       selectionSettleRef.current = window.setTimeout(revealWhenReleased, 50);
     };
     logDebugRef.current('selection menu waiting for release');
-    selectionSettleRef.current = window.setTimeout(revealWhenReleased, 50);
+    if (!isNativeAndroid) {
+      selectionSettleRef.current = window.setTimeout(revealWhenReleased, 50);
+    }
     setSelectedText(text);
     setSelectionPos({
       x: iRect.left + rect.left,
@@ -976,7 +974,9 @@ export const EpubReader: React.FC<Props> = ({
       width: rect.width,
       height: rect.height,
     });
-  }, []);
+  }, [isNativeAndroid]);
+
+  handleSelectionRef.current = handleSelection;
 
   const handleToggleUnderline = useCallback(() => {
     const anchor = selectionAnnotationRef.current;
@@ -1090,7 +1090,10 @@ export const EpubReader: React.FC<Props> = ({
   useEffect(() => { doPrevRef.current = doPrevPage; }, [doPrevPage]);
   useEffect(() => {
     let nativeTouchActive = false;
+    let nativeTouchIsSelection = false;
     let edgeTurnTriggered = false;
+    let previousEdgeArmed = false;
+    let previousIndicatorPosition: { x: number; y: number } | null = null;
     let lastEdgeX = 0;
     let lastEdgeY = 0;
     const onNativeTouchTrace = (event: Event) => {
@@ -1100,20 +1103,77 @@ export const EpubReader: React.FC<Props> = ({
         y: number;
         inside: boolean;
       }>).detail;
+      nativeTouchPositionRef.current = { x, y };
 
       if (action === 'DOWN') {
         nativeTouchActive = true;
         edgeTurnTriggered = false;
+        previousEdgeArmed = false;
+        previousIndicatorPosition = null;
+        const selectionMenuTarget = document.elementFromPoint(x, y)?.closest('[data-selection-menu]');
+        const iframeRect = iframeRef.current?.getBoundingClientRect();
+        const startsInsideReader = Boolean(
+          iframeRect &&
+          x >= iframeRect.left &&
+          x <= iframeRect.right &&
+          y >= iframeRect.top &&
+          y <= iframeRect.bottom
+        );
+        nativeTouchIsSelection = !selectionMenuTarget &&
+          (startsInsideReader || Boolean(selectedTextRef.current));
+        pointerActiveRef.current = true;
+        if (nativeTouchIsSelection && selectionSettleRef.current !== undefined) {
+          window.clearTimeout(selectionSettleRef.current);
+          selectionSettleRef.current = undefined;
+        }
+        if (nativeTouchIsSelection) setIsSelectionAdjusting(true);
         return;
       }
-      if (action === 'UP' || action === 'CANCEL') {
+      if (action === 'UP') {
         nativeTouchActive = false;
         edgeTurnTriggered = false;
+        pointerActiveRef.current = false;
+        nativeSelectionTookOverRef.current = false;
+        if (nativeTouchIsSelection) {
+          window.setTimeout(() => {
+            handleSelectionRef.current();
+            setIsSelectionAdjusting(false);
+            if (selectedTextRef.current) {
+              logDebugRef.current('selection menu revealed after native up');
+            }
+          }, 0);
+        }
+        nativeTouchIsSelection = false;
         return;
       }
-      if (action !== 'MOVE' || !nativeTouchActive || !inside || !selectedTextRef.current) return;
+      if (action === 'CANCEL') {
+        nativeSelectionTookOverRef.current = true;
+        return;
+      }
+      if (
+        action !== 'MOVE' ||
+        !nativeTouchActive ||
+        !nativeTouchIsSelection ||
+        !inside ||
+        !selectedTextRef.current
+      ) return;
 
       const indicator = selectionEdgeIndicatorRef.current;
+      if (!indicator || indicator.direction !== 'previous') {
+        previousEdgeArmed = false;
+        previousIndicatorPosition = null;
+      } else {
+        if (
+          previousIndicatorPosition &&
+          Math.hypot(
+            indicator.x - previousIndicatorPosition.x,
+            indicator.y - previousIndicatorPosition.y,
+          ) > 12
+        ) {
+          previousEdgeArmed = false;
+        }
+        previousIndicatorPosition = { x: indicator.x, y: indicator.y };
+      }
       if (edgeTurnTriggered) {
         if (Math.hypot(x - lastEdgeX, y - lastEdgeY) > 60) edgeTurnTriggered = false;
         else return;
@@ -1123,7 +1183,15 @@ export const EpubReader: React.FC<Props> = ({
       logDebugRef.current(
         `native edge ${indicator.direction} d=${Math.round(distance)} at=${Math.round(x)},${Math.round(y)}`,
       );
-      if (distance > 44) return;
+      if (indicator.direction === 'previous') {
+        if (distance > 44) {
+          previousEdgeArmed = true;
+          return;
+        }
+        if (!previousEdgeArmed || distance > 32) return;
+      } else if (distance > 44) {
+        return;
+      }
 
       edgeTurnTriggered = true;
       lastEdgeX = x;
@@ -1149,6 +1217,7 @@ export const EpubReader: React.FC<Props> = ({
       selectionEdgeIndicatorRef.current = null;
       setSelectionEdgeIndicator(null);
       setIsLoadingChapter(true);
+      selectedTextRef.current = '';
       setSelectedText('');
       setSelectionPos(null);
       selectionRangeRef.current = null;
@@ -1172,7 +1241,7 @@ export const EpubReader: React.FC<Props> = ({
         const doc = iframe.contentDocument || iframe.contentWindow?.document;
         if (!doc) return;
 
-        const { html: fullHtml } = buildChapterDocument(rawHtml);
+        const { html: fullHtml, sidePad, fontSize } = buildChapterDocument(rawHtml);
 
         doc.open();
         doc.write(fullHtml);
@@ -1207,6 +1276,7 @@ export const EpubReader: React.FC<Props> = ({
           if (anchorNode === focusNode) return selection.focusOffset < selection.anchorOffset;
           return Boolean(anchorNode.compareDocumentPosition(focusNode) & Node.DOCUMENT_POSITION_PRECEDING);
         };
+        let activeSelectionEdge: { node: Node; offset: number; selectedForward: boolean } | null = null;
         const getAdjacentCharRect = (node: Node | null, offset: number, forward: boolean) => {
           const scroller = doc.getElementById('reader-scroller');
           if (!node || node.nodeType !== Node.TEXT_NODE || !scroller?.contains(node)) return null;
@@ -1241,35 +1311,97 @@ export const EpubReader: React.FC<Props> = ({
         const getSelectionEdgeDirection = (): 'next' | 'previous' | null => {
           const selection = iframe.contentWindow?.getSelection();
           if (!selection?.rangeCount || !selection.toString()) return null;
+          activeSelectionEdge = null;
           const backwards = isSelectionBackwards(selection);
-          const neighbor = getAdjacentCharRect(
-            selection.focusNode,
-            selection.focusOffset,
-            !backwards,
+          const startEndpointIsAnchor = !backwards;
+          const endpoints = [
+            {
+              node: selection.anchorNode,
+              offset: selection.anchorOffset,
+              isStart: startEndpointIsAnchor,
+            },
+            {
+              node: selection.focusNode,
+              offset: selection.focusOffset,
+              isStart: !startEndpointIsAnchor,
+            },
+          ];
+          const nativePoint = nativeTouchPositionRef.current;
+          const frame = iframe.getBoundingClientRect();
+          const scaleX = frame.width / Math.max(1, iframe.clientWidth);
+          const scaleY = frame.height / Math.max(1, iframe.clientHeight);
+          const pointerX = nativePoint ? (nativePoint.x - frame.left) / scaleX : null;
+          const pointerY = nativePoint ? (nativePoint.y - frame.top) / scaleY : null;
+          const endpoint = pointerX === null || pointerY === null
+            ? endpoints[1]
+            : endpoints.reduce((closest, candidate) => {
+                const char = getAdjacentCharRect(
+                  candidate.node,
+                  candidate.offset,
+                  candidate.isStart,
+                );
+                const closestChar = getAdjacentCharRect(
+                  closest.node,
+                  closest.offset,
+                  closest.isStart,
+                );
+                if (!char) return closest;
+                if (!closestChar) return candidate;
+                const distance = Math.hypot(
+                  (char.left + char.right) / 2 - pointerX,
+                  (char.top + char.bottom) / 2 - pointerY,
+                );
+                const closestDistance = Math.hypot(
+                  (closestChar.left + closestChar.right) / 2 - pointerX,
+                  (closestChar.top + closestChar.bottom) / 2 - pointerY,
+                );
+                return distance < closestDistance ? candidate : closest;
+              });
+          const selectedEdgeChar = getAdjacentCharRect(
+            endpoint.node,
+            endpoint.offset,
+            endpoint.isStart,
           );
-          if (!neighbor) return null;
+          if (!endpoint.node || !selectedEdgeChar) {
+            activeSelectionEdge = null;
+            return null;
+          }
+          const neighbor = getAdjacentCharRect(endpoint.node, endpoint.offset, !endpoint.isStart);
           const pageWidth = iframe.clientWidth || window.innerWidth;
           const pageHeight = iframe.clientHeight || window.innerHeight;
-          let forward = false;
           let backward = false;
-          if (isVertical) {
-            forward = neighbor.top >= pageHeight - 1;
-            backward = neighbor.bottom <= 1;
-          } else {
-            forward = neighbor.left >= pageWidth - 1;
-            backward = neighbor.right <= 1;
+          let forward = false;
+          if (neighbor && endpoint.isStart) {
+            backward = isVertical ? neighbor.bottom <= 1 : neighbor.right <= 1;
+          } else if (neighbor) {
+            forward = isVertical
+              ? neighbor.top >= pageHeight - 1
+              : neighbor.left >= pageWidth - 1;
           }
-          if (!backwards && forward) return 'next';
-          if (backwards && backward) return 'previous';
+          const edgeInset = fontSize * settings.lineHeight * 2.5;
+          const pageStartInset = isVertical
+            ? (window.innerWidth < 640 ? 18 : 32) + edgeInset
+            : sidePad + edgeInset;
+          const atPageStart = isVertical
+            ? selectedEdgeChar.top <= pageStartInset
+            : selectedEdgeChar.left <= pageStartInset;
+          const direction = endpoint.isStart && (backward || atPageStart)
+            ? 'previous'
+            : !endpoint.isStart && forward
+              ? 'next'
+              : null;
+          activeSelectionEdge = direction
+            ? { node: endpoint.node, offset: endpoint.offset, selectedForward: endpoint.isStart }
+            : null;
+          if (direction) return direction;
           return null;
         };
         const placeSelectionEdgeIndicator = (direction: 'next' | 'previous') => {
-          const selection = iframe.contentWindow?.getSelection();
-          if (!selection?.focusNode) return;
+          if (!activeSelectionEdge) return;
           const selectedCharRect = getAdjacentCharRect(
-            selection.focusNode,
-            selection.focusOffset,
-            isSelectionBackwards(selection),
+            activeSelectionEdge.node,
+            activeSelectionEdge.offset,
+            activeSelectionEdge.selectedForward,
           );
           if (!selectedCharRect) return;
           const frame = iframe.getBoundingClientRect();
@@ -1282,7 +1414,13 @@ export const EpubReader: React.FC<Props> = ({
             ? focusX
             : Math.max(20, Math.min(iframe.clientWidth - 20, focusX - advance * 42));
           const y = isVertical
-            ? Math.max(24, Math.min(iframe.clientHeight - 24, focusY + advance * 52))
+            ? Math.max(
+                24,
+                Math.min(
+                  iframe.clientHeight - 24,
+                  focusY + (direction === 'previous' ? -52 : 96),
+                ),
+              )
             : focusY;
           const indicator = {
             direction,
@@ -1329,6 +1467,7 @@ export const EpubReader: React.FC<Props> = ({
 
           if (!selection?.rangeCount || !selection.toString()) {
             clearSelectionEdgeIndicator();
+            selectedTextRef.current = '';
             setSelectedText('');
             setSelectionPos(null);
             selectionRangeRef.current = null;
@@ -1363,6 +1502,9 @@ export const EpubReader: React.FC<Props> = ({
             selectionRangeRef.current = range.cloneRange();
           }
 
+          if (isNativeAndroid) {
+            setIsSelectionAdjusting(true);
+          }
           handleSelection();
           const edgeDirection = getSelectionEdgeDirection();
           if (edgeDirection) placeSelectionEdgeIndicator(edgeDirection);
@@ -1418,6 +1560,7 @@ export const EpubReader: React.FC<Props> = ({
             const isTap = allowTapNavigation && !moved && dt < 300;
             if (isTap && (selectionOrOverlayAtStart || sel || selectedTextRef.current.trim() || openOverlayRef.current)) {
               iframe.contentWindow?.getSelection()?.removeAllRanges();
+              selectedTextRef.current = '';
               setSelectedText('');
               setSelectionPos(null);
               selectionRangeRef.current = null;
@@ -1451,22 +1594,49 @@ export const EpubReader: React.FC<Props> = ({
         };
 
         logDebugRef.current('listeners ok');
+        let lastIframeMoveTraceAt = 0;
         const traceInputEvent = (scope: string, event: Event) => {
+          const isMove = event.type.endsWith('move') || event.type === 'pointerrawupdate';
+          const now = Date.now();
+          if (isMove && now - lastIframeMoveTraceAt < 100) return;
+          if (isMove) lastIframeMoveTraceAt = now;
           const target = event.target && 'tagName' in event.target
             ? String(event.target.tagName).toLowerCase()
             : 'unknown';
-          const pointerType = 'pointerType' in event ? ` pointer=${event.pointerType}` : '';
-          const buttons = 'buttons' in event ? ` buttons=${event.buttons}` : '';
+          const targetId = event.target && 'id' in event.target && typeof event.target.id === 'string' && event.target.id
+            ? `#${event.target.id}`
+            : '';
+          const pointerEvent = event as PointerEvent;
+          const pointer = 'pointerType' in event
+            ? ` pointer=${pointerEvent.pointerType}:${pointerEvent.pointerId} pressure=${pointerEvent.pressure}`
+            : '';
+          const mouseEvent = event as MouseEvent;
+          const mouse = 'clientX' in event
+            ? ` xy=${Math.round(mouseEvent.clientX)},${Math.round(mouseEvent.clientY)} buttons=${mouseEvent.buttons}`
+            : '';
+          const touchEvent = event as TouchEvent;
           const touches = event.type.startsWith('touch')
-            ? ` touches=${(event as TouchEvent).touches.length} changed=${(event as TouchEvent).changedTouches.length}`
+            ? ` touches=${touchEvent.touches.length} changed=${touchEvent.changedTouches.length}`
+            : '';
+          const selection = doc.getSelection();
+          const selectionInfo = event.type === 'selectionchange'
+            ? ` range=${selection?.rangeCount || 0} chars=${selection?.toString().length || 0}`
             : '';
           logDebugRef.current(
-            `${scope}.${event.type} target=${target}${pointerType}${buttons}${touches} active=${pointerActiveRef.current ? 1 : 0}`,
+            `${scope}.${event.type} target=${target}${targetId}${pointer}${mouse}${touches}${selectionInfo} trusted=${event.isTrusted ? 1 : 0} active=${pointerActiveRef.current ? 1 : 0}`,
           );
         };
         const inputEvents = [
-          'pointerdown', 'pointerup', 'pointercancel', 'lostpointercapture',
-          'touchstart', 'touchend', 'touchcancel', 'mousedown', 'mouseup',
+          'pointerover', 'pointerenter', 'pointerdown', 'pointermove', 'pointerrawupdate',
+          'pointerup', 'pointercancel', 'pointerout', 'pointerleave',
+          'gotpointercapture', 'lostpointercapture',
+          'touchstart', 'touchmove', 'touchend', 'touchcancel',
+          'mouseover', 'mouseenter', 'mousemove', 'mousedown', 'mouseup', 'mouseout', 'mouseleave',
+          'click', 'auxclick', 'dblclick', 'contextmenu',
+          'dragstart', 'drag', 'dragend', 'dragenter', 'dragleave', 'dragover', 'drop',
+          'selectstart', 'selectionchange', 'focus', 'blur', 'focusin', 'focusout',
+          'keydown', 'keyup', 'beforeinput', 'input', 'compositionstart', 'compositionupdate',
+          'compositionend', 'visibilitychange',
         ];
         inputEvents.forEach((type) => {
           doc.addEventListener(type, (event) => traceInputEvent('iframe', event), {
@@ -1492,7 +1662,7 @@ export const EpubReader: React.FC<Props> = ({
         }, { passive: true });
         doc.addEventListener('pointerup', () => {
           countDebugRef.current('pup');
-          pointerActiveRef.current = false;
+          if (!isNativeAndroid) pointerActiveRef.current = false;
         }, { passive: true });
         // The browser cancels the pointer as soon as a long-press turns into a
         // native selection. That must not be read as "the finger left the
@@ -1504,7 +1674,20 @@ export const EpubReader: React.FC<Props> = ({
           lastPointerActivityRef.current = Date.now();
         }, { passive: true });
         document.addEventListener('selectionchange', () => countDebugRef.current('selchg-top'));
-        doc.addEventListener('contextmenu', (e) => e.preventDefault());
+        doc.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          if (!isNativeAndroid || !e.isTrusted || !selectedTextRef.current) return;
+
+          if (selectionSettleRef.current !== undefined) {
+            window.clearTimeout(selectionSettleRef.current);
+            selectionSettleRef.current = undefined;
+          }
+          window.setTimeout(() => {
+            handleSelectionRef.current();
+            setIsSelectionAdjusting(false);
+            logDebugRef.current('selection menu revealed after native contextmenu');
+          }, 0);
+        });
         doc.addEventListener('mousedown', (e) => {
           pointerActiveRef.current = true;
           onStart(e.clientX, e.clientY);
@@ -1543,7 +1726,7 @@ export const EpubReader: React.FC<Props> = ({
         }, { passive: true });
         doc.addEventListener('touchend', (e) => {
           countDebugRef.current('tend');
-          pointerActiveRef.current = false;
+          if (!isNativeAndroid) pointerActiveRef.current = false;
           if (e.changedTouches[0]) onEnd(e.changedTouches[0].clientX, false);
         }, { passive: true });
         doc.addEventListener('touchcancel', () => {
@@ -1775,7 +1958,7 @@ export const EpubReader: React.FC<Props> = ({
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [epub, settings, isVertical, isRtl, themeColors, updatePagination, handleSelection]
+    [epub, settings, isVertical, isRtl, isNativeAndroid, themeColors, updatePagination, handleSelection]
   );
 
   useEffect(() => {
@@ -1794,7 +1977,10 @@ export const EpubReader: React.FC<Props> = ({
     if (!debugEnabled) return;
 
     const onNativeTouchTrace = (event: Event) => {
-      const { action, x, y, pointers, inside, rawX, rawY } = (event as CustomEvent<{
+      const {
+        action, x, y, pointers, inside, rawX, rawY,
+        actionIndex, tool, source, buttons, device, eventTime,
+      } = (event as CustomEvent<{
         action: string;
         x: number;
         y: number;
@@ -1802,32 +1988,104 @@ export const EpubReader: React.FC<Props> = ({
         inside: boolean;
         rawX: number;
         rawY: number;
+        actionIndex: number;
+        tool: number;
+        source: number;
+        buttons: number;
+        device: number;
+        eventTime: number;
       }>).detail;
       logDebugRef.current(
-        `native.${action} css=${Math.round(x)},${Math.round(y)} in=${inside ? 1 : 0} raw=${Math.round(rawX)},${Math.round(rawY)} p=${pointers}`,
+        `native.${action} css=${Math.round(x)},${Math.round(y)} in=${inside ? 1 : 0} raw=${Math.round(rawX)},${Math.round(rawY)} p=${pointers} idx=${actionIndex} tool=${tool} src=${source} btn=${buttons} dev=${device} t=${eventTime}`,
       );
     };
+    const onNativeWebViewTouchTrace = (event: Event) => {
+      const {
+        action, x, y, pointers, actionIndex, tool, source, buttons, device, eventTime,
+      } = (event as CustomEvent<{
+        action: string;
+        x: number;
+        y: number;
+        pointers: number;
+        actionIndex: number;
+        tool: number;
+        source: number;
+        buttons: number;
+        device: number;
+        eventTime: number;
+      }>).detail;
+      logDebugRef.current(
+        `webview.${action} css=${Math.round(x)},${Math.round(y)} p=${pointers} idx=${actionIndex} tool=${tool} src=${source} btn=${buttons} dev=${device} t=${eventTime}`,
+      );
+    };
+    const onNativeSelectionEvent = (event: Event) => {
+      const {
+        eventType, eventName, action, actionName, invocation, start, end, eventIndex, eventTime,
+      } = (event as CustomEvent<{
+        eventType: number;
+        eventName: string;
+        action: number;
+        actionName: string;
+        invocation: number;
+        start: number;
+        end: number;
+        eventIndex: number;
+        eventTime: number;
+      }>).detail;
+      logDebugRef.current(
+        `classifier.${eventName}/${actionName} type=${eventType} action=${action} invoke=${invocation} range=${start}-${end} index=${eventIndex} t=${eventTime}`,
+      );
+    };
+    let lastParentMoveTraceAt = 0;
     const traceInputEvent = (event: Event) => {
+      const isMove = event.type.endsWith('move') || event.type === 'pointerrawupdate';
+      const now = Date.now();
+      if (isMove && now - lastParentMoveTraceAt < 100) return;
+      if (isMove) lastParentMoveTraceAt = now;
       const target = event.target && 'tagName' in event.target
         ? String(event.target.tagName).toLowerCase()
         : 'unknown';
-      const pointerType = 'pointerType' in event ? ` pointer=${event.pointerType}` : '';
-      const buttons = 'buttons' in event ? ` buttons=${event.buttons}` : '';
+      const targetId = event.target && 'id' in event.target && typeof event.target.id === 'string' && event.target.id
+        ? `#${event.target.id}`
+        : '';
+      const pointerEvent = event as PointerEvent;
+      const pointer = 'pointerType' in event
+        ? ` pointer=${pointerEvent.pointerType}:${pointerEvent.pointerId} pressure=${pointerEvent.pressure}`
+        : '';
+      const mouseEvent = event as MouseEvent;
+      const mouse = 'clientX' in event
+        ? ` xy=${Math.round(mouseEvent.clientX)},${Math.round(mouseEvent.clientY)} buttons=${mouseEvent.buttons}`
+        : '';
+      const touchEvent = event as TouchEvent;
       const touches = event.type.startsWith('touch')
-        ? ` touches=${(event as TouchEvent).touches.length} changed=${(event as TouchEvent).changedTouches.length}`
+        ? ` touches=${touchEvent.touches.length} changed=${touchEvent.changedTouches.length}`
+        : '';
+      const selection = window.getSelection();
+      const selectionInfo = event.type === 'selectionchange'
+        ? ` range=${selection?.rangeCount || 0} chars=${selection?.toString().length || 0}`
         : '';
       logDebugRef.current(
-        `parent.${event.type} target=${target}${pointerType}${buttons}${touches} active=${pointerActiveRef.current ? 1 : 0}`,
+        `parent.${event.type} target=${target}${targetId}${pointer}${mouse}${touches}${selectionInfo} trusted=${event.isTrusted ? 1 : 0} active=${pointerActiveRef.current ? 1 : 0}`,
       );
     };
     const inputEvents = [
-      'pointerdown', 'pointerup', 'pointercancel',
-      'touchstart', 'touchend', 'touchcancel', 'mousedown', 'mouseup',
+      'pointerover', 'pointerenter', 'pointerdown', 'pointermove', 'pointerrawupdate',
+      'pointerup', 'pointercancel', 'pointerout', 'pointerleave',
+      'gotpointercapture', 'lostpointercapture',
+      'touchstart', 'touchmove', 'touchend', 'touchcancel',
+      'mouseover', 'mouseenter', 'mousemove', 'mousedown', 'mouseup', 'mouseout', 'mouseleave',
+      'click', 'auxclick', 'dblclick', 'contextmenu',
+      'dragstart', 'drag', 'dragend', 'dragenter', 'dragleave', 'dragover', 'drop',
+      'selectstart', 'selectionchange', 'focus', 'blur', 'focusin', 'focusout',
+      'keydown', 'keyup', 'beforeinput', 'input', 'compositionstart', 'compositionupdate',
+      'compositionend', 'visibilitychange',
     ];
     inputEvents.forEach((type) => {
       document.addEventListener(type, traceInputEvent, { capture: true, passive: true });
     });
     window.addEventListener('ereader-native-touch', onNativeTouchTrace);
+    window.addEventListener('ereader-native-webview-touch', onNativeWebViewTouchTrace);
+    window.addEventListener('ereader-native-selection-event', onNativeSelectionEvent);
     const traceWindowEvent = (event: Event) => traceInputEvent(event);
     window.addEventListener('blur', traceWindowEvent);
     window.addEventListener('focus', traceWindowEvent);
@@ -1838,6 +2096,8 @@ export const EpubReader: React.FC<Props> = ({
         document.removeEventListener(type, traceInputEvent, { capture: true });
       });
       window.removeEventListener('ereader-native-touch', onNativeTouchTrace);
+      window.removeEventListener('ereader-native-webview-touch', onNativeWebViewTouchTrace);
+      window.removeEventListener('ereader-native-selection-event', onNativeSelectionEvent);
       window.removeEventListener('blur', traceWindowEvent);
       window.removeEventListener('focus', traceWindowEvent);
       document.removeEventListener('visibilitychange', traceInputEvent);
@@ -2424,6 +2684,7 @@ export const EpubReader: React.FC<Props> = ({
       if (next.includes(e.key)) handleNextPage();
       else if (prev.includes(e.key)) handlePrevPage();
       else if (e.key === 'Escape') {
+        selectedTextRef.current = '';
         setSelectedText('');
         setSelectionPos(null);
         selectionRangeRef.current = null;
@@ -2725,6 +2986,7 @@ export const EpubReader: React.FC<Props> = ({
         isUnderlined={isSelectionUnderlined}
         onToggleUnderline={handleToggleUnderline}
         onClose={() => {
+          selectedTextRef.current = '';
           setSelectedText('');
           setSelectionPos(null);
           selectionRangeRef.current = null;
