@@ -195,6 +195,10 @@ export const EpubReader: React.FC<Props> = ({
     x: number;
     y: number;
   } | null>(null);
+  const [selectionEdgeActivation, setSelectionEdgeActivation] = useState<{
+    direction: 'next' | 'previous';
+    progress: number;
+  } | null>(null);
   const [readerFit, setReaderFit] = useState({ scale: 1, offsetY: 0 });
   const [isBookmarksOpen, setIsBookmarksOpen] = useState(false);
   const [isTocOpen, setIsTocOpen] = useState(false);
@@ -1097,6 +1101,37 @@ export const EpubReader: React.FC<Props> = ({
     let previousIndicatorPosition: { x: number; y: number } | null = null;
     let lastEdgeX = 0;
     let lastEdgeY = 0;
+    let edgeActivation: {
+      direction: 'next' | 'previous';
+      startedAt: number;
+      interval: number;
+    } | null = null;
+    const cancelEdgeActivation = () => {
+      if (!edgeActivation) return;
+      window.clearInterval(edgeActivation.interval);
+      edgeActivation = null;
+      setSelectionEdgeActivation(null);
+    };
+    const startEdgeActivation = (direction: 'next' | 'previous') => {
+      if (edgeActivation?.direction === direction) return;
+      cancelEdgeActivation();
+      const startedAt = Date.now();
+      const interval = window.setInterval(() => {
+        const progress = Math.min(1, (Date.now() - startedAt) / 2000);
+        setSelectionEdgeActivation({ direction, progress });
+        if (progress < 1) return;
+        window.clearInterval(interval);
+        edgeActivation = null;
+        setSelectionEdgeActivation(null);
+        edgeTurnTriggered = true;
+        lastEdgeX = nativeTouchPositionRef.current?.x || 0;
+        lastEdgeY = nativeTouchPositionRef.current?.y || 0;
+        logDebugRef.current(`native edge activated ${direction}`);
+        selectionEdgeTurnRef.current(direction);
+      }, 40);
+      edgeActivation = { direction, startedAt, interval };
+      setSelectionEdgeActivation({ direction, progress: 0 });
+    };
     const onNativeTouchTrace = (event: Event) => {
       const { action, x, y, inside } = (event as CustomEvent<{
         action: string;
@@ -1107,6 +1142,7 @@ export const EpubReader: React.FC<Props> = ({
       nativeTouchPositionRef.current = { x, y };
 
       if (action === 'DOWN') {
+        cancelEdgeActivation();
         nativeTouchActive = true;
         edgeTurnTriggered = false;
         previousEdgeArmed = false;
@@ -1131,6 +1167,7 @@ export const EpubReader: React.FC<Props> = ({
         return;
       }
       if (action === 'UP') {
+        cancelEdgeActivation();
         nativeTouchActive = false;
         edgeTurnTriggered = false;
         pointerActiveRef.current = false;
@@ -1149,16 +1186,15 @@ export const EpubReader: React.FC<Props> = ({
         return;
       }
       if (action === 'CANCEL') {
+        cancelEdgeActivation();
         nativeSelectionTookOverRef.current = true;
         return;
       }
-      if (
-        action !== 'MOVE' ||
-        !nativeTouchActive ||
-        !nativeTouchIsSelection ||
-        !inside ||
-        !selectedTextRef.current
-      ) return;
+      if (action !== 'MOVE' || !nativeTouchActive || !nativeTouchIsSelection) return;
+      if (!inside || !selectedTextRef.current) {
+        cancelEdgeActivation();
+        return;
+      }
 
       const indicator = selectionEdgeIndicatorRef.current;
       if (!indicator || indicator.direction !== 'previous') {
@@ -1180,30 +1216,35 @@ export const EpubReader: React.FC<Props> = ({
         if (Math.hypot(x - lastEdgeX, y - lastEdgeY) > 60) edgeTurnTriggered = false;
         else return;
       }
-      if (!indicator) return;
+      if (!indicator) {
+        cancelEdgeActivation();
+        return;
+      }
       const distance = Math.hypot(x - indicator.x, y - indicator.y);
       logDebugRef.current(
         `native edge ${indicator.direction} d=${Math.round(distance)} at=${Math.round(x)},${Math.round(y)}`,
       );
       if (indicator.direction === 'previous') {
         if (distance > 44) {
+          cancelEdgeActivation();
           previousEdgeArmed = true;
           return;
         }
-        if (!previousEdgeArmed || distance > 32) return;
+        if (!previousEdgeArmed || distance > 32) {
+          cancelEdgeActivation();
+          return;
+        }
       } else if (distance > 44) {
+        cancelEdgeActivation();
         return;
       }
 
-      edgeTurnTriggered = true;
-      lastEdgeX = x;
-      lastEdgeY = y;
-      logDebugRef.current(`native edge reached ${indicator.direction}`);
-      selectionEdgeTurnRef.current(indicator.direction);
+      startEdgeActivation(indicator.direction);
     };
 
     window.addEventListener('ereader-native-touch', onNativeTouchTrace);
     return () => {
+      cancelEdgeActivation();
       window.removeEventListener('ereader-native-touch', onNativeTouchTrace);
     };
   }, []);
@@ -2858,9 +2899,36 @@ export const EpubReader: React.FC<Props> = ({
       {selectionEdgeIndicator && isSelectionAdjusting && (
         <div
           aria-hidden="true"
-          className="pointer-events-none fixed z-[75] flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 animate-pulse items-center justify-center rounded-full border-2 border-white bg-indigo-600 text-white shadow-[0_0_18px_rgba(79,70,229,0.85)]"
+          className={`pointer-events-none fixed z-[75] flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white text-white transition-[background-color,transform,box-shadow] duration-150 ${
+            selectionEdgeActivation?.direction === selectionEdgeIndicator.direction
+              ? 'scale-[2] bg-amber-500 shadow-[0_0_24px_rgba(245,158,11,0.95)]'
+              : 'bg-indigo-600 shadow-[0_0_18px_rgba(79,70,229,0.85)]'
+          }`}
           style={{ left: selectionEdgeIndicator.x, top: selectionEdgeIndicator.y }}
         >
+          {selectionEdgeActivation?.direction === selectionEdgeIndicator.direction && (
+            <svg className="absolute inset-0 h-full w-full -rotate-90" viewBox="0 0 44 44">
+              <circle
+                cx="22"
+                cy="22"
+                r="19.5"
+                fill="none"
+                stroke="rgba(255,255,255,0.35)"
+                strokeWidth="2.5"
+              />
+              <circle
+                cx="22"
+                cy="22"
+                r="19.5"
+                fill="none"
+                stroke="white"
+                strokeWidth="2.5"
+                strokeDasharray="122.52"
+                strokeDashoffset={122.52 * (1 - selectionEdgeActivation.progress)}
+                strokeLinecap="round"
+              />
+            </svg>
+          )}
           {(isVertical || isRtl)
             ? selectionEdgeIndicator.direction === 'next'
               ? <ArrowLeft className="h-5 w-5" />
