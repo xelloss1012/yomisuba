@@ -276,6 +276,7 @@ export const EpubReader: React.FC<Props> = ({
   const nativeTouchPositionRef = useRef<{ x: number; y: number } | null>(null);
   const selectionEdgeIndicatorRef = useRef<typeof selectionEdgeIndicator>(null);
   const selectionEdgeTurnRef = useRef<(direction: 'next' | 'previous') => void>(() => {});
+  const selectionEdgeClearRef = useRef<() => void>(() => {});
   const selectionAnnotationRef = useRef<Omit<TextAnnotation, 'id'> | null>(null);
   const selectedTextAnnotationIdRef = useRef<string | null>(null);
   const openOverlayRef = useRef(false);
@@ -559,7 +560,7 @@ export const EpubReader: React.FC<Props> = ({
     // reserves the larger header/footer areas only while the UI is open.
     const pageColumnWidth = `calc(100vw - ${sidePad * 2}px)`;
     const pageColumnGap = `${sidePad * 2}px`;
-    const padTop = mobile ? 18 : 32;
+    const padTop = isVertical ? (mobile ? 18 : 32) : (mobile ? 18 : 32);
     const padBottom = mobile ? 52 : 40;
     const pad = `${padTop}px 0 ${padBottom}px`;
     // In vertical-rl a page is a column: its inline size is the screen height
@@ -714,7 +715,7 @@ export const EpubReader: React.FC<Props> = ({
   </div>
 </body>
 </html>`;
-    return { html, sidePad, fontSize };
+    return { html, sidePad, fontSize, padTop };
   }, [getFontFamilyCss, isVertical, settings, themeColors]);
 
   // The key covers everything that can change the page count: the rendered
@@ -1134,6 +1135,7 @@ export const EpubReader: React.FC<Props> = ({
         edgeTurnTriggered = false;
         pointerActiveRef.current = false;
         nativeSelectionTookOverRef.current = false;
+        selectionEdgeClearRef.current();
         if (nativeTouchIsSelection) {
           window.setTimeout(() => {
             handleSelectionRef.current();
@@ -1241,7 +1243,7 @@ export const EpubReader: React.FC<Props> = ({
         const doc = iframe.contentDocument || iframe.contentWindow?.document;
         if (!doc) return;
 
-        const { html: fullHtml, sidePad, fontSize } = buildChapterDocument(rawHtml);
+        const { html: fullHtml, sidePad, fontSize, padTop } = buildChapterDocument(rawHtml);
 
         doc.open();
         doc.write(fullHtml);
@@ -1270,6 +1272,11 @@ export const EpubReader: React.FC<Props> = ({
           selectionEdgeIndicatorRef.current = null;
           setSelectionEdgeIndicator(null);
         };
+        selectionEdgeClearRef.current = clearSelectionEdgeIndicator;
+        const shouldKeepPreviousEdgeIndicator = () =>
+          isNativeAndroid &&
+          pointerActiveRef.current &&
+          selectionEdgeIndicatorRef.current?.direction === 'previous';
         const isSelectionBackwards = (selection: Selection) => {
           const { anchorNode, focusNode } = selection;
           if (!anchorNode || !focusNode) return false;
@@ -1380,10 +1387,11 @@ export const EpubReader: React.FC<Props> = ({
           }
           const edgeInset = fontSize * settings.lineHeight * 2.5;
           const pageStartInset = isVertical
-            ? (window.innerWidth < 640 ? 18 : 32) + edgeInset
+            ? padTop + edgeInset
             : sidePad + edgeInset;
           const atPageStart = isVertical
-            ? selectedEdgeChar.top <= pageStartInset
+            ? selectedEdgeChar.top <= pageStartInset &&
+              selectedEdgeChar.right >= pageWidth - sidePad - fontSize * 0.75
             : selectedEdgeChar.left <= pageStartInset;
           const direction = endpoint.isStart && (backward || atPageStart)
             ? 'previous'
@@ -1414,13 +1422,9 @@ export const EpubReader: React.FC<Props> = ({
             ? focusX
             : Math.max(20, Math.min(iframe.clientWidth - 20, focusX - advance * 42));
           const y = isVertical
-            ? Math.max(
-                24,
-                Math.min(
-                  iframe.clientHeight - 24,
-                  focusY + (direction === 'previous' ? -52 : 96),
-                ),
-              )
+            ? direction === 'previous'
+              ? Math.max(24, padTop / 2)
+              : Math.max(24, Math.min(iframe.clientHeight - 24, focusY + 96))
             : focusY;
           const indicator = {
             direction,
@@ -1466,6 +1470,7 @@ export const EpubReader: React.FC<Props> = ({
           }
 
           if (!selection?.rangeCount || !selection.toString()) {
+            if (shouldKeepPreviousEdgeIndicator()) return;
             clearSelectionEdgeIndicator();
             selectedTextRef.current = '';
             setSelectedText('');
@@ -1493,6 +1498,7 @@ export const EpubReader: React.FC<Props> = ({
             focusNode === doc.documentElement ||
             anchorNode === doc.documentElement
           ) {
+            if (shouldKeepPreviousEdgeIndicator()) return;
             clearSelectionEdgeIndicator();
             return;
           }
@@ -1508,7 +1514,7 @@ export const EpubReader: React.FC<Props> = ({
           handleSelection();
           const edgeDirection = getSelectionEdgeDirection();
           if (edgeDirection) placeSelectionEdgeIndicator(edgeDirection);
-          else clearSelectionEdgeIndicator();
+          else if (!shouldKeepPreviousEdgeIndicator()) clearSelectionEdgeIndicator();
         };
 
         const onStart = (cx: number, cy: number) => {
