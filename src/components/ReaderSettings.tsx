@@ -109,6 +109,21 @@ export const ReaderSettings: React.FC<Props> = ({
             </span>
           </label>
 
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-zinc-200 dark:border-zinc-700 p-3 text-zinc-700 dark:text-zinc-300">
+            <input
+              type="checkbox"
+              checked={settings.autoAnalyzePage}
+              onChange={(event) => onUpdateSettings({ autoAnalyzePage: event.target.checked })}
+              className="mt-0.5 h-4 w-4 accent-indigo-600"
+            />
+            <span>
+              <span className="block text-sm font-medium">Analizar páginas automáticamente</span>
+              <span className="mt-0.5 block text-xs text-zinc-500 dark:text-zinc-400">
+                Activa la selección por palabras unos instantes después de abrir cada página.
+              </span>
+            </span>
+          </label>
+
           {/* Tema / Color de fondo */}
           <div>
             <label className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2 flex items-center gap-1.5">

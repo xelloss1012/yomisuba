@@ -358,6 +358,7 @@ export const EpubReader: React.FC<Props> = ({
   const wordSelectionModeRef = useRef(false);
   const programmaticWordSelectionRef = useRef(false);
   const pageAnalysisRequestRef = useRef(0);
+  const automaticPageAnalysisRequestRef = useRef(0);
   const wordAnalysisErrorTimerRef = useRef<number | undefined>(undefined);
   const showWordAnalysisError = useCallback((message: string) => {
     setWordAnalysisError(message);
@@ -3046,9 +3047,10 @@ export const EpubReader: React.FC<Props> = ({
     (item) => resolveSpineIndex(item.href) === currentSpineIndex
   );
 
-  const analyzeCurrentPage = useCallback(async (openGlossary: boolean) => {
+  const analyzeCurrentPage = useCallback(async (openGlossary: boolean, automatic = false) => {
     const request = pageAnalysisRequestRef.current + 1;
     pageAnalysisRequestRef.current = request;
+    automaticPageAnalysisRequestRef.current = automatic ? request : 0;
     const spineIndex = currentSpineRef.current;
     const page = currentPageRef.current;
     const iframe = iframeRef.current;
@@ -3244,18 +3246,26 @@ export const EpubReader: React.FC<Props> = ({
       );
     } finally {
       if (request === pageAnalysisRequestRef.current) setIsAnalyzingPage(false);
+      if (automaticPageAnalysisRequestRef.current === request) {
+        automaticPageAnalysisRequestRef.current = 0;
+      }
     }
-  }, [showWordAnalysisError]);
+  }, [isVertical, showWordAnalysisError]);
 
-  const handleToggleWordSelection = useCallback(() => {
-    if (wordSelectionModeRef.current) {
+  const handleToggleAutoAnalysis = useCallback(() => {
+    const enabled = !settings.autoAnalyzePage;
+    onUpdateSettings({ autoAnalyzePage: enabled });
+    if (!enabled) {
+      pageAnalysisRequestRef.current += 1;
+      automaticPageAnalysisRequestRef.current = 0;
       wordSelectionModeRef.current = false;
       setIsWordSelectionMode(false);
+      setIsAnalyzingPage(false);
+      pageWordsRef.current = [];
+      setPageWords([]);
       clearPageWordHighlights(iframeRef.current?.contentDocument);
-      return;
     }
-    void analyzeCurrentPage(false);
-  }, [analyzeCurrentPage]);
+  }, [onUpdateSettings, settings.autoAnalyzePage]);
 
   const handleOpenPageGlossary = useCallback(() => {
     if (pageWordsRef.current.length > 0) {
@@ -3264,6 +3274,39 @@ export const EpubReader: React.FC<Props> = ({
     }
     void analyzeCurrentPage(true);
   }, [analyzeCurrentPage]);
+
+  useEffect(() => {
+    if (!settings.autoAnalyzePage || isLoadingChapter) return;
+
+    const spineIndex = currentSpineIndex;
+    const page = currentPage;
+    const timeout = window.setTimeout(() => {
+      if (
+        spineIndex !== currentSpineRef.current ||
+        page !== currentPageRef.current ||
+        wordSelectionModeRef.current ||
+        pageWordsRef.current.length > 0
+      ) return;
+
+      void analyzeCurrentPage(false, true);
+    }, 1200);
+
+    return () => {
+      window.clearTimeout(timeout);
+      const activeRequest = automaticPageAnalysisRequestRef.current;
+      if (activeRequest && activeRequest === pageAnalysisRequestRef.current) {
+        pageAnalysisRequestRef.current += 1;
+        automaticPageAnalysisRequestRef.current = 0;
+        setIsAnalyzingPage(false);
+      }
+    };
+  }, [
+    analyzeCurrentPage,
+    currentPage,
+    currentSpineIndex,
+    isLoadingChapter,
+    settings.autoAnalyzePage,
+  ]);
 
   useLayoutEffect(() => {
     if (!showUi) {
@@ -3325,9 +3368,8 @@ export const EpubReader: React.FC<Props> = ({
         onOpenFile={onCloseBook}
         settings={settings}
         onUpdateSettings={onUpdateSettings}
-        isWordSelectionMode={isWordSelectionMode}
         isAnalyzingPage={isAnalyzingPage}
-        onToggleWordSelection={handleToggleWordSelection}
+        onToggleAutoAnalysis={handleToggleAutoAnalysis}
         onOpenPageGlossary={handleOpenPageGlossary}
       />
 

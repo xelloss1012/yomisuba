@@ -55,6 +55,7 @@ export interface ReaderSettingsState {
   lineHeight: number; // multiplier e.g. 1.8
   fontFamily: FontFamily;
   showFurigana: boolean;
+  autoAnalyzePage: boolean;
   theme: ReaderTheme;
   autoNightMode: boolean;
   letterSpacing: number; // in em

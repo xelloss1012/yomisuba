@@ -27,9 +27,8 @@ interface Props {
   historyCount: number;
   onToggleSettings: () => void;
   onOpenFile: () => void;
-  isWordSelectionMode: boolean;
   isAnalyzingPage: boolean;
-  onToggleWordSelection: () => void;
+  onToggleAutoAnalysis: () => void;
   onOpenPageGlossary: () => void;
   settings: ReaderSettingsState;
   onUpdateSettings: (newSettings: Partial<ReaderSettingsState>) => void;
@@ -47,9 +46,8 @@ export const ReaderNavbar: React.FC<Props> = ({
   historyCount,
   onToggleSettings,
   onOpenFile,
-  isWordSelectionMode,
   isAnalyzingPage,
-  onToggleWordSelection,
+  onToggleAutoAnalysis,
   onOpenPageGlossary,
   settings,
   onUpdateSettings,
@@ -143,13 +141,12 @@ export const ReaderNavbar: React.FC<Props> = ({
         <div className="flex items-center gap-1 sm:gap-2">
           <button
             type="button"
-            onClick={onToggleWordSelection}
-            disabled={isAnalyzingPage}
-            title={isWordSelectionMode ? 'Desactivar selección por palabra' : 'Analizar página para seleccionar palabras'}
-            aria-label={isWordSelectionMode ? 'Desactivar selección por palabra' : 'Analizar página para seleccionar palabras'}
-            aria-pressed={isWordSelectionMode}
-            className={`tap-area rounded-lg p-2 transition-colors disabled:opacity-50 ${
-              isWordSelectionMode
+            onClick={onToggleAutoAnalysis}
+            title={settings.autoAnalyzePage ? 'Desactivar el analizador automático en todas las páginas' : 'Activar el analizador automático en todas las páginas'}
+            aria-label={settings.autoAnalyzePage ? 'Desactivar el analizador automático en todas las páginas' : 'Activar el analizador automático en todas las páginas'}
+            aria-pressed={settings.autoAnalyzePage}
+            className={`tap-area rounded-lg p-2 transition-colors ${
+              settings.autoAnalyzePage
                 ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300'
                 : 'text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800'
             }`}
