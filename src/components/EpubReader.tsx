@@ -40,10 +40,16 @@ import { ReaderBookBackup } from '../utils/googleDriveBackup';
 import {
   DictionaryLookup,
   getDictionarySearchTerms,
+  JapaneseMorphologicalToken,
   tokenizeJapanese,
   warmUpDictionary,
 } from '../utils/dictionary';
-import { PageGlossaryModal, PageWordToken } from './PageGlossaryModal';
+import {
+  getPageWordCategory,
+  PageGlossaryModal,
+  PageWordCategory,
+  PageWordToken,
+} from './PageGlossaryModal';
 import { BookSearchModal } from './BookSearchModal';
 import {
   addRecentSearch,
@@ -91,6 +97,42 @@ const mapPageToLayout = (page: number, savedPageCount: number | undefined, curre
   if (!savedPageCount || savedPageCount <= 1 || currentPageCount <= 1) return page;
   const progress = Math.min(1, Math.max(0, page / (savedPageCount - 1)));
   return Math.round(progress * (currentPageCount - 1));
+};
+
+const pageWordHighlightNames: PageWordCategory[] = ['noun', 'verb', 'adjective', 'particle', 'other'];
+
+const clearPageWordHighlights = (doc?: Document | null) => {
+  const highlights = (doc?.defaultView as (Window & {
+    CSS?: { highlights?: { delete(name: string): void } };
+  }) | null)?.CSS?.highlights;
+  pageWordHighlightNames.forEach((category) => highlights?.delete(`reader-word-${category}`));
+};
+
+const applyPageWordHighlights = (doc: Document, tokens: PageWordToken[]) => {
+  const win = doc.defaultView as (Window & {
+    Highlight?: { new (...ranges: Range[]): unknown };
+    CSS?: { highlights?: { set(name: string, value: unknown): void; delete(name: string): void } };
+  }) | null;
+  if (!win?.Highlight || !win.CSS?.highlights) return;
+  const highlights = win.CSS.highlights;
+  const HighlightConstructor = win.Highlight;
+
+  const rangesByCategory = new Map<PageWordCategory, Range[]>();
+  tokens.forEach((token) => {
+    const category = getPageWordCategory(token);
+    const ranges = rangesByCategory.get(category) || [];
+    ranges.push(token.range);
+    rangesByCategory.set(category, ranges);
+  });
+
+  pageWordHighlightNames.forEach((category) => {
+    const ranges = rangesByCategory.get(category) || [];
+    if (ranges.length === 0) {
+      highlights.delete(`reader-word-${category}`);
+      return;
+    }
+    highlights.set(`reader-word-${category}`, new HighlightConstructor(...ranges));
+  });
 };
 
 interface PaginationCacheEntry {
@@ -712,6 +754,11 @@ export const EpubReader: React.FC<Props> = ({
       background-color: rgba(129, 140, 248, 0.35);
       color: inherit;
     }
+    ::highlight(reader-word-noun) { background-color: rgba(56, 189, 248, 0.20); color: inherit; }
+    ::highlight(reader-word-verb) { background-color: rgba(251, 191, 36, 0.22); color: inherit; }
+    ::highlight(reader-word-adjective) { background-color: rgba(52, 211, 153, 0.20); color: inherit; }
+    ::highlight(reader-word-particle) { background-color: rgba(167, 139, 250, 0.18); color: inherit; }
+    ::highlight(reader-word-other) { background-color: rgba(161, 161, 170, 0.16); color: inherit; }
     p  { margin: 0; padding: ${isVertical ? '0 0 0 0.5rem' : '0 0 0.5rem 0'}; }
     h1,h2,h3,h4 { font-weight:700; break-after:avoid; }
     ruby {
@@ -2272,6 +2319,7 @@ export const EpubReader: React.FC<Props> = ({
   useEffect(() => { currentSpineRef.current = currentSpineIndex; }, [currentSpineIndex]);
   useEffect(() => {
     pageAnalysisRequestRef.current += 1;
+    clearPageWordHighlights(iframeRef.current?.contentDocument);
     pageWordsRef.current = [];
     setPageWords([]);
     wordSelectionModeRef.current = false;
@@ -2286,6 +2334,7 @@ export const EpubReader: React.FC<Props> = ({
     if (wordAnalysisErrorTimerRef.current !== undefined) {
       window.clearTimeout(wordAnalysisErrorTimerRef.current);
     }
+    clearPageWordHighlights(iframeRef.current?.contentDocument);
   }, []);
   useEffect(() => {
     selectedTextRef.current = selectedText;
@@ -2979,6 +3028,7 @@ export const EpubReader: React.FC<Props> = ({
 
     setIsAnalyzingPage(true);
     setWordAnalysisError(null);
+    clearPageWordHighlights(doc);
     try {
       const segments: Array<{ node: Text; start: number; end: number }> = [];
       let pageText = '';
@@ -3024,15 +3074,79 @@ export const EpubReader: React.FC<Props> = ({
         page !== currentPageRef.current
       ) return;
 
-      const visibleWords: PageWordToken[] = [];
+      const locatedTokens: Array<{
+        token: JapaneseMorphologicalToken;
+        start: number;
+        end: number;
+      }> = [];
       let searchFrom = 0;
       for (const token of morphology) {
         const start = pageText.indexOf(token.surface_form, searchFrom);
         if (start < 0) continue;
         const end = start + token.surface_form.length;
         searchFrom = end;
-        if (!token.surface_form.trim() || token.pos === '記号') continue;
+        locatedTokens.push({ token, start, end });
+      }
 
+      const mergedTokens: Array<{
+        token: JapaneseMorphologicalToken & { joinedSuffix?: boolean; joinedTeForm?: boolean };
+        start: number;
+        end: number;
+      }> = [];
+      const auxiliaryTeFormVerbs = new Set(['いる', 'おる', 'おく', 'しまう', 'くる', 'いく', 'みる', 'ある']);
+      locatedTokens.forEach(({ token, start, end }) => {
+        if (!token.surface_form.trim() || token.pos === '記号') return;
+        const previous = mergedTokens[mergedTokens.length - 1];
+        const adjacent = previous?.end === start;
+        const isSuffix = token.pos_detail_1 === '接尾';
+        const previousIsAdjectivalNoun =
+          previous?.token.pos === '名詞' &&
+          previous.token.pos_detail_1 === '形容動詞語幹';
+        const isAuxiliary = token.pos === '助動詞' &&
+          (
+            ['動詞', '形容詞', '形容動詞', '助動詞'].includes(previous?.token.pos || '') ||
+            previousIsAdjectivalNoun
+          );
+        const isTeFormConnector = token.pos === '助詞' &&
+          token.pos_detail_1 === '接続助詞' &&
+          ['て', 'で'].includes(token.surface_form) &&
+          previous?.token.pos === '動詞';
+        const isTeFormAuxiliary = token.pos === '動詞' &&
+          previous?.token.joinedTeForm === true &&
+          auxiliaryTeFormVerbs.has(token.basic_form || token.surface_form);
+
+        if (adjacent && previous && (isSuffix || isAuxiliary || isTeFormConnector || isTeFormAuxiliary)) {
+          const mergedSurface = previous.token.surface_form + token.surface_form;
+          previous.token = {
+            ...previous.token,
+            surface_form: mergedSurface,
+            reading: previous.token.reading && token.reading
+              ? previous.token.reading + token.reading
+              : previous.token.reading || token.reading,
+            basic_form: isSuffix
+              ? mergedSurface
+              : previous.token.basic_form,
+            joinedSuffix: Boolean(previous.token.joinedSuffix || isSuffix),
+            joinedTeForm: Boolean(
+              isTeFormConnector ||
+              (previous.token.joinedTeForm && !isTeFormAuxiliary)
+            ),
+            conjugated_type: token.conjugated_type || previous.token.conjugated_type,
+            conjugated_form: token.conjugated_form || previous.token.conjugated_form,
+          };
+          previous.end = end;
+          return;
+        }
+
+        mergedTokens.push({
+          token: { ...token },
+          start,
+          end,
+        });
+      });
+
+      const visibleWords: PageWordToken[] = [];
+      for (const { token, start, end } of mergedTokens) {
         const startSegment = segments.find((candidate) =>
           start >= candidate.start && start < candidate.end
         );
@@ -3049,7 +3163,10 @@ export const EpubReader: React.FC<Props> = ({
           rect.left < iframe.clientWidth &&
           rect.top < iframe.clientHeight
         );
-        if (isVisible) visibleWords.push({ ...token, range: range.cloneRange() });
+        if (isVisible) visibleWords.push({
+          ...token,
+          range: range.cloneRange(),
+        });
       }
 
       if (visibleWords.length === 0) {
@@ -3058,6 +3175,7 @@ export const EpubReader: React.FC<Props> = ({
 
       pageWordsRef.current = visibleWords;
       setPageWords(visibleWords);
+      applyPageWordHighlights(doc, visibleWords);
       if (openGlossary) {
         setIsPageGlossaryOpen(true);
       } else {

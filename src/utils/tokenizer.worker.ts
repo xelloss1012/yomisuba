@@ -151,8 +151,13 @@ scope.onmessage = (event: MessageEvent) => {
       ? tokenizer.tokenize(message.text).map((token) => ({
           surface_form: token.surface_form,
           pos: token.pos,
+          pos_detail_1: token.pos_detail_1,
+          pos_detail_2: token.pos_detail_2,
+          pos_detail_3: token.pos_detail_3,
           basic_form: token.basic_form,
           reading: token.reading,
+          conjugated_type: token.conjugated_type,
+          conjugated_form: token.conjugated_form,
         }))
       : [];
     scope.postMessage({ type: 'tokens', id: message.id, tokens });

@@ -8,7 +8,10 @@ import {
 
 export interface PageWordToken extends JapaneseMorphologicalToken {
   range: Range;
+  joinedSuffix?: boolean;
 }
+
+export type PageWordCategory = 'noun' | 'verb' | 'adjective' | 'particle' | 'other';
 
 interface Props {
   isOpen: boolean;
@@ -24,6 +27,23 @@ interface GlossaryItem {
 
 const getTokenKey = (token: JapaneseMorphologicalToken) =>
   `${token.surface_form}\u0000${token.basic_form || ''}\u0000${token.pos}`;
+
+export const getPageWordCategory = (token: JapaneseMorphologicalToken): PageWordCategory => {
+  if (token.pos === '名詞' && token.pos_detail_1 === '形容動詞語幹') return 'adjective';
+  if (token.pos === '名詞') return 'noun';
+  if (token.pos === '動詞') return 'verb';
+  if (token.pos === '形容詞' || token.pos === '形容動詞') return 'adjective';
+  if (token.pos === '助詞') return 'particle';
+  return 'other';
+};
+
+const categoryBadgeClasses: Record<PageWordCategory, string> = {
+  noun: 'bg-sky-100 text-sky-800 dark:bg-sky-950/70 dark:text-sky-200',
+  verb: 'bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-200',
+  adjective: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-200',
+  particle: 'bg-violet-100 text-violet-800 dark:bg-violet-950/70 dark:text-violet-200',
+  other: 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300',
+};
 
 export const PageGlossaryModal: React.FC<Props> = ({
   isOpen,
@@ -62,7 +82,7 @@ export const PageGlossaryModal: React.FC<Props> = ({
           if (!item) return;
           try {
             results[item.key] = await getDictionarySearchTerms(
-              item.token.basic_form && item.token.basic_form !== '*'
+              !item.token.joinedSuffix && item.token.basic_form && item.token.basic_form !== '*'
                 ? item.token.basic_form
                 : item.token.surface_form
             );
@@ -168,7 +188,7 @@ export const PageGlossaryModal: React.FC<Props> = ({
                     {token.reading && token.reading !== token.surface_form && (
                       <span className="text-xs text-zinc-500 dark:text-zinc-400">{token.reading}</span>
                     )}
-                    <span className="ml-auto text-[10px] text-indigo-600 dark:text-indigo-300">
+                    <span className={`ml-auto rounded px-1.5 py-0.5 text-[10px] ${categoryBadgeClasses[getPageWordCategory(token)]}`}>
                       {token.pos}
                     </span>
                   </span>
