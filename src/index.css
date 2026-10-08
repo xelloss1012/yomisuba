@@ -47,6 +47,31 @@
   animation: fadeIn 0.2s ease-out forwards;
 }
 
+@keyframes selectionEdgeArrowLeft {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(-4px); }
+}
+
+@keyframes selectionEdgeArrowRight {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(4px); }
+}
+
+.selection-edge-arrow-left {
+  animation: selectionEdgeArrowLeft 0.8s ease-in-out infinite;
+}
+
+.selection-edge-arrow-right {
+  animation: selectionEdgeArrowRight 0.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .selection-edge-arrow-left,
+  .selection-edge-arrow-right {
+    animation: none;
+  }
+}
+
 /* ── Áreas táctiles ───────────────────────────────────────────────────────
    Medidos en un visor de 408x896, todos los controles del lector quedaban
    entre 22 y 32 px: por debajo de los 44 px recomendados para el dedo. Estas

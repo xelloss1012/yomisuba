@@ -2929,13 +2929,16 @@ export const EpubReader: React.FC<Props> = ({
               />
             </svg>
           )}
-          {(isVertical || isRtl)
-            ? selectionEdgeIndicator.direction === 'next'
-              ? <ArrowLeft className="h-5 w-5" />
-              : <ArrowRight className="h-5 w-5" />
-            : selectionEdgeIndicator.direction === 'next'
-              ? <ArrowRight className="h-5 w-5" />
-              : <ArrowLeft className="h-5 w-5" />}
+          {(() => {
+            const pointsLeft = (isVertical || isRtl)
+              ? selectionEdgeIndicator.direction === 'next'
+              : selectionEdgeIndicator.direction === 'previous';
+            const isActivating = selectionEdgeActivation?.direction === selectionEdgeIndicator.direction;
+            const arrowClass = `h-5 w-5 ${isActivating ? '' : pointsLeft ? 'selection-edge-arrow-left' : 'selection-edge-arrow-right'}`;
+            return pointsLeft
+              ? <ArrowLeft className={arrowClass} />
+              : <ArrowRight className={arrowClass} />;
+          })()}
         </div>
       )}
 
