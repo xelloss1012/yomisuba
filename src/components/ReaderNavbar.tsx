@@ -13,6 +13,8 @@ import {
   Search,
   Languages,
   BookOpen,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 interface Props {
@@ -71,9 +73,13 @@ export const ReaderNavbar: React.FC<Props> = ({
         isVisible ? 'translate-y-0 opacity-100 pointer-events-auto' : '-translate-y-full opacity-0 pointer-events-none'
       }`}
     >
-      <div className="bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md border-b border-zinc-200/80 dark:border-zinc-800/80 px-4 py-3 shadow-sm flex items-center justify-between">
-        {/* Left: Open file & TOC */}
-        <div className="flex items-center gap-1 sm:gap-2">
+      <div className="bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md border-b border-zinc-200/80 dark:border-zinc-800/80 px-3 py-2.5 shadow-sm">
+        <div
+          className="flex min-w-0 items-center gap-1 overflow-x-auto [&::-webkit-scrollbar]:hidden"
+          style={{ scrollbarWidth: 'none' }}
+        >
+          {/* Navigation and book actions */}
+          <div className="flex shrink-0 items-center gap-1 sm:gap-2">
           <button
             onClick={onOpenFile}
             title="Abrir otro libro EPUB"
@@ -125,20 +131,10 @@ export const ReaderNavbar: React.FC<Props> = ({
               </span>
             )}
           </button>
-        </div>
-
-        {/* Center: Book & Chapter Info */}
-        <div className="flex-1 px-4 text-center truncate max-w-md">
-          <div className="text-xs sm:text-sm font-semibold text-zinc-800 dark:text-zinc-100 truncate">
-            {metadata.title}
           </div>
-          <div className="text-[10px] sm:text-xs text-zinc-500 dark:text-zinc-400 truncate">
-            {metadata.creator} {chapterTitle ? `• ${chapterTitle}` : ''}
-          </div>
-        </div>
 
-        {/* Right: Quick actions & Settings */}
-        <div className="flex items-center gap-1 sm:gap-2">
+          {/* Reader controls */}
+          <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
           <button
             type="button"
             onClick={onToggleAutoAnalysis}
@@ -164,6 +160,22 @@ export const ReaderNavbar: React.FC<Props> = ({
             className="tap-area rounded-lg p-2 text-zinc-700 transition-colors hover:bg-zinc-100 disabled:opacity-50 dark:text-zinc-200 dark:hover:bg-zinc-800"
           >
             <BookOpen className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => onUpdateSettings({ showFurigana: !settings.showFurigana })}
+            title={settings.showFurigana ? 'Ocultar furigana' : 'Mostrar furigana'}
+            aria-label={settings.showFurigana ? 'Ocultar furigana' : 'Mostrar furigana'}
+            aria-pressed={settings.showFurigana}
+            className={`tap-area rounded-lg p-2 transition-colors ${
+              settings.showFurigana
+                ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300'
+                : 'text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800'
+            }`}
+          >
+            {settings.showFurigana
+              ? <Eye className="h-4 w-4" />
+              : <EyeOff className="h-4 w-4" />}
           </button>
 
           {/* Quick Vertical/Horizontal Mode Toggle */}
@@ -208,6 +220,17 @@ export const ReaderNavbar: React.FC<Props> = ({
           >
             {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
           </button>
+          </div>
+        </div>
+
+        {/* Book title on its own row keeps it readable beside the toolbar actions. */}
+        <div className="pt-1.5 text-center">
+          <div className="truncate text-xs font-semibold text-zinc-800 dark:text-zinc-100 sm:text-sm">
+            {metadata.title}
+          </div>
+          <div className="truncate text-[10px] text-zinc-500 dark:text-zinc-400 sm:text-xs">
+            {metadata.creator} {chapterTitle ? `• ${chapterTitle}` : ''}
+          </div>
         </div>
       </div>
     </header>

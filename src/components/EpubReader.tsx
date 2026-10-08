@@ -356,6 +356,7 @@ export const EpubReader: React.FC<Props> = ({
   const selectedTextRef = useRef('');
   const pageWordsRef = useRef<PageWordToken[]>([]);
   const wordSelectionModeRef = useRef(false);
+  const previousAutoAnalyzePageRef = useRef(settings.autoAnalyzePage);
   const programmaticWordSelectionRef = useRef(false);
   const pageAnalysisRequestRef = useRef(0);
   const automaticPageAnalysisRequestRef = useRef(0);
@@ -2364,6 +2365,21 @@ export const EpubReader: React.FC<Props> = ({
   useEffect(() => {
     wordSelectionModeRef.current = isWordSelectionMode;
   }, [isWordSelectionMode]);
+  useEffect(() => {
+    const wasEnabled = previousAutoAnalyzePageRef.current;
+    previousAutoAnalyzePageRef.current = settings.autoAnalyzePage;
+    if (!wasEnabled || settings.autoAnalyzePage) return;
+
+    pageAnalysisRequestRef.current += 1;
+    automaticPageAnalysisRequestRef.current = 0;
+    wordSelectionModeRef.current = false;
+    setIsWordSelectionMode(false);
+    setIsAnalyzingPage(false);
+    pageWordsRef.current = [];
+    setPageWords([]);
+    setIsPageGlossaryOpen(false);
+    clearPageWordHighlights(iframeRef.current?.contentDocument);
+  }, [settings.autoAnalyzePage]);
   useEffect(() => () => {
     if (wordAnalysisErrorTimerRef.current !== undefined) {
       window.clearTimeout(wordAnalysisErrorTimerRef.current);
@@ -3253,18 +3269,7 @@ export const EpubReader: React.FC<Props> = ({
   }, [isVertical, showWordAnalysisError]);
 
   const handleToggleAutoAnalysis = useCallback(() => {
-    const enabled = !settings.autoAnalyzePage;
-    onUpdateSettings({ autoAnalyzePage: enabled });
-    if (!enabled) {
-      pageAnalysisRequestRef.current += 1;
-      automaticPageAnalysisRequestRef.current = 0;
-      wordSelectionModeRef.current = false;
-      setIsWordSelectionMode(false);
-      setIsAnalyzingPage(false);
-      pageWordsRef.current = [];
-      setPageWords([]);
-      clearPageWordHighlights(iframeRef.current?.contentDocument);
-    }
+    onUpdateSettings({ autoAnalyzePage: !settings.autoAnalyzePage });
   }, [onUpdateSettings, settings.autoAnalyzePage]);
 
   const handleOpenPageGlossary = useCallback(() => {
