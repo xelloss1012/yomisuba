@@ -35,6 +35,7 @@ const DEFAULT_SETTINGS: ReaderSettingsState = {
   fontSize: 18,
   lineHeight: 1.9,
   fontFamily: 'mincho',
+  showFurigana: true,
   theme: 'paper',
   autoNightMode: false,
   letterSpacing: 0.05,

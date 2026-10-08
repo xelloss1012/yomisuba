@@ -701,6 +701,9 @@ export const EpubReader: React.FC<Props> = ({
       font-weight: 400;
       pointer-events: none;
     }
+    #reader-scroller.hide-furigana ruby rt {
+      visibility: hidden;
+    }
     ruby rt::after {
       content: attr(data-rt);
     }
@@ -715,7 +718,7 @@ export const EpubReader: React.FC<Props> = ({
 </head>
 <body>
   <div id="reader-viewport">
-    <div id="reader-scroller">${bodyContent}</div>
+    <div id="reader-scroller" class="${settings.showFurigana ? '' : 'hide-furigana'}">${bodyContent}</div>
   </div>
 </body>
 </html>`;
@@ -2595,6 +2598,11 @@ export const EpubReader: React.FC<Props> = ({
     loadChapter(currentSpineRef.current, 0);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.writingMode, settings.fontFamily, settings.fontSize, settings.lineHeight, settings.theme]);
+
+  useLayoutEffect(() => {
+    const scroller = iframeRef.current?.contentDocument?.getElementById('reader-scroller');
+    scroller?.classList.toggle('hide-furigana', !settings.showFurigana);
+  }, [settings.showFurigana]);
 
   // Initial load. The chapter opens first and the whole-book measurement runs
   // afterwards, in the background.
