@@ -21,6 +21,7 @@ public class MainActivity extends BridgeActivity implements ModifiedMainActivity
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(JapaneseTtsPlugin.class);
+        registerPlugin(ReaderFullscreenPlugin.class);
         super.onCreate(savedInstanceState);
     }
 

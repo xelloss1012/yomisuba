@@ -15,6 +15,8 @@ import {
   ArrowRight,
   Loader2,
   Menu,
+  Maximize2,
+  Minimize2,
   X,
   Minus,
   Plus,
@@ -51,6 +53,7 @@ import {
   PageWordToken,
 } from './PageGlossaryModal';
 import { BookSearchModal } from './BookSearchModal';
+import { setReaderFullscreen } from '../utils/readerFullscreen';
 import {
   addRecentSearch,
   clearRecentSearches,
@@ -278,6 +281,11 @@ export const EpubReader: React.FC<Props> = ({
     progress: number;
   } | null>(null);
   const [readerFit, setReaderFit] = useState({ scale: 1, offsetY: 0 });
+  const [isReaderFullscreen, setIsReaderFullscreen] = useState(false);
+  const [fullscreenFrameSize, setFullscreenFrameSize] = useState<{ width: number; height: number } | null>(null);
+  const [fullscreenError, setFullscreenError] = useState<string | null>(null);
+  const isReaderFullscreenRef = useRef(false);
+  const fullscreenExitTimerRef = useRef<number | undefined>(undefined);
   const [isBookmarksOpen, setIsBookmarksOpen] = useState(false);
   const [isPageGlossaryOpen, setIsPageGlossaryOpen] = useState(false);
   const [pageWords, setPageWords] = useState<PageWordToken[]>([]);
@@ -3280,6 +3288,73 @@ export const EpubReader: React.FC<Props> = ({
     void analyzeCurrentPage(true);
   }, [analyzeCurrentPage]);
 
+  const handleToggleReaderFullscreen = useCallback(async () => {
+    if (!isReaderFullscreenRef.current) {
+      const iframe = iframeRef.current;
+      if (!iframe) return;
+
+      const size = {
+        width: iframe.clientWidth || window.innerWidth,
+        height: iframe.clientHeight || window.innerHeight,
+      };
+      setFullscreenFrameSize(size);
+      isReaderFullscreenRef.current = true;
+      setIsReaderFullscreen(true);
+      setFullscreenError(null);
+      try {
+        await setReaderFullscreen(true);
+      } catch (error) {
+        isReaderFullscreenRef.current = false;
+        setIsReaderFullscreen(false);
+        setFullscreenFrameSize(null);
+        setFullscreenError(error instanceof Error ? error.message : 'No se pudo activar la pantalla completa.');
+      }
+      return;
+    }
+
+    try {
+      await setReaderFullscreen(false);
+      isReaderFullscreenRef.current = false;
+      setIsReaderFullscreen(false);
+      if (fullscreenExitTimerRef.current !== undefined) {
+        window.clearTimeout(fullscreenExitTimerRef.current);
+      }
+      fullscreenExitTimerRef.current = window.setTimeout(() => {
+        setFullscreenFrameSize(null);
+        fullscreenExitTimerRef.current = undefined;
+      }, 300);
+      setFullscreenError(null);
+    } catch (error) {
+      setFullscreenError(error instanceof Error ? error.message : 'No se pudo salir de pantalla completa.');
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      if (Capacitor.isNativePlatform() || document.fullscreenElement || !isReaderFullscreenRef.current) return;
+      isReaderFullscreenRef.current = false;
+      setIsReaderFullscreen(false);
+      if (fullscreenExitTimerRef.current !== undefined) {
+        window.clearTimeout(fullscreenExitTimerRef.current);
+      }
+      fullscreenExitTimerRef.current = window.setTimeout(() => {
+        setFullscreenFrameSize(null);
+        fullscreenExitTimerRef.current = undefined;
+      }, 300);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  useEffect(() => () => {
+    if (fullscreenExitTimerRef.current !== undefined) {
+      window.clearTimeout(fullscreenExitTimerRef.current);
+    }
+    if (isReaderFullscreenRef.current) {
+      void setReaderFullscreen(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!settings.autoAnalyzePage || isLoadingChapter) return;
 
@@ -3332,11 +3407,13 @@ export const EpubReader: React.FC<Props> = ({
       const { width, height } = container.getBoundingClientRect();
       if (width <= 0 || height <= 0) return;
 
+      const fitWidth = fullscreenFrameSize?.width || width;
+      const fitHeight = fullscreenFrameSize?.height || height;
       const margin = 12;
       const headerHeight = header.getBoundingClientRect().height;
       const footerHeight = footer.getBoundingClientRect().height;
-      const heightScale = (height - headerHeight - footerHeight - margin * 2) / height;
-      const widthScale = (width - margin * 2) / width;
+      const heightScale = (fitHeight - headerHeight - footerHeight - margin * 2) / fitHeight;
+      const widthScale = (fitWidth - margin * 2) / fitWidth;
       const scale = Math.max(0.1, Math.min(1, heightScale, widthScale));
       setReaderFit({ scale, offsetY: (headerHeight - footerHeight) / 2 });
     };
@@ -3351,7 +3428,7 @@ export const EpubReader: React.FC<Props> = ({
       observer.disconnect();
       window.removeEventListener('resize', updateFit);
     };
-  }, [showUi]);
+  }, [fullscreenFrameSize, showUi]);
 
   return (
     <div
@@ -3461,6 +3538,27 @@ export const EpubReader: React.FC<Props> = ({
         {showUi ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
       </button>
 
+      <button
+        type="button"
+        onClick={() => void handleToggleReaderFullscreen()}
+        className={`tap-area fixed z-[55] flex h-8 w-8 items-center justify-center rounded-full backdrop-blur-sm transition-colors ${
+          isReaderFullscreen
+            ? 'bg-indigo-500/70 text-white'
+            : 'bg-black/25 text-white/65 hover:bg-black/45 hover:text-white/90'
+        }`}
+        style={{
+          bottom: 'max(env(safe-area-inset-bottom, 4px), 4px)',
+          right: 'max(calc(env(safe-area-inset-right, 4px) + 48px), 48px)',
+        }}
+        title={isReaderFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
+        aria-label={isReaderFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
+        aria-pressed={isReaderFullscreen}
+      >
+        {isReaderFullscreen
+          ? <Minimize2 className="h-4 w-4" />
+          : <Maximize2 className="h-4 w-4" />}
+      </button>
+
       {!showUi && (
         <button
           type="button"
@@ -3486,7 +3584,7 @@ export const EpubReader: React.FC<Props> = ({
 
       {/* Keep the viewport fixed so showing the controls never changes pagination. */}
       <div
-        className="absolute inset-0 overflow-hidden"
+        className="absolute inset-0 flex items-center justify-center overflow-hidden"
         style={{
           transform: showUi
             ? `translateY(${readerFit.offsetY}px) scale(${readerFit.scale})`
@@ -3497,20 +3595,27 @@ export const EpubReader: React.FC<Props> = ({
             : 'none',
         }}
       >
-        <iframe
-          ref={iframeRef}
-          title="EPUB Page View"
-          className="w-full h-full border-0 block"
-          sandbox="allow-same-origin allow-scripts"
-        />
-        {isLoadingChapter && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/10 backdrop-blur-[2px] pointer-events-none">
-            <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/90 dark:bg-zinc-800/90 shadow-lg text-xs font-medium text-zinc-700 dark:text-zinc-200">
-              <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
-              <span>Cargando...</span>
+        <div
+          className="relative shrink-0 overflow-hidden"
+          style={fullscreenFrameSize
+            ? { width: `${fullscreenFrameSize.width}px`, height: `${fullscreenFrameSize.height}px` }
+            : { width: '100%', height: '100%' }}
+        >
+          <iframe
+            ref={iframeRef}
+            title="EPUB Page View"
+            className="block h-full w-full border-0"
+            sandbox="allow-same-origin allow-scripts"
+          />
+          {isLoadingChapter && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/10 backdrop-blur-[2px] pointer-events-none">
+              <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/90 dark:bg-zinc-800/90 shadow-lg text-xs font-medium text-zinc-700 dark:text-zinc-200">
+                <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+                <span>Cargando...</span>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {debugEnabled && (
@@ -3538,6 +3643,14 @@ export const EpubReader: React.FC<Props> = ({
           className="fixed bottom-24 left-1/2 z-[85] max-w-[90vw] -translate-x-1/2 rounded-xl bg-rose-950/95 px-4 py-2 text-center text-xs text-white shadow-lg"
         >
           {wordAnalysisError}
+        </div>
+      )}
+      {fullscreenError && (
+        <div
+          role="alert"
+          className="fixed bottom-24 left-1/2 z-[85] max-w-[90vw] -translate-x-1/2 rounded-xl bg-rose-950/95 px-4 py-2 text-center text-xs text-white shadow-lg"
+        >
+          {fullscreenError}
         </div>
       )}
 

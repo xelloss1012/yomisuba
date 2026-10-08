@@ -4,8 +4,6 @@ import {
   Menu,
   SlidersHorizontal,
   FolderOpen,
-  Maximize2,
-  Minimize2,
   Columns,
   Rows,
   List,
@@ -54,16 +52,6 @@ export const ReaderNavbar: React.FC<Props> = ({
   settings,
   onUpdateSettings,
 }) => {
-  const [isFullscreen, setIsFullscreen] = React.useState(false);
-
-  const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
-    } else {
-      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
-    }
-  };
-
   const isVertical = settings.writingMode === 'vertical-rl';
 
   return (
@@ -212,14 +200,6 @@ export const ReaderNavbar: React.FC<Props> = ({
             <span className="font-serif font-bold text-sm leading-none">Aa</span>
           </button>
 
-          {/* Fullscreen */}
-          <button
-            onClick={toggleFullscreen}
-            title={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
-            className="tap-area p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-200 transition-colors hidden sm:flex"
-          >
-            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-          </button>
           </div>
         </div>
 
