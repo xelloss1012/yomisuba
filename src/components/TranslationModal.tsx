@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Volume2, Languages, Loader2, Sparkles } from 'lucide-react';
+import { X, Volume2, Languages, Loader2, Sparkles, Search } from 'lucide-react';
 import { AiProvider } from '../types/epub';
 import {
   AI_PROVIDER_LABELS,
@@ -10,6 +10,7 @@ import {
 } from '../utils/aiTranslation';
 import { getCachedTranslation, saveCachedTranslation } from '../utils/translationCache';
 import { DictionaryEntry, getDictionarySearchTerms } from '../utils/dictionary';
+import { speakJapanese } from '../utils/japaneseSpeech';
 import { MarkdownContent } from './MarkdownContent';
 import {
   formatDictionaryHistoryResponse,
@@ -46,13 +47,18 @@ export const TranslationModal: React.FC<Props> = ({
     entries: DictionaryEntry[];
     englishFallbackError?: string;
   } | null>(null);
+  const [dictionaryQuery, setDictionaryQuery] = useState('');
+  const [isDictionaryLoading, setIsDictionaryLoading] = useState(false);
+  const [dictionaryError, setDictionaryError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [speechError, setSpeechError] = useState('');
   const [explanation, setExplanation] = useState('');
   const [explanationError, setExplanationError] = useState('');
   const [isExplaining, setIsExplaining] = useState(false);
   const [explanationProvider, setExplanationProvider] = useState<AiProvider | ''>('');
   const explanationRequestRef = useRef(0);
+  const dictionaryRequestRef = useRef(0);
 
   useEffect(() => {
     if (!isOpen || !selectedText) return;
@@ -60,8 +66,7 @@ export const TranslationModal: React.FC<Props> = ({
     let cancelled = false;
     explanationRequestRef.current += 1;
     setTranslatedText('');
-    setDictionaryTerms(null);
-    setIsLoading(true);
+    setDictionaryQuery(selectedText);
     setExplanation('');
     setExplanationError('');
     setIsExplaining(false);
@@ -71,29 +76,8 @@ export const TranslationModal: React.FC<Props> = ({
         : availableAiProviders[0] || ''
     );
 
-    getDictionarySearchTerms(selectedText)
-      .then((lookup) => {
-        const terms = {
-          baseForm: lookup.baseForm,
-          searchTerms: lookup.searchTerms,
-          entries: lookup.entries,
-          englishFallbackError: lookup.englishFallbackError,
-        };
-        if (cancelled) return;
-        setDictionaryTerms(terms);
-        if (lookup.hasCompleteMatch) {
-          onSaveHistory(
-            'dictionary',
-            selectedText,
-            formatDictionaryHistoryResponse(terms.baseForm, terms.searchTerms, terms.entries)
-          );
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setDictionaryTerms(null);
-      });
-
     const translate = async () => {
+      setIsLoading(true);
       const provider = aiProvider || 'google';
       const providerKey = aiApiKey || '';
       const resultKind: TranslationHistoryKind = aiProvider ? 'ai' : 'translation';
@@ -140,22 +124,70 @@ export const TranslationModal: React.FC<Props> = ({
     return () => { cancelled = true; };
   }, [aiApiKey, aiProvider, availableAiProviders, isOpen, onSaveHistory, openRouterModel, selectedText]);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    if (!isOpen || !selectedText) return;
+    const requestId = dictionaryRequestRef.current + 1;
+    dictionaryRequestRef.current = requestId;
+    setDictionaryQuery(selectedText);
+    void lookupDictionary(selectedText, requestId);
+  }, [isOpen, selectedText]);
 
-  const handleSpeak = () => {
-    if (!('speechSynthesis' in window)) return;
-    window.speechSynthesis.cancel();
-
-    const utterance = new SpeechSynthesisUtterance(selectedText);
-    utterance.lang = 'ja-JP';
-    utterance.rate = 0.9;
-
-    utterance.onstart = () => setIsSpeaking(true);
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = () => setIsSpeaking(false);
-
-    window.speechSynthesis.speak(utterance);
+  const lookupDictionary = async (query: string, requestId = dictionaryRequestRef.current + 1) => {
+    const trimmedQuery = query.trim();
+    if (!trimmedQuery) {
+      setDictionaryTerms(null);
+      setDictionaryError('Escribe una palabra para buscar.');
+      setIsDictionaryLoading(false);
+      return;
+    }
+    dictionaryRequestRef.current = requestId;
+    setDictionaryTerms(null);
+    setDictionaryError('');
+    setIsDictionaryLoading(true);
+    try {
+      const lookup = await getDictionarySearchTerms(trimmedQuery);
+      if (dictionaryRequestRef.current !== requestId) return;
+      const terms = {
+        baseForm: lookup.baseForm,
+        searchTerms: lookup.searchTerms,
+        entries: lookup.entries,
+        englishFallbackError: lookup.englishFallbackError,
+      };
+      setDictionaryTerms(terms);
+      if (lookup.hasCompleteMatch) {
+        onSaveHistory(
+          'dictionary',
+          trimmedQuery,
+          formatDictionaryHistoryResponse(terms.baseForm, terms.searchTerms, terms.entries)
+        );
+      }
+    } catch (error) {
+      if (dictionaryRequestRef.current === requestId) {
+        setDictionaryError(error instanceof Error ? error.message : 'No se pudo consultar el diccionario.');
+      }
+    } finally {
+      if (dictionaryRequestRef.current === requestId) setIsDictionaryLoading(false);
+    }
   };
+
+  const handleDictionarySubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    void lookupDictionary(dictionaryQuery);
+  };
+
+  const handleSpeak = async () => {
+    setIsSpeaking(true);
+    setSpeechError('');
+    try {
+      await speakJapanese(selectedText);
+    } catch (error) {
+      setSpeechError(error instanceof Error ? error.message : 'No se pudo reproducir la pronunciación.');
+    } finally {
+      setIsSpeaking(false);
+    }
+  };
+
+  if (!isOpen) return null;
 
   const handleExplain = async () => {
     if (!explanationProvider) {
@@ -233,6 +265,7 @@ export const TranslationModal: React.FC<Props> = ({
             <div className="text-base font-serif text-zinc-800 dark:text-zinc-200 break-words leading-relaxed select-text">
               {selectedText}
             </div>
+            {speechError && <p role="alert" className="mt-2 text-xs text-rose-600 dark:text-rose-300">{speechError}</p>}
           </div>
 
           {/* Translation */}
@@ -301,11 +334,40 @@ export const TranslationModal: React.FC<Props> = ({
           </div>
 
           {/* Local dictionary */}
-          {dictionaryTerms && (
-            <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/60 dark:bg-emerald-950/20 p-3 text-xs text-emerald-900 dark:text-emerald-200 space-y-3">
-              <div className="text-[10px] font-bold uppercase tracking-[0.12em] mb-1.5 text-emerald-700 dark:text-emerald-300">
-                Diccionario JMDict local · español e inglés
+          <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/60 dark:bg-emerald-950/20 p-3 text-xs text-emerald-900 dark:text-emerald-200 space-y-3">
+            <div className="text-[10px] font-bold uppercase tracking-[0.12em] mb-1.5 text-emerald-700 dark:text-emerald-300">
+              Diccionario JMDict local · español e inglés
+            </div>
+            <form onSubmit={handleDictionarySubmit} className="flex gap-2">
+              <input
+                type="text"
+                value={dictionaryQuery}
+                onChange={(event) => setDictionaryQuery(event.target.value)}
+                placeholder="Escribe una palabra o variante japonesa"
+                aria-label="Palabra que se buscará en el diccionario"
+                className="min-w-0 flex-1 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-emerald-500 dark:border-emerald-900 dark:bg-zinc-900 dark:text-zinc-100"
+              />
+              <button
+                type="submit"
+                disabled={isDictionaryLoading || !dictionaryQuery.trim()}
+                className="flex shrink-0 items-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:opacity-50 dark:bg-emerald-700"
+              >
+                {isDictionaryLoading
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <Search className="h-3.5 w-3.5" />}
+                Buscar
+              </button>
+            </form>
+            {dictionaryError && (
+              <p role="alert" className="text-rose-700 dark:text-rose-300">{dictionaryError}</p>
+            )}
+            {isDictionaryLoading && (
+              <div className="flex items-center gap-2 text-zinc-600 dark:text-zinc-400">
+                <Loader2 className="h-4 w-4 animate-spin" /> Buscando…
               </div>
+            )}
+          {dictionaryTerms && (
+              <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full bg-emerald-200/80 dark:bg-emerald-900/70 px-2 py-1 font-semibold">
                   Base: {dictionaryTerms.baseForm}
@@ -378,6 +440,7 @@ export const TranslationModal: React.FC<Props> = ({
               </p>
             </div>
           )}
+          </div>
         </div>
       </div>
     </div>

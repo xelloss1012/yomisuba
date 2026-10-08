@@ -3,6 +3,7 @@ import { Copy, Languages, Volume2, Search, BookOpen, Check, X, Underline, TextSe
 import { AiProvider } from '../types/epub';
 import { AI_PROVIDER_LABELS } from '../utils/aiTranslation';
 import { DictionaryLookup } from '../utils/dictionary';
+import { speakJapanese } from '../utils/japaneseSpeech';
 
 export interface SelectionPosition {
   x: number;
@@ -49,6 +50,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
 }) => {
   const [copied, setCopied] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [speechError, setSpeechError] = useState('');
 
   if (!selectedText.trim()) return null;
 
@@ -81,20 +83,17 @@ export const TextSelectionMenu: React.FC<Props> = ({
     }
   };
 
-  const handleSpeak = (e: React.MouseEvent) => {
+  const handleSpeak = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!('speechSynthesis' in window)) return;
-    window.speechSynthesis.cancel();
-
-    const utterance = new SpeechSynthesisUtterance(selectedText);
-    utterance.lang = 'ja-JP';
-    utterance.rate = 0.9;
-
-    utterance.onstart = () => setIsSpeaking(true);
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = () => setIsSpeaking(false);
-
-    window.speechSynthesis.speak(utterance);
+    setIsSpeaking(true);
+    setSpeechError('');
+    try {
+      await speakJapanese(selectedText);
+    } catch (error) {
+      setSpeechError(error instanceof Error ? error.message : 'No se pudo reproducir la pronunciación.');
+    } finally {
+      setIsSpeaking(false);
+    }
   };
 
   const handleSearchGoogle = (e: React.MouseEvent) => {
@@ -314,6 +313,9 @@ export const TextSelectionMenu: React.FC<Props> = ({
             </>
           )}
         </div>
+        {speechError && (
+          <p role="alert" className="px-2 text-[10px] text-rose-300">{speechError}</p>
+        )}
       </div>
     </div>
   );

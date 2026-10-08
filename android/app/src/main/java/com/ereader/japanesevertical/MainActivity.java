@@ -2,6 +2,7 @@ package com.ereader.japanesevertical;
 
 import ee.forgr.capacitor.social.login.ModifiedMainActivityForSocialLoginPlugin;
 import android.os.Build;
+import android.os.Bundle;
 import android.util.DisplayMetrics;
 import android.view.MotionEvent;
 import android.webkit.WebView;
@@ -16,6 +17,12 @@ public class MainActivity extends BridgeActivity implements ModifiedMainActivity
     private long lastWebViewMoveTraceAt;
     private WebView touchTracedWebView;
     private TextClassifier originalTextClassifier;
+
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(JapaneseTtsPlugin.class);
+        super.onCreate(savedInstanceState);
+    }
 
     private String getMotionActionName(int action) {
         switch (action) {
