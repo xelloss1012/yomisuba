@@ -380,6 +380,7 @@ export async function restoreGoogleDriveSettings(accessToken: string): Promise<R
     openRouterModel: 'openrouter/free',
     showFurigana: true,
     autoAnalyzePage: false,
+    autoRotate: false,
     ...(savedSettings as Record<string, unknown>),
   };
   if (!isReaderSettings(settings)) {
@@ -592,6 +593,7 @@ function isReaderSettings(value: unknown): value is ReaderSettingsState {
     && (settings.fontFamily === 'mincho' || settings.fontFamily === 'gothic' || settings.fontFamily === 'serif' || settings.fontFamily === 'sans')
     && typeof settings.showFurigana === 'boolean'
     && typeof settings.autoAnalyzePage === 'boolean'
+    && typeof settings.autoRotate === 'boolean'
     && (settings.theme === 'light' || settings.theme === 'sepia' || settings.theme === 'dark' || settings.theme === 'paper')
     && typeof settings.autoNightMode === 'boolean'
     && typeof settings.letterSpacing === 'number'

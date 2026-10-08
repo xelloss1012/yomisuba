@@ -97,6 +97,21 @@ export const ReaderSettings: React.FC<Props> = ({
           <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-zinc-200 dark:border-zinc-700 p-3 text-zinc-700 dark:text-zinc-300">
             <input
               type="checkbox"
+              checked={settings.autoRotate}
+              onChange={(event) => onUpdateSettings({ autoRotate: event.target.checked })}
+              className="mt-0.5 h-4 w-4 accent-indigo-600"
+            />
+            <span>
+              <span className="block text-sm font-medium">Permitir giro automático</span>
+              <span className="mt-0.5 block text-xs text-zinc-500 dark:text-zinc-400">
+                Permite cambiar entre vertical y horizontal al girar el móvil. Desactivado, la aplicación permanece en vertical.
+              </span>
+            </span>
+          </label>
+
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-zinc-200 dark:border-zinc-700 p-3 text-zinc-700 dark:text-zinc-300">
+            <input
+              type="checkbox"
               checked={settings.showFurigana}
               onChange={(event) => onUpdateSettings({ showFurigana: event.target.checked })}
               className="mt-0.5 h-4 w-4 accent-indigo-600"

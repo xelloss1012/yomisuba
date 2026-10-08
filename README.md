@@ -31,6 +31,7 @@ Una aplicación web moderna tipo Kindle desarrollada en **React + TypeScript + V
    - **Modo Noche / Oscuro** (fondo oscuro para descanso visual).
    - Control de tamaño de fuente (12px – 50px) e interlineado.
    - Conmutador rápido entre modo Vertical (縦書き) y Horizontal (横書き).
+   - El giro automático del dispositivo está desactivado por defecto y se puede habilitar desde Ajustes de Lectura.
 
 5. **Libro de Muestra Integrado**:
    - Incluye un botón para generar y cargar al instante un libro de prueba japonés (*走れメロス - Dazai Osamu*) con portada, ilustraciones, furigana y varios capítulos sin necesidad de buscar un archivo local.
@@ -104,8 +105,9 @@ La aplicación continúa funcionando y guardando datos localmente sin iniciar
 sesión. Al conectar Google, los ajustes (incluidas las claves IA) se guardan
 automáticamente cuando cambian, y los datos de lectura cuando el usuario
 avanza, añade/elimina marcadores o anotaciones, o modifica el historial. Los
-ajustes se restauran automáticamente al conectar una cuenta, y también pueden
-restaurarse manualmente. Cada libro tiene un archivo de lectura independiente.
+ajustes, incluida la preferencia de giro automático, se restauran
+automáticamente al conectar una cuenta, y también pueden restaurarse
+manualmente. Cada libro tiene un archivo de lectura independiente.
 Los EPUB no se suben solos: el usuario elige cada libro que quiere guardar o
 descargar. Su estado se restaura al abrirlo si hay una copia. Para actualizar el
 progreso de un EPUB ya guardado localmente, usa la acción **Actualizar** junto

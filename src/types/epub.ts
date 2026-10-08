@@ -56,6 +56,7 @@ export interface ReaderSettingsState {
   fontFamily: FontFamily;
   showFurigana: boolean;
   autoAnalyzePage: boolean;
+  autoRotate: boolean;
   theme: ReaderTheme;
   autoNightMode: boolean;
   letterSpacing: number; // in em

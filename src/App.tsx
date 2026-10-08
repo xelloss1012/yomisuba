@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { ParsedEpub, ReaderSettingsState } from './types/epub';
 import { extractEpubCoverBlob, parseEpub } from './utils/epubParser';
 import { FileDropZone } from './components/FileDropZone';
 import { EpubReader } from './components/EpubReader';
+import { setReaderAutoRotate } from './utils/readerOrientation';
 import { createBookId, getLastBookId, getRecentBook, listRecentBooks, RecentBook, saveRecentBook, setLastBookId } from './utils/recentBooks';
 import {
   downloadGoogleDriveBook,
@@ -37,6 +39,7 @@ const DEFAULT_SETTINGS: ReaderSettingsState = {
   fontFamily: 'mincho',
   showFurigana: true,
   autoAnalyzePage: false,
+  autoRotate: false,
   theme: 'paper',
   autoNightMode: false,
   letterSpacing: 0.05,
@@ -90,6 +93,13 @@ export const App: React.FC = () => {
       // ignore
     }
   }, [settings]);
+
+  useEffect(() => {
+    if (Capacitor.getPlatform() !== 'android') return;
+    void setReaderAutoRotate(settings.autoRotate).catch((error: unknown) => {
+      setErrorMessage(`No se pudo cambiar la orientación de pantalla: ${error instanceof Error ? error.message : String(error)}`);
+    });
+  }, [settings.autoRotate]);
 
   useEffect(() => {
     if (!googleDriveSession || !driveSettingsReady || settingsRevision === 0) return;
