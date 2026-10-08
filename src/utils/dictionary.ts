@@ -32,13 +32,14 @@ interface CompactEntry {
 }
 
 const entries = jmdictEntries as CompactEntry[];
-interface DictionaryToken {
+export interface JapaneseMorphologicalToken {
   surface_form: string;
   pos: string;
   basic_form?: string;
+  reading?: string;
 }
 interface TokenizerClient {
-  tokenize(input: string): Promise<DictionaryToken[]>;
+  tokenize(input: string): Promise<JapaneseMorphologicalToken[]>;
 }
 let tokenizerPromise: Promise<TokenizerClient> | null = null;
 let englishIndexPromise: Promise<DictionaryIndex> | null = null;
@@ -232,6 +233,7 @@ const tokenizerTimeoutMs = 90000;
 // every selection: each attempt would download the whole dictionary anew.
 const tokenizerRetryDelayMs = 5 * 60 * 1000;
 let tokenizerFailedAt = 0;
+let tokenizerFailureMessage = '';
 
 const createTokenizer = (): Promise<TokenizerClient> =>
   new Promise((resolve, reject) => {
@@ -242,7 +244,10 @@ const createTokenizer = (): Promise<TokenizerClient> =>
       reject(error);
       return;
     }
-    const pending = new Map<number, { resolve: (tokens: DictionaryToken[]) => void; reject: (error: Error) => void }>();
+    const pending = new Map<number, {
+      resolve: (tokens: JapaneseMorphologicalToken[]) => void;
+      reject: (error: Error) => void;
+    }>();
     let nextId = 1;
     let settled = false;
 
@@ -268,7 +273,7 @@ const createTokenizer = (): Promise<TokenizerClient> =>
       const message = event.data as
         | { type: 'ready' }
         | { type: 'init-error'; message: string }
-        | { type: 'tokens'; id: number; tokens: DictionaryToken[] };
+        | { type: 'tokens'; id: number; tokens: JapaneseMorphologicalToken[] };
       if (message.type === 'ready') {
         window.clearTimeout(timer);
         settled = true;
@@ -292,14 +297,23 @@ const createTokenizer = (): Promise<TokenizerClient> =>
     worker.postMessage({ type: 'init', dicPath: new URL('/dict/', window.location.href).href });
   });
 
-const getTokenizer = async (): Promise<TokenizerClient> => {
+const getTokenizer = async (retryAfterFailure = false): Promise<TokenizerClient> => {
+  if (retryAfterFailure && !tokenizerPromise) {
+    tokenizerFailedAt = 0;
+    tokenizerFailureMessage = '';
+  }
   if (!tokenizerPromise) {
     if (Date.now() - tokenizerFailedAt < tokenizerRetryDelayMs) {
-      throw new Error('kuromoji no disponible');
+      throw new Error(
+        tokenizerFailureMessage
+          ? `Kuromoji no disponible tras un error anterior: ${tokenizerFailureMessage}`
+          : 'Kuromoji no disponible tras un error anterior.'
+      );
     }
     const attempt = createTokenizer();
-    attempt.catch(() => {
+    attempt.catch((error: unknown) => {
       tokenizerFailedAt = Date.now();
+      tokenizerFailureMessage = error instanceof Error ? error.message : String(error);
       if (tokenizerPromise === attempt) tokenizerPromise = null;
     });
     tokenizerPromise = attempt;
@@ -310,6 +324,11 @@ const getTokenizer = async (): Promise<TokenizerClient> => {
 /** Starts loading the tokenizer in the background so the first lookup is instant. */
 export const warmUpDictionary = () => {
   void getTokenizer().catch(() => undefined);
+};
+
+export const tokenizeJapanese = async (text: string): Promise<JapaneseMorphologicalToken[]> => {
+  const tokenizer = await getTokenizer(true);
+  return tokenizer.tokenize(text);
 };
 
 const toEntry = (entry: CompactEntry, language: DictionaryEntry['language']): DictionaryEntry => ({

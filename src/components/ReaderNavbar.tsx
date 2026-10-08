@@ -11,6 +11,8 @@ import {
   List,
   History,
   Search,
+  Languages,
+  BookOpen,
 } from 'lucide-react';
 
 interface Props {
@@ -25,6 +27,10 @@ interface Props {
   historyCount: number;
   onToggleSettings: () => void;
   onOpenFile: () => void;
+  isWordSelectionMode: boolean;
+  isAnalyzingPage: boolean;
+  onToggleWordSelection: () => void;
+  onOpenPageGlossary: () => void;
   settings: ReaderSettingsState;
   onUpdateSettings: (newSettings: Partial<ReaderSettingsState>) => void;
 }
@@ -41,6 +47,10 @@ export const ReaderNavbar: React.FC<Props> = ({
   historyCount,
   onToggleSettings,
   onOpenFile,
+  isWordSelectionMode,
+  isAnalyzingPage,
+  onToggleWordSelection,
+  onOpenPageGlossary,
   settings,
   onUpdateSettings,
 }) => {
@@ -131,6 +141,34 @@ export const ReaderNavbar: React.FC<Props> = ({
 
         {/* Right: Quick actions & Settings */}
         <div className="flex items-center gap-1 sm:gap-2">
+          <button
+            type="button"
+            onClick={onToggleWordSelection}
+            disabled={isAnalyzingPage}
+            title={isWordSelectionMode ? 'Desactivar selección por palabra' : 'Analizar página para seleccionar palabras'}
+            aria-label={isWordSelectionMode ? 'Desactivar selección por palabra' : 'Analizar página para seleccionar palabras'}
+            aria-pressed={isWordSelectionMode}
+            className={`tap-area rounded-lg p-2 transition-colors disabled:opacity-50 ${
+              isWordSelectionMode
+                ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300'
+                : 'text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800'
+            }`}
+          >
+            {isAnalyzingPage
+              ? <span className="block h-4 w-4 animate-spin rounded-full border-2 border-current border-r-transparent" />
+              : <Languages className="h-4 w-4" />}
+          </button>
+          <button
+            type="button"
+            onClick={onOpenPageGlossary}
+            disabled={isAnalyzingPage}
+            title="Ver glosario de la página actual"
+            aria-label="Ver glosario de la página actual"
+            className="tap-area rounded-lg p-2 text-zinc-700 transition-colors hover:bg-zinc-100 disabled:opacity-50 dark:text-zinc-200 dark:hover:bg-zinc-800"
+          >
+            <BookOpen className="h-4 w-4" />
+          </button>
+
           {/* Quick Vertical/Horizontal Mode Toggle */}
           <button
             onClick={() =>

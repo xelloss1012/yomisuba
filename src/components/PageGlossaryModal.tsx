@@ -1,0 +1,218 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { BookOpen, Loader2, Search, X } from 'lucide-react';
+import {
+  DictionaryLookup,
+  JapaneseMorphologicalToken,
+  getDictionarySearchTerms,
+} from '../utils/dictionary';
+
+export interface PageWordToken extends JapaneseMorphologicalToken {
+  range: Range;
+}
+
+interface Props {
+  isOpen: boolean;
+  tokens: PageWordToken[];
+  onClose: () => void;
+  onSelectWord: (token: PageWordToken) => void;
+}
+
+interface GlossaryItem {
+  key: string;
+  token: PageWordToken;
+}
+
+const getTokenKey = (token: JapaneseMorphologicalToken) =>
+  `${token.surface_form}\u0000${token.basic_form || ''}\u0000${token.pos}`;
+
+export const PageGlossaryModal: React.FC<Props> = ({
+  isOpen,
+  tokens,
+  onClose,
+  onSelectWord,
+}) => {
+  const [search, setSearch] = useState('');
+  const [lookups, setLookups] = useState<Record<string, DictionaryLookup | string>>({});
+  const [completed, setCompleted] = useState(0);
+
+  const words = useMemo(() => {
+    const unique = new Map<string, GlossaryItem>();
+    tokens.forEach((token) => {
+      const key = getTokenKey(token);
+      if (!unique.has(key)) unique.set(key, { key, token });
+    });
+    return [...unique.values()];
+  }, [tokens]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    let nextIndex = 0;
+    setSearch('');
+    setLookups({});
+    setCompleted(0);
+
+    const loadLookups = async () => {
+      const results: Record<string, DictionaryLookup | string> = {};
+      const worker = async () => {
+        while (!cancelled) {
+          const index = nextIndex;
+          nextIndex += 1;
+          const item = words[index];
+          if (!item) return;
+          try {
+            results[item.key] = await getDictionarySearchTerms(
+              item.token.basic_form && item.token.basic_form !== '*'
+                ? item.token.basic_form
+                : item.token.surface_form
+            );
+          } catch (error) {
+            results[item.key] = error instanceof Error
+              ? error.message
+              : 'No se pudo consultar el diccionario.';
+          }
+          if (!cancelled) setCompleted((count) => count + 1);
+        }
+      };
+
+      await Promise.all(
+        Array.from({ length: Math.min(4, words.length) }, () => worker())
+      );
+      if (!cancelled) setLookups(results);
+    };
+
+    void loadLookups();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, words]);
+
+  if (!isOpen) return null;
+
+  const normalizedSearch = search.trim().toLocaleLowerCase();
+  const visibleWords = words.filter(({ token }) =>
+    !normalizedSearch ||
+    [token.surface_form, token.basic_form, token.reading, token.pos]
+      .filter(Boolean)
+      .some((value) => value!.toLocaleLowerCase().includes(normalizedSearch))
+  );
+
+  return (
+    <div
+      className="fixed inset-0 z-[85] flex items-end justify-center bg-black/45 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+      onClick={onClose}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="page-glossary-title"
+        className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-900 sm:rounded-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+          <div className="flex min-w-0 items-center gap-2">
+            <BookOpen className="h-5 w-5 shrink-0 text-indigo-600 dark:text-indigo-400" />
+            <h2 id="page-glossary-title" className="truncate text-base font-semibold text-zinc-900 dark:text-zinc-100">
+              Glosario de la página
+            </h2>
+            <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+              {words.length}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="tap-area rounded-full p-2 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            aria-label="Cerrar glosario"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </header>
+
+        <label className="relative mx-3 mt-3 block">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Filtrar palabras..."
+            className="w-full rounded-xl border border-zinc-200 bg-zinc-50 py-2 pl-9 pr-3 text-sm text-zinc-900 outline-none focus:border-indigo-400 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+          />
+        </label>
+
+        <div className="flex items-center justify-between px-4 py-2 text-[11px] text-zinc-500 dark:text-zinc-400">
+          <span>Toca una palabra para seleccionarla en la página.</span>
+          {completed < words.length && (
+            <span className="flex shrink-0 items-center gap-1">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Diccionario {completed}/{words.length}
+            </span>
+          )}
+        </div>
+
+        <ul className="min-h-0 space-y-2 overflow-y-auto overscroll-contain px-3 pb-4">
+          {visibleWords.map(({ key, token }) => {
+            const lookup = lookups[key];
+            const entry = lookup && typeof lookup !== 'string' ? lookup.entries[0] : undefined;
+            const firstSense = entry?.senses[0];
+            return (
+              <li key={key}>
+                <button
+                  type="button"
+                  onClick={() => onSelectWord(token)}
+                  className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-left transition-colors hover:border-indigo-300 hover:bg-indigo-50/60 dark:border-zinc-800 dark:hover:border-indigo-800 dark:hover:bg-indigo-950/30"
+                >
+                  <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                    <span className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
+                      {token.surface_form}
+                    </span>
+                    {token.reading && token.reading !== token.surface_form && (
+                      <span className="text-xs text-zinc-500 dark:text-zinc-400">{token.reading}</span>
+                    )}
+                    <span className="ml-auto text-[10px] text-indigo-600 dark:text-indigo-300">
+                      {token.pos}
+                    </span>
+                  </span>
+                  {token.basic_form && token.basic_form !== '*' && token.basic_form !== token.surface_form && (
+                    <span className="mt-0.5 block text-[11px] text-zinc-500 dark:text-zinc-400">
+                      Forma base: {token.basic_form}
+                    </span>
+                  )}
+                  {entry && firstSense && (
+                    <span className="mt-1 block text-xs leading-relaxed text-zinc-700 dark:text-zinc-300">
+                      <span className="font-medium">
+                        {entry.kanji.join(' · ') || entry.kana.join(' · ')}
+                      </span>
+                      {entry.kanji.length > 0 && entry.kana.length > 0 && (
+                        <span className="text-zinc-500"> ({entry.kana.join(' · ')})</span>
+                      )}
+                      {' — '}
+                      {firstSense.glosses.slice(0, 4).join('; ')}
+                    </span>
+                  )}
+                  {lookup && typeof lookup !== 'string' && !entry && (
+                    <span className="mt-1 block text-xs text-zinc-400">Sin acepción encontrada.</span>
+                  )}
+                  {typeof lookup === 'string' && (
+                    <span className="mt-1 block text-xs text-rose-600 dark:text-rose-300">
+                      Error al consultar: {lookup}
+                    </span>
+                  )}
+                  {entry && lookup && typeof lookup !== 'string' && lookup.englishFallbackError && (
+                    <span className="mt-1 block text-[10px] text-amber-600 dark:text-amber-300">
+                      {lookup.englishFallbackError}
+                    </span>
+                  )}
+                </button>
+              </li>
+            );
+          })}
+          {visibleWords.length === 0 && (
+            <li className="py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
+              No hay palabras que coincidan.
+            </li>
+          )}
+        </ul>
+      </section>
+    </div>
+  );
+};

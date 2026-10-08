@@ -37,7 +37,13 @@ import {
   TranslationHistoryKind,
 } from '../utils/translationHistory';
 import { ReaderBookBackup } from '../utils/googleDriveBackup';
-import { DictionaryLookup, getDictionarySearchTerms, warmUpDictionary } from '../utils/dictionary';
+import {
+  DictionaryLookup,
+  getDictionarySearchTerms,
+  tokenizeJapanese,
+  warmUpDictionary,
+} from '../utils/dictionary';
+import { PageGlossaryModal, PageWordToken } from './PageGlossaryModal';
 import { BookSearchModal } from './BookSearchModal';
 import {
   addRecentSearch,
@@ -201,6 +207,11 @@ export const EpubReader: React.FC<Props> = ({
   } | null>(null);
   const [readerFit, setReaderFit] = useState({ scale: 1, offsetY: 0 });
   const [isBookmarksOpen, setIsBookmarksOpen] = useState(false);
+  const [isPageGlossaryOpen, setIsPageGlossaryOpen] = useState(false);
+  const [pageWords, setPageWords] = useState<PageWordToken[]>([]);
+  const [isAnalyzingPage, setIsAnalyzingPage] = useState(false);
+  const [isWordSelectionMode, setIsWordSelectionMode] = useState(false);
+  const [wordAnalysisError, setWordAnalysisError] = useState<string | null>(null);
   const [isTocOpen, setIsTocOpen] = useState(false);
   const [tocError, setTocError] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -271,6 +282,21 @@ export const EpubReader: React.FC<Props> = ({
   const shownPageRef = useRef<{ spine: number; page: number } | null>(null);
   const imageDragRef = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null);
   const selectedTextRef = useRef('');
+  const pageWordsRef = useRef<PageWordToken[]>([]);
+  const wordSelectionModeRef = useRef(false);
+  const programmaticWordSelectionRef = useRef(false);
+  const pageAnalysisRequestRef = useRef(0);
+  const wordAnalysisErrorTimerRef = useRef<number | undefined>(undefined);
+  const showWordAnalysisError = useCallback((message: string) => {
+    setWordAnalysisError(message);
+    if (wordAnalysisErrorTimerRef.current !== undefined) {
+      window.clearTimeout(wordAnalysisErrorTimerRef.current);
+    }
+    wordAnalysisErrorTimerRef.current = window.setTimeout(() => {
+      setWordAnalysisError(null);
+      wordAnalysisErrorTimerRef.current = undefined;
+    }, 4500);
+  }, []);
   const backupDirtyRef = useRef(false);
   const pendingReaderBackupRef = useRef<ReaderBookBackup | null>(null);
   const onBookDataChangeRef = useRef(onBookDataChange);
@@ -986,6 +1012,44 @@ export const EpubReader: React.FC<Props> = ({
 
   handleSelectionRef.current = handleSelection;
 
+  const selectPageWord = useCallback((token: PageWordToken) => {
+    const iframe = iframeRef.current;
+    const doc = iframe?.contentDocument;
+    const scroller = doc?.getElementById('reader-scroller');
+    const selection = iframe?.contentWindow?.getSelection();
+    if (
+      !iframe ||
+      !doc ||
+      !scroller ||
+      !selection ||
+      !scroller.contains(token.range.startContainer) ||
+      !scroller.contains(token.range.endContainer)
+    ) return false;
+
+    try {
+      const range = token.range.cloneRange();
+      setIsPageGlossaryOpen(false);
+      setIsSelectionAdjusting(false);
+      pointerActiveRef.current = false;
+      nativeSelectionTookOverRef.current = false;
+      selectedTextRef.current = '';
+      setSelectedText('');
+      setSelectionPos(null);
+      setIsSelectionUnderlined(false);
+      programmaticWordSelectionRef.current = true;
+      selection.removeAllRanges();
+      selection.addRange(range);
+      handleSelectionRef.current();
+      window.setTimeout(() => {
+        programmaticWordSelectionRef.current = false;
+      }, 500);
+      return true;
+    } catch {
+      showWordAnalysisError('No se ha podido seleccionar esa palabra en la página.');
+      return false;
+    }
+  }, [showWordAnalysisError]);
+
   const handleToggleUnderline = useCallback(() => {
     const anchor = selectionAnnotationRef.current;
     const iframe = iframeRef.current;
@@ -1488,6 +1552,11 @@ export const EpubReader: React.FC<Props> = ({
         };
 
         const handleIframeSelectionChange = () => {
+          if (programmaticWordSelectionRef.current) {
+            setIsSelectionAdjusting(false);
+            return;
+          }
+
           const selection = iframe.contentWindow?.getSelection();
           if (selection && selection.rangeCount > 0) {
             const node = selection.anchorNode;
@@ -1596,7 +1665,30 @@ export const EpubReader: React.FC<Props> = ({
           selecting = true;
         };
 
-        const onEnd = (cx: number, allowTapNavigation = true) => {
+        const selectWordAtPoint = (cx: number, cy: number) => {
+          const caretDocument = doc as Document & {
+            caretRangeFromPoint?: (x: number, y: number) => Range | null;
+            caretPositionFromPoint?: (x: number, y: number) => {
+              offsetNode: Node;
+              offset: number;
+            } | null;
+          };
+          const caretRange = caretDocument.caretRangeFromPoint?.(cx, cy);
+          const fallbackPosition = caretRange ? null : caretDocument.caretPositionFromPoint?.(cx, cy);
+          const caretPosition = caretRange
+            ? { node: caretRange.startContainer, offset: caretRange.startOffset }
+            : fallbackPosition
+              ? { node: fallbackPosition.offsetNode, offset: fallbackPosition.offset }
+              : null;
+          if (!caretPosition || caretPosition.node.nodeType !== Node.TEXT_NODE) return false;
+
+          const token = pageWordsRef.current.find(({ range }) =>
+            range.isPointInRange(caretPosition.node, caretPosition.offset)
+          );
+          return token ? selectPageWord(token) : false;
+        };
+
+        const onEnd = (cx: number, cy: number, allowTapNavigation = true) => {
           const dt = Date.now() - st;
           const dx = cx - sx;
 
@@ -1607,7 +1699,11 @@ export const EpubReader: React.FC<Props> = ({
 
           setTimeout(() => {
             const sel = iframe.contentWindow?.getSelection()?.toString().trim();
-            const isTap = allowTapNavigation && !moved && dt < 300;
+            const isTap = (allowTapNavigation || wordSelectionModeRef.current) && !moved && dt < 300;
+            if (isTap && wordSelectionModeRef.current && !openOverlayRef.current) {
+              selectWordAtPoint(cx, cy);
+              return;
+            }
             if (isTap && (selectionOrOverlayAtStart || sel || selectedTextRef.current.trim() || openOverlayRef.current)) {
               iframe.contentWindow?.getSelection()?.removeAllRanges();
               selectedTextRef.current = '';
@@ -1702,6 +1798,7 @@ export const EpubReader: React.FC<Props> = ({
         // the stream the selection paging has to run on.
         doc.addEventListener('pointerdown', () => {
           countDebugRef.current('pdown');
+          programmaticWordSelectionRef.current = false;
           pointerActiveRef.current = true;
           nativeSelectionTookOverRef.current = false;
           lastPointerActivityRef.current = Date.now();
@@ -1745,7 +1842,7 @@ export const EpubReader: React.FC<Props> = ({
         doc.addEventListener('mousemove', (e) => onMove(e.clientX, e.clientY));
         doc.addEventListener('mouseup', (e) => {
           pointerActiveRef.current = false;
-          onEnd(e.clientX);
+          onEnd(e.clientX, e.clientY);
         });
         doc.addEventListener('dblclick', (e) => {
           const target = (e.target as Element | null)?.closest('img, svg');
@@ -1762,6 +1859,7 @@ export const EpubReader: React.FC<Props> = ({
         // touch gestures remain available for regular page swipes.
         doc.addEventListener('touchstart', (e) => {
           countDebugRef.current('tstart');
+          programmaticWordSelectionRef.current = false;
           pointerActiveRef.current = true;
           nativeSelectionTookOverRef.current = false;
           lastPointerActivityRef.current = Date.now();
@@ -1777,7 +1875,9 @@ export const EpubReader: React.FC<Props> = ({
         doc.addEventListener('touchend', (e) => {
           countDebugRef.current('tend');
           if (!isNativeAndroid) pointerActiveRef.current = false;
-          if (e.changedTouches[0]) onEnd(e.changedTouches[0].clientX, false);
+          if (e.changedTouches[0]) {
+            onEnd(e.changedTouches[0].clientX, e.changedTouches[0].clientY, false);
+          }
         }, { passive: true });
         doc.addEventListener('touchcancel', () => {
           countDebugRef.current('tcancel');
@@ -2008,7 +2108,7 @@ export const EpubReader: React.FC<Props> = ({
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [epub, settings, isVertical, isRtl, isNativeAndroid, themeColors, updatePagination, handleSelection]
+    [epub, settings, isVertical, isRtl, isNativeAndroid, themeColors, updatePagination, handleSelection, selectPageWord]
   );
 
   useEffect(() => {
@@ -2171,9 +2271,26 @@ export const EpubReader: React.FC<Props> = ({
   useEffect(() => { totalPagesRef.current = totalPages; }, [totalPages]);
   useEffect(() => { currentSpineRef.current = currentSpineIndex; }, [currentSpineIndex]);
   useEffect(() => {
+    pageAnalysisRequestRef.current += 1;
+    pageWordsRef.current = [];
+    setPageWords([]);
+    wordSelectionModeRef.current = false;
+    setIsWordSelectionMode(false);
+    setIsAnalyzingPage(false);
+    setIsPageGlossaryOpen(false);
+  }, [currentPage, currentSpineIndex]);
+  useEffect(() => {
+    wordSelectionModeRef.current = isWordSelectionMode;
+  }, [isWordSelectionMode]);
+  useEffect(() => () => {
+    if (wordAnalysisErrorTimerRef.current !== undefined) {
+      window.clearTimeout(wordAnalysisErrorTimerRef.current);
+    }
+  }, []);
+  useEffect(() => {
     selectedTextRef.current = selectedText;
-    openOverlayRef.current = isBookmarksOpen || isSearchOpen || isTranslationHistoryOpen || isTocOpen || isSettingsOpen || isTranslateOpen || Boolean(imageViewerSrc);
-  }, [imageViewerSrc, isBookmarksOpen, isSearchOpen, isSettingsOpen, isTocOpen, isTranslateOpen, isTranslationHistoryOpen, selectedText]);
+    openOverlayRef.current = isBookmarksOpen || isSearchOpen || isTranslationHistoryOpen || isPageGlossaryOpen || isTocOpen || isSettingsOpen || isTranslateOpen || Boolean(imageViewerSrc);
+  }, [imageViewerSrc, isBookmarksOpen, isPageGlossaryOpen, isSearchOpen, isSettingsOpen, isTocOpen, isTranslateOpen, isTranslationHistoryOpen, selectedText]);
 
   useEffect(() => {
     const query = selectedText.trim();
@@ -2717,6 +2834,10 @@ export const EpubReader: React.FC<Props> = ({
         return;
       }
       if (isSettingsOpen || isTocOpen || isTranslateOpen) return;
+      if (isPageGlossaryOpen) {
+        if (e.key === 'Escape') setIsPageGlossaryOpen(false);
+        return;
+      }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
         e.preventDefault();
         openSearch(selectedTextRef.current);
@@ -2755,7 +2876,7 @@ export const EpubReader: React.FC<Props> = ({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [imageViewerSrc, isBookmarksOpen, isRtl, isSearchOpen, isSettingsOpen, isTocOpen, isTranslateOpen, isTranslationHistoryOpen, handleNextPage, handlePrevPage, onCloseBook, openSearch]);
+  }, [imageViewerSrc, isBookmarksOpen, isPageGlossaryOpen, isRtl, isSearchOpen, isSettingsOpen, isTocOpen, isTranslateOpen, isTranslationHistoryOpen, handleNextPage, handlePrevPage, onCloseBook, openSearch]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2763,6 +2884,7 @@ export const EpubReader: React.FC<Props> = ({
     void CapacitorApp.addListener('backButton', () => {
       if (cancelled) return;
       if (imageViewerSrc) setImageViewerSrc(null);
+      else if (isPageGlossaryOpen) setIsPageGlossaryOpen(false);
       else if (isTranslationHistoryOpen) setIsTranslationHistoryOpen(false);
       else if (isSearchOpen) setIsSearchOpen(false);
       else if (isBookmarksOpen) setIsBookmarksOpen(false);
@@ -2774,7 +2896,7 @@ export const EpubReader: React.FC<Props> = ({
       cancelled = true;
       if (removeListener) void removeListener();
     };
-  }, [imageViewerSrc, isBookmarksOpen, isSearchOpen, isTranslationHistoryOpen, onCloseBook]);
+  }, [imageViewerSrc, isBookmarksOpen, isPageGlossaryOpen, isSearchOpen, isTranslationHistoryOpen, onCloseBook]);
 
   const handleCopyDebug = async () => {
     const text = debugLines.join('\n');
@@ -2842,6 +2964,135 @@ export const EpubReader: React.FC<Props> = ({
     (item) => resolveSpineIndex(item.href) === currentSpineIndex
   );
 
+  const analyzeCurrentPage = useCallback(async (openGlossary: boolean) => {
+    const request = pageAnalysisRequestRef.current + 1;
+    pageAnalysisRequestRef.current = request;
+    const spineIndex = currentSpineRef.current;
+    const page = currentPageRef.current;
+    const iframe = iframeRef.current;
+    const doc = iframe?.contentDocument;
+    const scroller = doc?.getElementById('reader-scroller');
+    if (!iframe || !doc || !scroller) {
+      showWordAnalysisError('No se ha podido acceder al contenido de la página.');
+      return;
+    }
+
+    setIsAnalyzingPage(true);
+    setWordAnalysisError(null);
+    try {
+      const segments: Array<{ node: Text; start: number; end: number }> = [];
+      let pageText = '';
+      let previousBlock: Element | null = null;
+      const walker = doc.createTreeWalker(scroller, NodeFilter.SHOW_TEXT);
+      let node: Node | null;
+      while ((node = walker.nextNode())) {
+        const textNode = node as Text;
+        const text = textNode.nodeValue || '';
+        if (
+          !text.trim() ||
+          textNode.parentElement?.closest('rt, script, style, noscript, svg')
+        ) continue;
+
+        const range = doc.createRange();
+        range.selectNodeContents(textNode);
+        const visible = Array.from(range.getClientRects()).some((rect) =>
+          rect.right > 0 &&
+          rect.bottom > 0 &&
+          rect.left < iframe.clientWidth &&
+          rect.top < iframe.clientHeight
+        );
+        if (!visible) continue;
+
+        const block = textNode.parentElement?.closest(
+          'p, h1, h2, h3, h4, h5, h6, div, li, blockquote, pre, section, article, td, th, caption'
+        ) || null;
+        if (pageText && block !== previousBlock) pageText += '\n';
+        const start = pageText.length;
+        segments.push({ node: textNode, start, end: start + text.length });
+        pageText += text;
+        previousBlock = block;
+      }
+
+      if (!pageText.trim()) {
+        throw new Error('No se ha encontrado texto visible para analizar en esta página.');
+      }
+
+      const morphology = await tokenizeJapanese(pageText);
+      if (
+        request !== pageAnalysisRequestRef.current ||
+        spineIndex !== currentSpineRef.current ||
+        page !== currentPageRef.current
+      ) return;
+
+      const visibleWords: PageWordToken[] = [];
+      let searchFrom = 0;
+      for (const token of morphology) {
+        const start = pageText.indexOf(token.surface_form, searchFrom);
+        if (start < 0) continue;
+        const end = start + token.surface_form.length;
+        searchFrom = end;
+        if (!token.surface_form.trim() || token.pos === '記号') continue;
+
+        const startSegment = segments.find((candidate) =>
+          start >= candidate.start && start < candidate.end
+        );
+        const endSegment = segments.find((candidate) =>
+          end > candidate.start && end <= candidate.end
+        );
+        if (!startSegment || !endSegment) continue;
+        const range = doc.createRange();
+        range.setStart(startSegment.node, start - startSegment.start);
+        range.setEnd(endSegment.node, end - endSegment.start);
+        const isVisible = Array.from(range.getClientRects()).some((rect) =>
+          rect.right > 0 &&
+          rect.bottom > 0 &&
+          rect.left < iframe.clientWidth &&
+          rect.top < iframe.clientHeight
+        );
+        if (isVisible) visibleWords.push({ ...token, range: range.cloneRange() });
+      }
+
+      if (visibleWords.length === 0) {
+        throw new Error('Kuromoji no ha encontrado palabras seleccionables en esta página.');
+      }
+
+      pageWordsRef.current = visibleWords;
+      setPageWords(visibleWords);
+      if (openGlossary) {
+        setIsPageGlossaryOpen(true);
+      } else {
+        wordSelectionModeRef.current = true;
+        setIsWordSelectionMode(true);
+      }
+    } catch (error) {
+      if (request !== pageAnalysisRequestRef.current) return;
+      showWordAnalysisError(
+        error instanceof Error
+          ? `No se pudo analizar la página: ${error.message}`
+          : 'No se pudo analizar la página con Kuromoji.'
+      );
+    } finally {
+      if (request === pageAnalysisRequestRef.current) setIsAnalyzingPage(false);
+    }
+  }, [showWordAnalysisError]);
+
+  const handleToggleWordSelection = useCallback(() => {
+    if (wordSelectionModeRef.current) {
+      wordSelectionModeRef.current = false;
+      setIsWordSelectionMode(false);
+      return;
+    }
+    void analyzeCurrentPage(false);
+  }, [analyzeCurrentPage]);
+
+  const handleOpenPageGlossary = useCallback(() => {
+    if (pageWordsRef.current.length > 0) {
+      setIsPageGlossaryOpen(true);
+      return;
+    }
+    void analyzeCurrentPage(true);
+  }, [analyzeCurrentPage]);
+
   useLayoutEffect(() => {
     if (!showUi) {
       setReaderFit((current) =>
@@ -2902,6 +3153,10 @@ export const EpubReader: React.FC<Props> = ({
         onOpenFile={onCloseBook}
         settings={settings}
         onUpdateSettings={onUpdateSettings}
+        isWordSelectionMode={isWordSelectionMode}
+        isAnalyzingPage={isAnalyzingPage}
+        onToggleWordSelection={handleToggleWordSelection}
+        onOpenPageGlossary={handleOpenPageGlossary}
       />
 
       {selectionEdgeIndicator && isSelectionAdjusting && (
@@ -3058,6 +3313,14 @@ export const EpubReader: React.FC<Props> = ({
           {tocError}
         </div>
       )}
+      {wordAnalysisError && (
+        <div
+          role="alert"
+          className="fixed bottom-24 left-1/2 z-[85] max-w-[90vw] -translate-x-1/2 rounded-xl bg-rose-950/95 px-4 py-2 text-center text-xs text-white shadow-lg"
+        >
+          {wordAnalysisError}
+        </div>
+      )}
 
       <TextSelectionMenu
         selectedText={selectedText}
@@ -3066,7 +3329,7 @@ export const EpubReader: React.FC<Props> = ({
         // panel open it covered the bottom of the dictionary result. Fold it
         // away while any overlay is on screen, as it is already folded away
         // while the selection is being dragged.
-        isAdjusting={isSelectionAdjusting || isTranslateOpen || isBookmarksOpen || isSearchOpen || isTranslationHistoryOpen || isTocOpen || isSettingsOpen || Boolean(imageViewerSrc)}
+        isAdjusting={isSelectionAdjusting || isTranslateOpen || isBookmarksOpen || isSearchOpen || isTranslationHistoryOpen || isPageGlossaryOpen || isTocOpen || isSettingsOpen || Boolean(imageViewerSrc)}
         dictionaryPreview={dictionaryPreview}
         isUnderlined={isSelectionUnderlined}
         onToggleUnderline={handleToggleUnderline}
@@ -3113,6 +3376,13 @@ export const EpubReader: React.FC<Props> = ({
         onClose={() => setIsTranslationHistoryOpen(false)}
         onRemove={handleRemoveTranslationHistoryEntry}
         onClear={handleClearTranslationHistory}
+      />
+
+      <PageGlossaryModal
+        isOpen={isPageGlossaryOpen}
+        tokens={pageWords}
+        onClose={() => setIsPageGlossaryOpen(false)}
+        onSelectWord={selectPageWord}
       />
 
       <BookSearchModal

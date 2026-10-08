@@ -11,6 +11,8 @@ interface Scope {
   postMessage(message: unknown): void;
   onmessage: ((event: MessageEvent) => void) | null;
   XMLHttpRequest: typeof XMLHttpRequest;
+  location: Location;
+  navigator: Navigator;
 }
 const scope = self as unknown as Scope;
 
@@ -71,8 +73,17 @@ const installDictionaryXhrShim = () => {
     private wrapped: ArrayBuffer | null = null;
 
     open(method: string, url: string | URL, ...rest: unknown[]) {
-      this.dictionaryUrl = String(url).includes('/dict/');
-      return (super.open as (...args: unknown[]) => void)(method, url, ...rest);
+      const requestedUrl = String(url);
+      this.dictionaryUrl = requestedUrl.includes('/dict/');
+      const resolvedUrl = new URL(requestedUrl, scope.location.href);
+      // Android's asset packager strips the .gz suffix and stores these files
+      // decompressed, so request the packaged .dat asset there. The response
+      // getter below re-wraps those bytes for Kuromoji's gzip loader.
+      const assetUrl = /Android/i.test(scope.navigator.userAgent) &&
+        resolvedUrl.hostname === 'localhost'
+        ? requestedUrl.replace(/\.dat\.gz(?=$|[?#])/i, '.dat')
+        : requestedUrl;
+      return (super.open as (...args: unknown[]) => void)(method, assetUrl, ...rest);
     }
 
     private looksLikeHtml(): boolean {
@@ -87,9 +98,12 @@ const installDictionaryXhrShim = () => {
     }
 
     get statusText() {
-      return this.dictionaryUrl && super.status === 200 && this.looksLikeHtml()
-        ? 'Dictionary file not found'
-        : super.statusText;
+      if (!this.dictionaryUrl) return super.statusText;
+      if (super.status === 200 && this.looksLikeHtml()) return 'Dictionary file not found';
+      if (super.status > 0 && super.status !== 200) {
+        return `Dictionary request failed (HTTP ${super.status} ${super.statusText}) ${this.responseURL || 'unknown URL'}`;
+      }
+      return super.statusText;
     }
 
     get response() {
@@ -138,6 +152,7 @@ scope.onmessage = (event: MessageEvent) => {
           surface_form: token.surface_form,
           pos: token.pos,
           basic_form: token.basic_form,
+          reading: token.reading,
         }))
       : [];
     scope.postMessage({ type: 'tokens', id: message.id, tokens });
