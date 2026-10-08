@@ -27,6 +27,7 @@ import {
 import {
   applyTextAnnotations,
   captureTextAnnotation,
+  findTextAnnotationRange,
   readTextAnnotations,
   removeTextAnnotationMarkup,
   TextAnnotation,
@@ -317,6 +318,9 @@ export const EpubReader: React.FC<Props> = ({
     textAnnotationsRef.current = stored;
     return stored;
   });
+  const [annotationPages, setAnnotationPages] = useState<Map<string, { page: number; pageCount: number } | null>>(
+    () => new Map()
+  );
   const [bookmarks, setBookmarks] = useState<ReadingPosition[]>(() =>
     readBookmarks(`${bookStorageKey}_bookmark`, epub.spine.length)
   );
@@ -602,11 +606,13 @@ export const EpubReader: React.FC<Props> = ({
     };
     setBookmarks((existing) => {
       const alreadySaved = existing.some((item) =>
-        item.spineIndex === currentPosition.spineIndex && item.page === currentPosition.page
+        item.spineIndex === currentPosition.spineIndex
+        && mapPageToLayout(item.page, item.pageCount, currentPosition.pageCount) === currentPosition.page
       );
       return alreadySaved
         ? existing.filter((item) =>
-          item.spineIndex !== currentPosition.spineIndex || item.page !== currentPosition.page
+          item.spineIndex !== currentPosition.spineIndex
+          || mapPageToLayout(item.page, item.pageCount, currentPosition.pageCount) !== currentPosition.page
         )
         : [...existing, currentPosition].sort((a, b) =>
           a.spineIndex - b.spineIndex || a.page - b.page
@@ -616,9 +622,21 @@ export const EpubReader: React.FC<Props> = ({
 
   const handleRemoveBookmark = useCallback((position: ReadingPosition) => {
     markReaderDataChanged();
-    setBookmarks((existing) => existing.filter((item) =>
-      item.spineIndex !== position.spineIndex || item.page !== position.page
-    ));
+    const currentCount = chapterPageCountsRef.current[position.spineIndex] || position.pageCount || 1;
+    const targetPage = position.page;
+    setBookmarks((existing) => existing.filter((item) => {
+      if (item.spineIndex !== position.spineIndex) return true;
+      const currentPage = mapPageToLayout(item.page, item.pageCount, currentCount);
+      return currentPage !== targetPage
+        && item.page !== position.originalPage;
+    }));
+  }, [markReaderDataChanged]);
+
+  const handleRemoveTextAnnotation = useCallback((annotation: TextAnnotation) => {
+    markReaderDataChanged();
+    const next = textAnnotationsRef.current.filter((item) => item.id !== annotation.id);
+    textAnnotationsRef.current = next;
+    setTextAnnotations(next);
   }, [markReaderDataChanged]);
 
   const themeColors = {
@@ -2578,11 +2596,16 @@ export const EpubReader: React.FC<Props> = ({
     return {
       ...position,
       page,
+      originalPage: position.page,
       ...(currentCount ? { pageCount: currentCount } : {}),
       chapterLabel,
       bookPage: getGlobalPage(position.spineIndex, page) + 1,
     };
-  });
+  }).filter((bookmark, index, items) =>
+    items.findIndex((candidate) =>
+      candidate.spineIndex === bookmark.spineIndex && candidate.page === bookmark.page
+    ) === index
+  );
   // Load the morphological dictionary in its worker while the book is read, so
   // the first word selected already finds it ready.
   useEffect(() => {
@@ -2702,10 +2725,134 @@ export const EpubReader: React.FC<Props> = ({
       hits.map(() => 0),
     ), [isVertical, withHiddenChapter]);
 
+  useEffect(() => {
+    if (!isBookmarksOpen || !textAnnotations.length) return;
+    let cancelled = false;
+    const annotationsBySpine = new Map<number, TextAnnotation[]>();
+    textAnnotations.forEach((annotation) => {
+      const chapterAnnotations = annotationsBySpine.get(annotation.spineIndex) || [];
+      chapterAnnotations.push(annotation);
+      annotationsBySpine.set(annotation.spineIndex, chapterAnnotations);
+    });
+
+    const measureAnnotations = async () => {
+      const nextPages = new Map<string, { page: number; pageCount: number } | null>();
+      for (const [spineIndex, annotations] of annotationsBySpine) {
+        try {
+          const locations = await withHiddenChapter(
+            spineIndex,
+            (scroller, doc, vw, vh) => {
+              const pageCount = countScrollerPages(doc, scroller, isVertical, vw, vh);
+              return annotations.map((annotation) => {
+                const range = findTextAnnotationRange(scroller, annotation);
+                return range
+                  ? {
+                    id: annotation.id,
+                    page: Math.min(pageCount - 1, pageOfRange(range, scroller, isVertical, vw, vh)),
+                    pageCount,
+                  }
+                  : null;
+              });
+            },
+            annotations.map(() => null),
+          );
+          locations.forEach((location, index) => {
+            nextPages.set(
+              annotations[index].id,
+              location ? { page: location.page, pageCount: location.pageCount } : null,
+            );
+          });
+        } catch (error) {
+          console.error(`No se pudo calcular la página de los subrayados de la sección ${spineIndex + 1}.`, error);
+          annotations.forEach((annotation) => nextPages.set(annotation.id, null));
+        }
+      }
+      if (!cancelled) setAnnotationPages(nextPages);
+    };
+
+    setAnnotationPages(new Map());
+    void measureAnnotations();
+    return () => {
+      cancelled = true;
+    };
+  }, [isBookmarksOpen, isVertical, textAnnotations, withHiddenChapter]);
+
+  const annotationItems = textAnnotations.map((annotation) => {
+    const location = annotationPages.get(annotation.id);
+    const pageLabel = !isBookmarksOpen
+      ? undefined
+      : location === undefined
+        ? 'Calculando página…'
+        : location === null
+          ? 'No se pudo localizar la página'
+          : isBookPaginationReady
+            ? `Página ${location.page + 1} del capítulo · Página ${getGlobalPage(annotation.spineIndex, location.page) + 1} del libro`
+            : `Página ${location.page + 1} del capítulo`;
+    return {
+      ...annotation,
+      chapterLabel: spineLabels[annotation.spineIndex] || `Sección ${annotation.spineIndex + 1}`,
+      pageLabel,
+    };
+  });
+
   const findHitPage = useCallback(async (hit: SearchHit): Promise<number> => {
     const [page] = await getHitPages(hit.spineIndex, [hit]);
     return page ?? 0;
   }, [getHitPages]);
+
+  const handleSelectTextAnnotation = useCallback(async (annotation: TextAnnotation) => {
+    markReaderDataChanged();
+    setIsBookmarksOpen(false);
+    try {
+      const target = await withHiddenChapter(
+        annotation.spineIndex,
+        (scroller, doc, vw, vh) => {
+          const range = findTextAnnotationRange(scroller, annotation);
+          if (!range) return null;
+          const pageCount = countScrollerPages(doc, scroller, isVertical, vw, vh);
+          return {
+            page: Math.min(pageCount - 1, pageOfRange(range, scroller, isVertical, vw, vh)),
+            pageCount,
+          };
+        },
+        null,
+      );
+      if (!target) {
+        showWordAnalysisError('No se ha podido localizar esta frase subrayada en el libro.');
+        return;
+      }
+
+      await loadChapter(annotation.spineIndex, target.page, target.pageCount);
+      window.setTimeout(() => {
+        if (currentSpineRef.current !== annotation.spineIndex) return;
+        const iframe = iframeRef.current;
+        const scroller = iframe?.contentDocument?.getElementById('reader-scroller');
+        const range = scroller && findTextAnnotationRange(scroller, annotation);
+        if (!iframe || !scroller || !range) return;
+        const actualPage = pageOfRange(
+          range,
+          scroller,
+          isVertical,
+          iframe.clientWidth || window.innerWidth,
+          iframe.clientHeight || window.innerHeight,
+        );
+        if (actualPage === currentPageRef.current || actualPage >= totalPagesRef.current) return;
+        currentPageRef.current = actualPage;
+        setCurrentPage(actualPage);
+        updatePagination();
+      }, 1300);
+    } catch (error) {
+      console.error('No se pudo abrir el subrayado guardado.', error);
+      showWordAnalysisError('No se ha podido abrir esta frase subrayada.');
+    }
+  }, [
+    isVertical,
+    loadChapter,
+    markReaderDataChanged,
+    showWordAnalysisError,
+    updatePagination,
+    withHiddenChapter,
+  ]);
 
   // "p. 123" counting the whole book once its pagination is known, otherwise
   // the page within the chapter.
@@ -2789,13 +2936,7 @@ export const EpubReader: React.FC<Props> = ({
   }, [findHitPage, getLiveHitPage, highlightSearchHit, loadChapter, markReaderDataChanged, updatePagination]);
 
   const bookmarkPageMarkers = isBookPaginationReady
-    ? bookmarks.map((position) => {
-      const currentCount = chapterPageCountsRef.current[position.spineIndex] || 0;
-      const page = currentCount
-        ? mapPageToLayout(position.page, position.pageCount, currentCount)
-        : position.page;
-      return getGlobalPage(position.spineIndex, page);
-    })
+    ? bookmarkItems.map((bookmark) => getGlobalPage(bookmark.spineIndex, bookmark.page))
     : [];
 
   // Reload the chapter when a style that changes the layout is modified.
@@ -3443,7 +3584,8 @@ export const EpubReader: React.FC<Props> = ({
         onToggleToc={() => setIsTocOpen(true)}
         onOpenBookmarks={() => setIsBookmarksOpen(true)}
         onOpenSearch={() => openSearch()}
-        bookmarkCount={bookmarks.length}
+        bookmarkCount={bookmarkItems.length}
+        annotationCount={textAnnotations.length}
         onOpenHistory={() => setIsTranslationHistoryOpen(true)}
         historyCount={translationHistory.length}
         onToggleSettings={() => setIsSettingsOpen(true)}
@@ -3737,9 +3879,12 @@ export const EpubReader: React.FC<Props> = ({
       <BookmarksModal
         isOpen={isBookmarksOpen}
         bookmarks={bookmarkItems}
+        annotations={annotationItems}
         onClose={() => setIsBookmarksOpen(false)}
         onSelect={handleSelectBookmark}
         onRemove={handleRemoveBookmark}
+        onSelectAnnotation={handleSelectTextAnnotation}
+        onRemoveAnnotation={handleRemoveTextAnnotation}
       />
 
       <ReaderFooter

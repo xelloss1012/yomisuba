@@ -117,6 +117,37 @@ usuarios ni archivo ZIP. Los ajustes y los datos de lectura se guardan en
 La app lista los EPUB de esa carpeta y el selector permite importar los que se
 hayan copiado allí manualmente.
 
+### Futuras fuentes de lectura (propuesta)
+
+El lector está acoplado actualmente a la estructura de un EPUB, pero no sería
+necesario rehacer sus funciones para admitir otros tipos de entrada. Una
+evolución posible es normalizar cada fuente como un documento con metadatos,
+secciones y contenido HTML, y entregarlo al mismo motor de lectura. Así se
+podrían reutilizar la paginación, los temas, el cambio de orientación del
+texto, la búsqueda, el diccionario, la traducción, los marcadores y los
+subrayados.
+
+| Entrada | Esfuerzo orientativo | Consideraciones |
+| --- | --- | --- |
+| Texto pegado | Bajo | Crear un documento con formato básico y secciones navegables. |
+| Fichero TXT | Bajo | Elegir cómo interpretar saltos de línea y dividir textos largos en secciones. |
+| Fichero HTML local | Bajo–medio | Aprovechar encabezados para el índice y resolver imágenes, estilos y otros recursos locales. |
+| Página web por URL | Medio–alto o superior | CORS, inicios de sesión, contenido generado por JavaScript y protecciones de los sitios pueden impedir extraer o reconstruir la página. |
+
+Para que el comportamiento sea consistente, cada entrada debería tener un
+identificador estable y propio: el progreso, los marcadores y las anotaciones
+deben permanecer separados entre documentos aunque tengan títulos iguales. La
+adaptación también tendría que definir cómo resolver los recursos del documento
+y cómo obtener una tabla de contenidos cuando la fuente no la proporciona.
+
+Una implementación gradual podría empezar por texto pegado y TXT, continuar
+con HTML local y dejar las URL para una fase posterior con un alcance explícito
+(por ejemplo, páginas públicas compatibles, sin garantizar sitios con login,
+paywall o restricciones anti-extracción). Como orden de magnitud inicial,
+texto pegado, TXT y HTML local podrían requerir 1–3 días incluyendo integración
+y pruebas; las URL podrían añadir 2–5 días o más, según los sitios que se
+pretendan soportar. Son estimaciones preliminares, no un compromiso de entrega.
+
 Para habilitar Drive:
 
 1. En Google Cloud Console crea un proyecto, activa **Google Drive API** y

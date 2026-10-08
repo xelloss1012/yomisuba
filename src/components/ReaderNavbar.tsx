@@ -23,6 +23,7 @@ interface Props {
   onOpenBookmarks: () => void;
   onOpenSearch: () => void;
   bookmarkCount: number;
+  annotationCount: number;
   onOpenHistory: () => void;
   historyCount: number;
   onToggleSettings: () => void;
@@ -42,6 +43,7 @@ export const ReaderNavbar: React.FC<Props> = ({
   onOpenBookmarks,
   onOpenSearch,
   bookmarkCount,
+  annotationCount,
   onOpenHistory,
   historyCount,
   onToggleSettings,
@@ -87,14 +89,14 @@ export const ReaderNavbar: React.FC<Props> = ({
           </button>
           <button
             onClick={onOpenBookmarks}
-            title={`Marcadores (${bookmarkCount})`}
-            aria-label={`Abrir marcadores (${bookmarkCount})`}
+            title={`Marcadores y subrayados (${bookmarkCount + annotationCount})`}
+            aria-label={`Abrir marcadores y subrayados (${bookmarkCount + annotationCount})`}
             className="tap-area relative rounded-lg p-2 text-zinc-700 transition-colors hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
           >
             <List className="h-4 w-4" />
-            {bookmarkCount > 0 && (
+            {bookmarkCount + annotationCount > 0 && (
               <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-400 px-1 text-[9px] font-bold text-amber-950">
-                {bookmarkCount}
+                {bookmarkCount + annotationCount}
               </span>
             )}
           </button>

@@ -137,6 +137,16 @@ const getRangeAtOffsets = (root: HTMLElement, start: number, end: number) => {
 
 const textContent = (root: HTMLElement) => textNodes(root).map((node) => node.data).join('');
 
+export const findTextAnnotationRange = (
+  root: HTMLElement,
+  annotation: TextAnnotation,
+): Range | null => {
+  const offset = findAnnotationOffset(textContent(root), annotation);
+  return offset >= 0
+    ? getRangeAtOffsets(root, offset, offset + annotation.quote.length)
+    : null;
+};
+
 export const applyTextAnnotations = (
   root: HTMLElement,
   annotations: TextAnnotation[],
@@ -149,11 +159,8 @@ export const applyTextAnnotations = (
 
   const ranges: Range[] = [];
   for (const annotation of annotations) {
-    const offset = findAnnotationOffset(textContent(root), annotation);
-    if (offset >= 0) {
-      const range = getRangeAtOffsets(root, offset, offset + annotation.quote.length);
-      if (range) ranges.push(range);
-    }
+    const range = findTextAnnotationRange(root, annotation);
+    if (range) ranges.push(range);
   }
 
   if (ranges.length > 0) {
