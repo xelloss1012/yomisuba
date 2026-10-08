@@ -9,6 +9,7 @@ import {
 export interface PageWordToken extends JapaneseMorphologicalToken {
   range: Range;
   joinedSuffix?: boolean;
+  joinedConjugation?: boolean;
 }
 
 export type PageWordCategory = 'noun' | 'verb' | 'adjective' | 'particle' | 'other';
@@ -82,7 +83,10 @@ export const PageGlossaryModal: React.FC<Props> = ({
           if (!item) return;
           try {
             results[item.key] = await getDictionarySearchTerms(
-              !item.token.joinedSuffix && item.token.basic_form && item.token.basic_form !== '*'
+              !item.token.joinedSuffix &&
+              !item.token.joinedConjugation &&
+              item.token.basic_form &&
+              item.token.basic_form !== '*'
                 ? item.token.basic_form
                 : item.token.surface_form
             );

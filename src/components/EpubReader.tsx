@@ -106,9 +106,14 @@ const clearPageWordHighlights = (doc?: Document | null) => {
     CSS?: { highlights?: { delete(name: string): void } };
   }) | null)?.CSS?.highlights;
   pageWordHighlightNames.forEach((category) => highlights?.delete(`reader-word-${category}`));
+  doc?.querySelector('[data-page-word-separators]')?.remove();
 };
 
-const applyPageWordHighlights = (doc: Document, tokens: PageWordToken[]) => {
+const applyPageWordHighlights = (
+  doc: Document,
+  tokens: PageWordToken[],
+  vertical: boolean,
+) => {
   const win = doc.defaultView as (Window & {
     Highlight?: { new (...ranges: Range[]): unknown };
     CSS?: { highlights?: { set(name: string, value: unknown): void; delete(name: string): void } };
@@ -133,6 +138,31 @@ const applyPageWordHighlights = (doc: Document, tokens: PageWordToken[]) => {
     }
     highlights.set(`reader-word-${category}`, new HighlightConstructor(...ranges));
   });
+
+  const previousSeparators = doc.querySelector('[data-page-word-separators]');
+  previousSeparators?.remove();
+  const separatorLayer = doc.createElement('div');
+  separatorLayer.setAttribute('data-page-word-separators', '');
+  separatorLayer.style.cssText = 'position:fixed;inset:0;z-index:5;pointer-events:none;overflow:hidden;';
+  const separatorColors: Record<PageWordCategory, string> = {
+    noun: 'rgba(14,116,144,0.45)',
+    verb: 'rgba(180,83,9,0.45)',
+    adjective: 'rgba(4,120,87,0.45)',
+    particle: 'rgba(109,40,217,0.42)',
+    other: 'rgba(82,82,91,0.4)',
+  };
+  tokens.forEach((token) => {
+    const rects = Array.from(token.range.getClientRects());
+    const rect = rects[rects.length - 1];
+    if (!rect || rect.width <= 0 || rect.height <= 0) return;
+    const separator = doc.createElement('span');
+    const color = separatorColors[getPageWordCategory(token)];
+    separator.style.cssText = vertical
+      ? `position:absolute;left:${rect.left}px;top:${rect.bottom - 1}px;width:${rect.width}px;height:1px;box-shadow:0 1px 2px ${color};`
+      : `position:absolute;left:${rect.right - 1}px;top:${rect.top}px;width:1px;height:${rect.height}px;box-shadow:1px 0 2px ${color};`;
+    separatorLayer.appendChild(separator);
+  });
+  doc.body.appendChild(separatorLayer);
 };
 
 interface PaginationCacheEntry {
@@ -743,6 +773,7 @@ export const EpubReader: React.FC<Props> = ({
       text-justify: inter-ideograph;
     }
     ::selection { background: #818cf8; color: #fff; }
+    #reader-scroller { text-shadow: 0 0 0.35px currentColor; }
     img, svg { max-height: ${imgMaxH}; max-width: ${imgMaxW}; object-fit: contain;
       break-inside: avoid-column; page-break-inside: avoid;
       margin: 0.4rem auto; display: inline-block; vertical-align: top; }
@@ -1420,6 +1451,7 @@ export const EpubReader: React.FC<Props> = ({
         const pageSwipeThreshold = 96;
 
         let sx = 0, sy = 0, st = 0, moved = false, selecting = false;
+        let lastTouchEndAt = 0;
         let gestureNudgeStart = 0;
         let selectionOrOverlayAtStart = false;
 
@@ -1748,8 +1780,7 @@ export const EpubReader: React.FC<Props> = ({
             const sel = iframe.contentWindow?.getSelection()?.toString().trim();
             const isTap = (allowTapNavigation || wordSelectionModeRef.current) && !moved && dt < 300;
             if (isTap && wordSelectionModeRef.current && !openOverlayRef.current) {
-              selectWordAtPoint(cx, cy);
-              return;
+              if (selectWordAtPoint(cx, cy)) return;
             }
             if (isTap && (selectionOrOverlayAtStart || sel || selectedTextRef.current.trim() || openOverlayRef.current)) {
               iframe.contentWindow?.getSelection()?.removeAllRanges();
@@ -1889,6 +1920,7 @@ export const EpubReader: React.FC<Props> = ({
         doc.addEventListener('mousemove', (e) => onMove(e.clientX, e.clientY));
         doc.addEventListener('mouseup', (e) => {
           pointerActiveRef.current = false;
+          if (Date.now() - lastTouchEndAt < 700) return;
           onEnd(e.clientX, e.clientY);
         });
         doc.addEventListener('dblclick', (e) => {
@@ -1921,9 +1953,10 @@ export const EpubReader: React.FC<Props> = ({
         }, { passive: true });
         doc.addEventListener('touchend', (e) => {
           countDebugRef.current('tend');
+          lastTouchEndAt = Date.now();
           if (!isNativeAndroid) pointerActiveRef.current = false;
           if (e.changedTouches[0]) {
-            onEnd(e.changedTouches[0].clientX, e.changedTouches[0].clientY, false);
+            onEnd(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
           }
         }, { passive: true });
         doc.addEventListener('touchcancel', () => {
@@ -3089,11 +3122,16 @@ export const EpubReader: React.FC<Props> = ({
       }
 
       const mergedTokens: Array<{
-        token: JapaneseMorphologicalToken & { joinedSuffix?: boolean; joinedTeForm?: boolean };
+        token: JapaneseMorphologicalToken & {
+          joinedSuffix?: boolean;
+          joinedConjugation?: boolean;
+          joinedTeForm?: boolean;
+        };
         start: number;
         end: number;
       }> = [];
       const auxiliaryTeFormVerbs = new Set(['いる', 'おる', 'おく', 'しまう', 'くる', 'いく', 'みる', 'ある']);
+      const contractedTeRuForms = new Set(['てる', 'でる']);
       locatedTokens.forEach(({ token, start, end }) => {
         if (!token.surface_form.trim() || token.pos === '記号') return;
         const previous = mergedTokens[mergedTokens.length - 1];
@@ -3114,8 +3152,18 @@ export const EpubReader: React.FC<Props> = ({
         const isTeFormAuxiliary = token.pos === '動詞' &&
           previous?.token.joinedTeForm === true &&
           auxiliaryTeFormVerbs.has(token.basic_form || token.surface_form);
+        const isContractedTeRu = token.pos === '動詞' &&
+          token.pos_detail_1 === '非自立' &&
+          contractedTeRuForms.has(token.surface_form) &&
+          previous?.token.pos === '動詞';
 
-        if (adjacent && previous && (isSuffix || isAuxiliary || isTeFormConnector || isTeFormAuxiliary)) {
+        if (adjacent && previous && (
+          isSuffix ||
+          isAuxiliary ||
+          isTeFormConnector ||
+          isTeFormAuxiliary ||
+          isContractedTeRu
+        )) {
           const mergedSurface = previous.token.surface_form + token.surface_form;
           previous.token = {
             ...previous.token,
@@ -3127,6 +3175,11 @@ export const EpubReader: React.FC<Props> = ({
               ? mergedSurface
               : previous.token.basic_form,
             joinedSuffix: Boolean(previous.token.joinedSuffix || isSuffix),
+            joinedConjugation: Boolean(
+              previous.token.joinedConjugation ||
+              isTeFormAuxiliary ||
+              isContractedTeRu
+            ),
             joinedTeForm: Boolean(
               isTeFormConnector ||
               (previous.token.joinedTeForm && !isTeFormAuxiliary)
@@ -3175,7 +3228,7 @@ export const EpubReader: React.FC<Props> = ({
 
       pageWordsRef.current = visibleWords;
       setPageWords(visibleWords);
-      applyPageWordHighlights(doc, visibleWords);
+      applyPageWordHighlights(doc, visibleWords, isVertical);
       if (openGlossary) {
         setIsPageGlossaryOpen(true);
       } else {
@@ -3198,6 +3251,7 @@ export const EpubReader: React.FC<Props> = ({
     if (wordSelectionModeRef.current) {
       wordSelectionModeRef.current = false;
       setIsWordSelectionMode(false);
+      clearPageWordHighlights(iframeRef.current?.contentDocument);
       return;
     }
     void analyzeCurrentPage(false);
