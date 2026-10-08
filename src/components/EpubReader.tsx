@@ -1621,7 +1621,7 @@ export const EpubReader: React.FC<Props> = ({
           const y = isVertical
             ? direction === 'previous'
               ? Math.max(24, padTop / 2)
-              : Math.max(24, Math.min(iframe.clientHeight - 24, focusY + 96))
+              : Math.max(24, Math.min(iframe.clientHeight - 24, focusY + 48))
             : focusY;
           const indicator = {
             direction,
