@@ -262,7 +262,6 @@ export const EpubReader: React.FC<Props> = ({
 }) => {
   const [currentSpineIndex, setCurrentSpineIndex] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
-  const [pageNudge, setPageNudge] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [bookTotalPages, setBookTotalPages] = useState(1);
   const [chapterPageCounts, setChapterPageCounts] = useState<number[]>([]);
@@ -639,12 +638,12 @@ export const EpubReader: React.FC<Props> = ({
     setTextAnnotations(next);
   }, [markReaderDataChanged]);
 
-  const themeColors = {
+  const themeColors = useMemo(() => ({
     light: { bg: '#ffffff', text: '#18181b' },
     paper: { bg: '#faf7f0', text: '#2c2825' },
     sepia: { bg: '#f4ede4', text: '#433428' },
     dark: { bg: '#18181b', text: '#e4e4e7' },
-  }[settings.theme];
+  }[settings.theme]), [settings.theme]);
 
   const getFontFamilyCss = useCallback((font: string) => {
     switch (font) {
@@ -800,6 +799,14 @@ export const EpubReader: React.FC<Props> = ({
       text-align: justify;
       text-justify: inter-ideograph;
     }
+    ${isVertical ? `
+    #reader-scroller > * {
+      padding-top: ${padTop}px;
+      padding-bottom: ${padBottom}px;
+      margin-top: -${padTop}px;
+      margin-bottom: -${padBottom}px;
+    }
+    ` : ''}
     ::selection { background: #818cf8; color: #fff; }
     #reader-scroller { text-shadow: 0 0 0.35px currentColor; }
     img, svg { max-height: ${imgMaxH}; max-width: ${imgMaxW}; object-fit: contain;
@@ -1210,7 +1217,6 @@ export const EpubReader: React.FC<Props> = ({
 
     if (page < pages - 1) {
       pageNudgeRef.current = 0;
-      setPageNudge(0);
       currentPageRef.current = page + 1;
       saveReadingPosition({
         spineIndex: spine,
@@ -1239,7 +1245,6 @@ export const EpubReader: React.FC<Props> = ({
 
     if (page > 0) {
       pageNudgeRef.current = 0;
-      setPageNudge(0);
       currentPageRef.current = page - 1;
       saveReadingPosition({
         spineIndex: spine,
@@ -1800,7 +1805,6 @@ export const EpubReader: React.FC<Props> = ({
           const dx = cx - sx;
 
           if (gestureAdjustmentEnabled && moved && Math.abs(dx) <= nudgeLimit) {
-            setPageNudge(pageNudgeRef.current);
             return;
           }
 
@@ -2027,7 +2031,6 @@ export const EpubReader: React.FC<Props> = ({
 
           currentSpineRef.current = spineIndex;
           pageNudgeRef.current = 0;
-          setPageNudge(0);
           setCurrentSpineIndex(spineIndex);
           setIsReaderPositioned(true);
           targetApplied = true;
@@ -2519,18 +2522,6 @@ export const EpubReader: React.FC<Props> = ({
   // Expose page-turn handlers to React world (footer buttons, keyboard)
   const handleNextPage = useCallback(() => doNextRef.current(), []);
   const handlePrevPage = useCallback(() => doPrevRef.current(), []);
-  const handleNudgePage = useCallback((delta: number) => {
-    const next = Math.max(-192, Math.min(192, pageNudgeRef.current + delta));
-    pageNudgeRef.current = next;
-    setPageNudge(next);
-    updatePagination();
-  }, [updatePagination]);
-  const handleResetNudge = useCallback(() => {
-    pageNudgeRef.current = 0;
-    setPageNudge(0);
-    updatePagination();
-  }, [updatePagination]);
-
   const handleSeekPage = useCallback((requestedPage: number) => {
     if (!isBookPaginationReady || !bookTotalPages) return;
     markReaderDataChanged();
@@ -2690,15 +2681,20 @@ export const EpubReader: React.FC<Props> = ({
       doc.write(buildChapterDocument(rawHtml).html);
       doc.close();
       if (isVertical) wrapVerticalPunctuation(doc);
-      await doc.fonts?.ready;
-      await Promise.race([
-        Promise.all(Array.from(doc.images).map((image) => image.complete
-          ? Promise.resolve()
-          : new Promise<void>((resolve) => {
-            image.addEventListener('load', () => resolve(), { once: true });
-            image.addEventListener('error', () => resolve(), { once: true });
-          }))),
-        new Promise<void>((resolve) => window.setTimeout(resolve, 1200)),
+      await Promise.all([
+        Promise.race([
+          doc.fonts?.ready?.catch(() => undefined),
+          new Promise<void>((resolve) => window.setTimeout(resolve, 1200)),
+        ]),
+        Promise.race([
+          Promise.all(Array.from(doc.images).map((image) => image.complete
+            ? Promise.resolve()
+            : new Promise<void>((resolve) => {
+              image.addEventListener('load', () => resolve(), { once: true });
+              image.addEventListener('error', () => resolve(), { once: true });
+            }))),
+          new Promise<void>((resolve) => window.setTimeout(resolve, 1200)),
+        ]),
       ]);
       await new Promise<void>((resolve) => window.setTimeout(resolve, 40));
       const scroller = doc.getElementById('reader-scroller');
@@ -2736,7 +2732,6 @@ export const EpubReader: React.FC<Props> = ({
     });
 
     const measureAnnotations = async () => {
-      const nextPages = new Map<string, { page: number; pageCount: number } | null>();
       for (const [spineIndex, annotations] of annotationsBySpine) {
         try {
           const locations = await withHiddenChapter(
@@ -2756,18 +2751,25 @@ export const EpubReader: React.FC<Props> = ({
             },
             annotations.map(() => null),
           );
+          if (cancelled) return;
+          const chapterPages = new Map<string, { page: number; pageCount: number } | null>();
           locations.forEach((location, index) => {
-            nextPages.set(
+            chapterPages.set(
               annotations[index].id,
               location ? { page: location.page, pageCount: location.pageCount } : null,
             );
           });
+          setAnnotationPages((existing) => new Map([...existing, ...chapterPages]));
         } catch (error) {
           console.error(`No se pudo calcular la página de los subrayados de la sección ${spineIndex + 1}.`, error);
-          annotations.forEach((annotation) => nextPages.set(annotation.id, null));
+          if (cancelled) return;
+          setAnnotationPages((existing) => {
+            const next = new Map(existing);
+            annotations.forEach((annotation) => next.set(annotation.id, null));
+            return next;
+          });
         }
       }
-      if (!cancelled) setAnnotationPages(nextPages);
     };
 
     setAnnotationPages(new Map());
@@ -3903,9 +3905,6 @@ export const EpubReader: React.FC<Props> = ({
         onPrevPage={handlePrevPage}
         onNextPage={handleNextPage}
         onSeekPage={handleSeekPage}
-        onNudgePage={handleNudgePage}
-        onResetNudge={handleResetNudge}
-        pageNudge={pageNudge}
         onPrevChapter={handlePrevChapter}
         onNextChapter={handleNextChapter}
         bookmarkPages={bookmarkPageMarkers}

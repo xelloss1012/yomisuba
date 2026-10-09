@@ -65,7 +65,7 @@ export const ReaderNavbar: React.FC<Props> = ({
     >
       <div className="bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md border-b border-zinc-200/80 dark:border-zinc-800/80 px-3 py-2.5 shadow-sm">
         <div
-          className="flex min-w-0 items-center gap-1 overflow-x-auto [&::-webkit-scrollbar]:hidden"
+          className="flex min-w-0 items-center gap-1 overflow-x-auto pt-1 [&::-webkit-scrollbar]:hidden"
           style={{ scrollbarWidth: 'none' }}
         >
           {/* Navigation and book actions */}

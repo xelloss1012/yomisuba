@@ -18,9 +18,6 @@ interface Props {
   onPrevPage: () => void;
   onNextPage: () => void;
   onSeekPage: (page: number) => void;
-  onNudgePage: (delta: number) => void;
-  onResetNudge: () => void;
-  pageNudge: number;
   onPrevChapter: () => void;
   onNextChapter: () => void;
   bookmarkPages: number[];
@@ -42,9 +39,6 @@ export const ReaderFooter: React.FC<Props> = ({
   onPrevPage,
   onNextPage,
   onSeekPage,
-  onNudgePage,
-  onResetNudge,
-  pageNudge,
   onPrevChapter,
   onNextChapter,
   bookmarkPages,
@@ -142,33 +136,6 @@ export const ReaderFooter: React.FC<Props> = ({
             })}
           </div>
         </div>
-        <div className="mb-2 flex items-center justify-center gap-2 text-[10px] text-zinc-500 dark:text-zinc-400">
-          <button
-            onClick={() => onNudgePage(48)}
-            className="tap-area rounded-lg px-2 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-40"
-            disabled={pageNudge <= -192}
-            title="Desplazar la vista hacia la izquierda"
-          >
-            ◀ Ajustar
-          </button>
-          <button
-            onClick={onResetNudge}
-            className="tap-area rounded-lg px-2 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-40"
-            disabled={pageNudge === 0}
-            title="Restablecer el alineado de la página"
-          >
-            {pageNudge === 0 ? 'Alineado' : 'Restablecer'}
-          </button>
-          <button
-            onClick={() => onNudgePage(-48)}
-            className="tap-area rounded-lg px-2 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-40"
-            disabled={pageNudge >= 192}
-            title="Desplazar la vista hacia la derecha"
-          >
-            Ajustar ▶
-          </button>
-        </div>
-
         {/* Navigation buttons & Page Indicator */}
         <div className="flex items-center justify-between gap-1.5 sm:gap-3">
           {/* Chapter Jump Back */}
