@@ -4,6 +4,7 @@ import { ReaderSettingsState } from '../types/epub';
 import { RecentBook, saveRecentBook } from './recentBooks';
 import { extractEpubCoverBlob } from './epubParser';
 import { TranslationFavorite } from './translationFavorites';
+import { FREQUENT_QUERIES_VERSION, FrequentQuery } from './frequentQueries';
 
 const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const DRIVE_READONLY_SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
@@ -61,6 +62,8 @@ export interface ReaderBookBackup {
     response: string;
   }>;
   favorites: TranslationFavorite[];
+  frequentQueries?: FrequentQuery[];
+  frequentQueriesVersion?: number;
 }
 
 let initializePromise: Promise<void> | null = null;
@@ -587,6 +590,17 @@ export function applyGoogleDriveReaderData(data: ReaderBookBackup): void {
   } else {
     localStorage.removeItem(`${prefix}_translation_favorites`);
   }
+  if (data.frequentQueriesVersion === FREQUENT_QUERIES_VERSION && data.frequentQueries !== undefined) {
+    if (data.frequentQueries.length) {
+      localStorage.setItem(`${prefix}_frequent_queries`, JSON.stringify(data.frequentQueries));
+    } else {
+      localStorage.removeItem(`${prefix}_frequent_queries`);
+    }
+    localStorage.setItem(`${prefix}_frequent_queries_version`, String(FREQUENT_QUERIES_VERSION));
+  } else {
+    localStorage.removeItem(`${prefix}_frequent_queries`);
+    localStorage.setItem(`${prefix}_frequent_queries_version`, String(FREQUENT_QUERIES_VERSION));
+  }
 }
 
 function isReaderSettings(value: unknown): value is ReaderSettingsState {
@@ -674,6 +688,21 @@ function isReaderBookBackup(value: unknown): value is ReaderBookBackup {
           && (favorite.kind === 'dictionary' || favorite.kind === 'translation' || favorite.kind === 'ai' || favorite.kind === 'glossary')
           && (favorite.provider === undefined || ['gemini', 'openai', 'deepseek', 'openrouter'].includes(String(favorite.provider)))
           && typeof favorite.response === 'string';
+      })
+    ))
+    && (data.frequentQueriesVersion === undefined || data.frequentQueriesVersion === FREQUENT_QUERIES_VERSION)
+    && (data.frequentQueries === undefined || (
+      Array.isArray(data.frequentQueries)
+      && data.frequentQueries.every((value) => {
+        if (!value || typeof value !== 'object') return false;
+        const query = value as Record<string, unknown>;
+        return typeof query.key === 'string'
+          && typeof query.query === 'string'
+          && typeof query.count === 'number'
+          && Number.isInteger(query.count)
+          && query.count > 0
+          && typeof query.updatedAt === 'number'
+          && Number.isFinite(query.updatedAt);
       })
     ));
 }

@@ -32,9 +32,16 @@ interface Props {
   availableAiProviders: AiProvider[];
   aiApiKeys: Partial<Record<AiProvider, string>>;
   favorites: TranslationFavorite[];
+  frequentSearchToken: number;
   onSaveHistory: (kind: TranslationHistoryKind, query: string, response: string, provider?: AiProvider) => void;
+  onRecordFrequentQuery: (query: string, searchToken: string | number) => void;
   onToggleFavorite: (candidate: TranslationFavoriteCandidate) => void;
 }
+
+const hasUsableTranslation = (result: string) => {
+  const normalized = result.trim();
+  return Boolean(normalized) && normalized !== 'No se pudo traducir el texto.';
+};
 
 export const TranslationModal: React.FC<Props> = ({
   isOpen,
@@ -46,7 +53,9 @@ export const TranslationModal: React.FC<Props> = ({
   availableAiProviders,
   aiApiKeys,
   favorites,
+  frequentSearchToken,
   onSaveHistory,
+  onRecordFrequentQuery,
   onToggleFavorite,
 }) => {
   const [translatedText, setTranslatedText] = useState<string>('');
@@ -70,10 +79,16 @@ export const TranslationModal: React.FC<Props> = ({
   const [explanationProvider, setExplanationProvider] = useState<AiProvider | ''>('');
   const explanationRequestRef = useRef(0);
   const dictionaryRequestRef = useRef(0);
+  const dictionarySearchCountRef = useRef(0);
+
+  const recordSuccessfulSearch = (query: string, searchToken: string | number) => {
+    onRecordFrequentQuery(query, searchToken);
+  };
 
   useEffect(() => {
     if (!isOpen || !selectedText) return;
 
+    const searchId = frequentSearchToken;
     let cancelled = false;
     explanationRequestRef.current += 1;
     setTranslatedText('');
@@ -105,6 +120,9 @@ export const TranslationModal: React.FC<Props> = ({
             setTranslatedText(cachedTranslation);
             setTranslationError(false);
             onSaveHistory(resultKind, selectedText, cachedTranslation, aiProvider);
+            if (hasUsableTranslation(cachedTranslation)) {
+              recordSuccessfulSearch(selectedText, searchId);
+            }
           }
           return;
         }
@@ -127,6 +145,9 @@ export const TranslationModal: React.FC<Props> = ({
         setTranslationError(false);
         saveCachedTranslation(provider, selectedText, result, providerKey, model);
         onSaveHistory(resultKind, selectedText, result, aiProvider);
+        if (hasUsableTranslation(result)) {
+          recordSuccessfulSearch(selectedText, searchId);
+        }
       } catch (err) {
         if (!cancelled) {
           setTranslationError(true);
@@ -139,17 +160,27 @@ export const TranslationModal: React.FC<Props> = ({
 
     void translate();
     return () => { cancelled = true; };
-  }, [aiApiKey, aiProvider, availableAiProviders, isOpen, onSaveHistory, openRouterModel, selectedText]);
+  }, [aiApiKey, aiProvider, availableAiProviders, frequentSearchToken, isOpen, onRecordFrequentQuery, onSaveHistory, openRouterModel, selectedText]);
 
   useEffect(() => {
     if (!isOpen || !selectedText) return;
+    const searchId = frequentSearchToken;
     const requestId = dictionaryRequestRef.current + 1;
     dictionaryRequestRef.current = requestId;
     setDictionaryQuery(selectedText);
-    void lookupDictionary(selectedText, requestId);
-  }, [isOpen, selectedText]);
+    void lookupDictionary(selectedText, requestId, searchId);
+    return () => {
+      if (dictionaryRequestRef.current === requestId) {
+        dictionaryRequestRef.current += 1;
+      }
+    };
+  }, [frequentSearchToken, isOpen, selectedText]);
 
-  const lookupDictionary = async (query: string, requestId = dictionaryRequestRef.current + 1) => {
+  const lookupDictionary = async (
+    query: string,
+    requestId = dictionaryRequestRef.current + 1,
+    searchId: string | number = frequentSearchToken,
+  ) => {
     const trimmedQuery = query.trim();
     if (!trimmedQuery) {
       setDictionaryTerms(null);
@@ -178,6 +209,7 @@ export const TranslationModal: React.FC<Props> = ({
           trimmedQuery,
           formatDictionaryHistoryResponse(terms.baseForm, terms.searchTerms, terms.entries)
         );
+        recordSuccessfulSearch(trimmedQuery, searchId);
       }
     } catch (error) {
       if (dictionaryRequestRef.current === requestId) {
@@ -190,7 +222,9 @@ export const TranslationModal: React.FC<Props> = ({
 
   const handleDictionarySubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    void lookupDictionary(dictionaryQuery);
+    dictionarySearchCountRef.current += 1;
+    const searchToken = `${frequentSearchToken}:dictionary:${dictionarySearchCountRef.current}`;
+    void lookupDictionary(dictionaryQuery, dictionaryRequestRef.current + 1, searchToken);
   };
 
   const toggleFavorite = (candidate: TranslationFavoriteCandidate) => {

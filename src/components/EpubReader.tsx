@@ -46,6 +46,13 @@ import {
   TranslationFavoriteCandidate,
   writeTranslationFavorites,
 } from '../utils/translationFavorites';
+import {
+  readFrequentQueries,
+  recordFrequentQuery,
+  FREQUENT_QUERIES_VERSION,
+  FrequentQuery,
+  writeFrequentQueries,
+} from '../utils/frequentQueries';
 import { ReaderBookBackup } from '../utils/googleDriveBackup';
 import {
   DictionaryLookup,
@@ -313,10 +320,15 @@ export const EpubReader: React.FC<Props> = ({
   const chapterSearchTextRef = useRef<Map<number, Promise<string>>>(new Map());
   const searchHighlightTimerRef = useRef<number | undefined>(undefined);
   const translationHistoryStorageKey = `${bookStorageKey}_translation_history`;
+  const frequentQueriesStorageKey = `${bookStorageKey}_frequent_queries`;
   const [translationHistory, setTranslationHistory] = useState<TranslationHistoryEntry[]>(() =>
     readTranslationHistory(translationHistoryStorageKey)
   );
   const translationHistoryRef = useRef(translationHistory);
+  const [frequentQueries, setFrequentQueries] = useState<FrequentQuery[]>(() =>
+    readFrequentQueries(frequentQueriesStorageKey)
+  );
+  const frequentQueriesRef = useRef(frequentQueries);
   const translationFavoritesStorageKey = `${bookStorageKey}_translation_favorites`;
   const [translationFavorites, setTranslationFavorites] = useState<TranslationFavorite[]>(() =>
     readTranslationFavorites(translationFavoritesStorageKey)
@@ -337,6 +349,8 @@ export const EpubReader: React.FC<Props> = ({
   );
 
   const [selectedText, setSelectedText] = useState('');
+  const [frequentSearchToken, setFrequentSearchToken] = useState(0);
+  const recordedFrequentSearchTokensRef = useRef(new Set<string>());
   const [dictionaryPreview, setDictionaryPreview] = useState<DictionaryLookup | null>(null);
   const [isSelectionUnderlined, setIsSelectionUnderlined] = useState(false);
   const [isSelectionAdjusting, setIsSelectionAdjusting] = useState(false);
@@ -526,6 +540,32 @@ export const EpubReader: React.FC<Props> = ({
   const markReaderDataChanged = useCallback(() => {
     backupDirtyRef.current = true;
   }, []);
+
+  const handleRecordFrequentQuery = useCallback((query: string, searchToken: string | number) => {
+    const token = String(searchToken);
+    if (recordedFrequentSearchTokensRef.current.has(token)) return;
+    recordedFrequentSearchTokensRef.current.add(token);
+    if (recordedFrequentSearchTokensRef.current.size > 500) {
+      const oldestToken = recordedFrequentSearchTokensRef.current.values().next().value;
+      if (oldestToken !== undefined) recordedFrequentSearchTokensRef.current.delete(oldestToken);
+    }
+    const next = recordFrequentQuery(
+      frequentQueriesStorageKey,
+      frequentQueriesRef.current,
+      query,
+    );
+    if (next === frequentQueriesRef.current) return;
+    frequentQueriesRef.current = next;
+    setFrequentQueries(next);
+    markReaderDataChanged();
+  }, [frequentQueriesStorageKey, markReaderDataChanged]);
+
+  const handleClearFrequentQueries = useCallback(() => {
+    frequentQueriesRef.current = [];
+    setFrequentQueries([]);
+    writeFrequentQueries(frequentQueriesStorageKey, []);
+    markReaderDataChanged();
+  }, [frequentQueriesStorageKey, markReaderDataChanged]);
 
   const handleSaveTranslationHistory = useCallback((
     kind: TranslationHistoryKind,
@@ -1110,6 +1150,9 @@ export const EpubReader: React.FC<Props> = ({
     const text = sel.toString().trim();
     const rect = range.getBoundingClientRect();
     const iRect = iframe.getBoundingClientRect();
+    if (selectedTextRef.current !== text) {
+      setFrequentSearchToken((token) => token + 1);
+    }
     selectedTextRef.current = text;
 
     lastSelectionTime.current = Date.now();
@@ -2465,7 +2508,7 @@ export const EpubReader: React.FC<Props> = ({
 
   useEffect(() => {
     const query = selectedText.trim();
-    if (isSelectionAdjusting || !query || Array.from(query).length > 32) {
+    if (isSelectionAdjusting || isTranslationHistoryOpen || !query || Array.from(query).length > 32) {
       setDictionaryPreview(null);
       return;
     }
@@ -2478,6 +2521,7 @@ export const EpubReader: React.FC<Props> = ({
           const hasEntries = lookup.entries.length > 0;
           setDictionaryPreview(hasEntries ? lookup : null);
           if (hasEntries && lookup.hasCompleteMatch) {
+            handleRecordFrequentQuery(query, frequentSearchToken);
             handleSaveTranslationHistory(
               'dictionary',
               query,
@@ -2494,7 +2538,7 @@ export const EpubReader: React.FC<Props> = ({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [handleSaveTranslationHistory, isSelectionAdjusting, selectedText]);
+  }, [frequentSearchToken, handleRecordFrequentQuery, handleSaveTranslationHistory, isSelectionAdjusting, isTranslationHistoryOpen, selectedText]);
   useEffect(() => {
     if (!isLoadingChapter) {
       saveReadingPosition({
@@ -2531,6 +2575,8 @@ export const EpubReader: React.FC<Props> = ({
       annotations: textAnnotations,
       translationHistory,
       favorites: translationFavorites,
+      frequentQueries,
+      frequentQueriesVersion: FREQUENT_QUERIES_VERSION,
     };
     pendingReaderBackupRef.current = backup;
     const timer = window.setTimeout(() => {
@@ -2547,6 +2593,7 @@ export const EpubReader: React.FC<Props> = ({
     epub.metadata.creator,
     epub.metadata.title,
     getTextOffsetForPage,
+    frequentQueries,
     isLoadingChapter,
     isReaderPositioned,
     onBookDataChange,
@@ -3636,6 +3683,7 @@ export const EpubReader: React.FC<Props> = ({
         onOpenHistory={() => setIsTranslationHistoryOpen(true)}
         historyCount={translationHistory.length}
         favoriteCount={translationFavorites.length}
+        frequentCount={frequentQueries.filter((entry) => entry.count >= 2).length}
         onToggleSettings={() => setIsSettingsOpen(true)}
         onOpenFile={onCloseBook}
         settings={settings}
@@ -3890,7 +3938,9 @@ export const EpubReader: React.FC<Props> = ({
         availableAiProviders={configuredAiProviders}
         aiApiKeys={settings.aiApiKeys}
         favorites={translationFavorites}
+        frequentSearchToken={frequentSearchToken}
         onSaveHistory={handleSaveTranslationHistory}
+        onRecordFrequentQuery={handleRecordFrequentQuery}
         onToggleFavorite={handleToggleTranslationFavorite}
       />
 
@@ -3898,11 +3948,13 @@ export const EpubReader: React.FC<Props> = ({
         isOpen={isTranslationHistoryOpen}
         entries={translationHistory}
         favorites={translationFavorites}
+        frequentQueries={frequentQueries}
         onClose={() => setIsTranslationHistoryOpen(false)}
         onRemove={handleRemoveTranslationHistoryEntry}
         onClear={handleClearTranslationHistory}
         onToggleFavorite={handleToggleTranslationFavorite}
         onClearFavorites={handleClearTranslationFavorites}
+        onClearFrequentQueries={handleClearFrequentQueries}
       />
 
       <PageGlossaryModal

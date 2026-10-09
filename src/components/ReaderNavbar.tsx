@@ -27,6 +27,7 @@ interface Props {
   onOpenHistory: () => void;
   historyCount: number;
   favoriteCount: number;
+  frequentCount: number;
   onToggleSettings: () => void;
   onOpenFile: () => void;
   isAnalyzingPage: boolean;
@@ -48,6 +49,7 @@ export const ReaderNavbar: React.FC<Props> = ({
   onOpenHistory,
   historyCount,
   favoriteCount,
+  frequentCount,
   onToggleSettings,
   onOpenFile,
   isAnalyzingPage,
@@ -112,14 +114,14 @@ export const ReaderNavbar: React.FC<Props> = ({
           </button>
           <button
             onClick={onOpenHistory}
-            title={`Historial y favoritos (${historyCount} consultas, ${favoriteCount} favoritos)`}
-            aria-label={`Abrir historial y favoritos (${historyCount} consultas, ${favoriteCount} favoritos)`}
+            title={`Historial, favoritos y consultas frecuentes (${historyCount} consultas, ${favoriteCount} favoritos, ${frequentCount} frecuentes)`}
+            aria-label={`Abrir historial, favoritos y consultas frecuentes (${historyCount} consultas, ${favoriteCount} favoritos, ${frequentCount} frecuentes)`}
             className="tap-area relative rounded-lg p-2 text-zinc-700 transition-colors hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
           >
             <History className="h-4 w-4" />
-            {historyCount + favoriteCount > 0 && (
+            {historyCount + favoriteCount + frequentCount > 0 && (
               <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-indigo-500 px-1 text-[9px] font-bold text-white">
-                {historyCount + favoriteCount}
+                {historyCount + favoriteCount + frequentCount}
               </span>
             )}
           </button>
