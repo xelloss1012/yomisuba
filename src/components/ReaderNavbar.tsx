@@ -31,6 +31,7 @@ interface Props {
   onToggleSettings: () => void;
   onOpenFile: () => void;
   isAnalyzingPage: boolean;
+  isWordSelectionMode: boolean;
   onToggleAutoAnalysis: () => void;
   onOpenPageGlossary: () => void;
   settings: ReaderSettingsState;
@@ -53,12 +54,19 @@ export const ReaderNavbar: React.FC<Props> = ({
   onToggleSettings,
   onOpenFile,
   isAnalyzingPage,
+  isWordSelectionMode,
   onToggleAutoAnalysis,
   onOpenPageGlossary,
   settings,
   onUpdateSettings,
 }) => {
   const isVertical = settings.writingMode === 'vertical-rl';
+  const isAnalyzerActive = settings.autoAnalyzePage || isWordSelectionMode;
+  const analyzerTitle = settings.autoAnalyzePage
+    ? 'Desactivar el analizador automático en todas las páginas'
+    : isWordSelectionMode
+      ? 'Desactivar el analizador en esta página'
+      : 'Activar el analizador automático en todas las páginas';
 
   return (
     <header
@@ -132,11 +140,11 @@ export const ReaderNavbar: React.FC<Props> = ({
           <button
             type="button"
             onClick={onToggleAutoAnalysis}
-            title={settings.autoAnalyzePage ? 'Desactivar el analizador automático en todas las páginas' : 'Activar el analizador automático en todas las páginas'}
-            aria-label={settings.autoAnalyzePage ? 'Desactivar el analizador automático en todas las páginas' : 'Activar el analizador automático en todas las páginas'}
-            aria-pressed={settings.autoAnalyzePage}
+            title={analyzerTitle}
+            aria-label={analyzerTitle}
+            aria-pressed={isAnalyzerActive}
             className={`tap-area rounded-lg p-2 transition-colors ${
-              settings.autoAnalyzePage
+              isAnalyzerActive
                 ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300'
                 : 'text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800'
             }`}

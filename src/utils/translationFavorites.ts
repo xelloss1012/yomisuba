@@ -13,9 +13,9 @@ export interface TranslationFavorite {
 
 export type TranslationFavoriteCandidate = Omit<TranslationFavorite, 'id' | 'savedAt'>;
 
-export const MAX_TRANSLATION_FAVORITES = 500;
+export const MAX_TRANSLATION_FAVORITES = 5000;
 const MAX_RESPONSE_LENGTH = 32_000;
-const MAX_FAVORITES_STORAGE_BYTES = 2.5 * 1024 * 1024;
+const MAX_FAVORITES_STORAGE_BYTES = 4 * 1024 * 1024;
 
 export const readTranslationFavorites = (storageKey: string): TranslationFavorite[] => {
   try {

@@ -22,8 +22,10 @@ const server = await createServer({
 try {
   const {
     isTranslationFavorite,
+    MAX_TRANSLATION_FAVORITES,
     readTranslationFavorites,
     toggleTranslationFavorite,
+    writeTranslationFavorites,
   } = await server.ssrLoadModule('/src/utils/translationFavorites.ts');
   const key = 'test-favorites';
   const candidate = {
@@ -40,6 +42,16 @@ try {
   const removed = toggleTranslationFavorite(key, added, candidate);
   assert.deepEqual(removed, []);
   assert.deepEqual(readTranslationFavorites(key), []);
+
+  assert.equal(MAX_TRANSLATION_FAVORITES, 5000);
+  const manyFavorites = Array.from({ length: 5001 }, (_, index) => ({
+    id: `favorite-${index}`,
+    savedAt: index,
+    query: 'x',
+    kind: 'dictionary',
+    response: '',
+  }));
+  assert.equal(writeTranslationFavorites(key, manyFavorites).length, 5000);
 
   console.log('PASS: favorites persist locally and toggle on/off by definition.');
 } finally {

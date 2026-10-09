@@ -3490,11 +3490,10 @@ export const EpubReader: React.FC<Props> = ({
       pageWordsRef.current = visibleWords;
       setPageWords(visibleWords);
       applyPageWordHighlights(doc, visibleWords, isVertical);
+      wordSelectionModeRef.current = true;
+      setIsWordSelectionMode(true);
       if (openGlossary) {
         setIsPageGlossaryOpen(true);
-      } else {
-        wordSelectionModeRef.current = true;
-        setIsWordSelectionMode(true);
       }
     } catch (error) {
       if (request !== pageAnalysisRequestRef.current) return;
@@ -3512,11 +3511,22 @@ export const EpubReader: React.FC<Props> = ({
   }, [isVertical, showWordAnalysisError]);
 
   const handleToggleAutoAnalysis = useCallback(() => {
+    if (!settings.autoAnalyzePage && isWordSelectionMode) {
+      wordSelectionModeRef.current = false;
+      setIsWordSelectionMode(false);
+      pageWordsRef.current = [];
+      setPageWords([]);
+      clearPageWordHighlights(iframeRef.current?.contentDocument);
+      setIsPageGlossaryOpen(false);
+      return;
+    }
     onUpdateSettings({ autoAnalyzePage: !settings.autoAnalyzePage });
-  }, [onUpdateSettings, settings.autoAnalyzePage]);
+  }, [isWordSelectionMode, onUpdateSettings, settings.autoAnalyzePage]);
 
   const handleOpenPageGlossary = useCallback(() => {
     if (pageWordsRef.current.length > 0) {
+      wordSelectionModeRef.current = true;
+      setIsWordSelectionMode(true);
       setIsPageGlossaryOpen(true);
       return;
     }
@@ -3689,6 +3699,7 @@ export const EpubReader: React.FC<Props> = ({
         settings={settings}
         onUpdateSettings={onUpdateSettings}
         isAnalyzingPage={isAnalyzingPage}
+        isWordSelectionMode={isWordSelectionMode}
         onToggleAutoAnalysis={handleToggleAutoAnalysis}
         onOpenPageGlossary={handleOpenPageGlossary}
       />
