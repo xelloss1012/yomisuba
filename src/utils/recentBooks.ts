@@ -10,15 +10,21 @@ export interface RecentBook {
 
 const DB_NAME = 'ereader_library';
 const STORE_NAME = 'books';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     request.onupgradeneeded = () => {
       const db = request.result;
+      let store: IDBObjectStore;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+        store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      } else {
+        store = request.transaction!.objectStore(STORE_NAME);
+      }
+      if (!store.indexNames.contains('lastOpened')) {
+        store.createIndex('lastOpened', 'lastOpened');
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -37,11 +43,29 @@ export async function saveRecentBook(book: RecentBook): Promise<void> {
   db.close();
 }
 
-export async function listRecentBooks(): Promise<RecentBook[]> {
+export async function listRecentBooks(limit = Number.MAX_SAFE_INTEGER): Promise<RecentBook[]> {
   const db = await openDatabase();
   const books = await new Promise<RecentBook[]>((resolve, reject) => {
-    const request = db.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).getAll();
-    request.onsuccess = () => resolve((request.result as RecentBook[]).sort((a, b) => b.lastOpened - a.lastOpened));
+    const results: RecentBook[] = [];
+    const maxResults = Math.max(0, Math.floor(limit));
+    if (!maxResults) {
+      resolve(results);
+      return;
+    }
+    const request = db
+      .transaction(STORE_NAME, 'readonly')
+      .objectStore(STORE_NAME)
+      .index('lastOpened')
+      .openCursor(null, 'prev');
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor || results.length >= maxResults) {
+        resolve(results);
+        return;
+      }
+      results.push(cursor.value as RecentBook);
+      cursor.continue();
+    };
     request.onerror = () => reject(request.error || new Error('No se pudo leer la biblioteca local.'));
   });
   db.close();

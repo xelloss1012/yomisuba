@@ -1054,11 +1054,13 @@ export const EpubReader: React.FC<Props> = ({
 
     const range = sel.getRangeAt(0);
     const scroller = iframe.contentDocument.getElementById('reader-scroller');
-    const anchor = scroller
+    const anchor = scroller && !pointerActiveRef.current
       ? captureTextAnnotation(range, scroller, currentSpineRef.current)
       : null;
-    selectionRangeRef.current = range.cloneRange();
-    selectionAnnotationRef.current = anchor;
+    if (!pointerActiveRef.current) {
+      selectionRangeRef.current = range.cloneRange();
+      selectionAnnotationRef.current = anchor;
+    }
     const selectedTextStr = sel.toString().trim();
     const currentSpine = currentSpineRef.current;
     const matchingAnnotation = anchor && textAnnotationsRef.current.find((annotation) =>
@@ -1504,16 +1506,20 @@ export const EpubReader: React.FC<Props> = ({
           return Boolean(anchorNode.compareDocumentPosition(focusNode) & Node.DOCUMENT_POSITION_PRECEDING);
         };
         let activeSelectionEdge: { node: Node; offset: number; selectedForward: boolean } | null = null;
+        const selectionTextWalker = doc.createTreeWalker(
+          doc.getElementById('reader-scroller') || doc.body,
+          NodeFilter.SHOW_TEXT,
+          {
+          acceptNode: (candidate) =>
+            (candidate.nodeValue || '').trim() && !(candidate.parentElement?.closest('rt'))
+              ? NodeFilter.FILTER_ACCEPT
+              : NodeFilter.FILTER_REJECT,
+          },
+        );
         const getAdjacentCharRect = (node: Node | null, offset: number, forward: boolean) => {
           const scroller = doc.getElementById('reader-scroller');
           if (!node || node.nodeType !== Node.TEXT_NODE || !scroller?.contains(node)) return null;
-          const walker = doc.createTreeWalker(scroller, NodeFilter.SHOW_TEXT, {
-            acceptNode: (candidate) =>
-              (candidate.nodeValue || '').trim() && !(candidate.parentElement?.closest('rt'))
-                ? NodeFilter.FILTER_ACCEPT
-                : NodeFilter.FILTER_REJECT,
-          });
-          walker.currentNode = node;
+          selectionTextWalker.currentNode = node;
           let cursor: Node | null = node;
           let index = forward ? offset : offset - 1;
           let guard = 0;
@@ -1529,7 +1535,7 @@ export const EpubReader: React.FC<Props> = ({
               index = forward ? index + 1 : index - 1;
               continue;
             }
-            cursor = forward ? walker.nextNode() : walker.previousNode();
+            cursor = forward ? selectionTextWalker.nextNode() : selectionTextWalker.previousNode();
             if (!cursor) return null;
             index = forward ? 0 : (cursor.nodeValue || '').length - 1;
           }
@@ -1900,9 +1906,14 @@ export const EpubReader: React.FC<Props> = ({
             passive: true,
           });
         });
+        let pendingSelectionFrame = 0;
         doc.addEventListener('selectionchange', () => {
           countDebugRef.current('selchg');
-          handleIframeSelectionChange();
+          if (pendingSelectionFrame) return;
+          pendingSelectionFrame = window.requestAnimationFrame(() => {
+            pendingSelectionFrame = 0;
+            if (iframe.contentDocument === doc) handleIframeSelectionChange();
+          });
         });
         // The native selection handles report through pointer events, so this is
         // the stream the selection paging has to run on.

@@ -357,7 +357,7 @@ export const App: React.FC = () => {
     let cancelled = false;
     const restoreLibrary = async () => {
       try {
-        const books = await listRecentBooks();
+        const books = await listRecentBooks(8);
         if (cancelled) return;
         const visibleBooks = books.slice(0, 8);
         setRecentBooks(visibleBooks);
