@@ -3,6 +3,7 @@ import { SocialLogin } from '@capgo/capacitor-social-login';
 import { ReaderSettingsState } from '../types/epub';
 import { RecentBook, saveRecentBook } from './recentBooks';
 import { extractEpubCoverBlob } from './epubParser';
+import { TranslationFavorite } from './translationFavorites';
 
 const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const DRIVE_READONLY_SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
@@ -59,6 +60,7 @@ export interface ReaderBookBackup {
     provider?: string;
     response: string;
   }>;
+  favorites: TranslationFavorite[];
 }
 
 let initializePromise: Promise<void> | null = null;
@@ -564,6 +566,7 @@ export async function restoreGoogleDriveReaderData(
   if (!isReaderBookBackup(data) || data.bookKey !== bookKey) {
     throw new Error('Los datos de lectura de Google Drive no son válidos para este libro.');
   }
+  data.favorites ||= [];
   return data;
 }
 
@@ -578,6 +581,11 @@ export function applyGoogleDriveReaderData(data: ReaderBookBackup): void {
     localStorage.setItem(`${prefix}_translation_history`, JSON.stringify(data.translationHistory));
   } else {
     localStorage.removeItem(`${prefix}_translation_history`);
+  }
+  if (data.favorites.length) {
+    localStorage.setItem(`${prefix}_translation_favorites`, JSON.stringify(data.favorites));
+  } else {
+    localStorage.removeItem(`${prefix}_translation_favorites`);
   }
 }
 
@@ -653,5 +661,19 @@ function isReaderBookBackup(value: unknown): value is ReaderBookBackup {
         && (entry.kind === 'dictionary' || entry.kind === 'translation' || entry.kind === 'ai')
         && (entry.provider === undefined || ['gemini', 'openai', 'deepseek', 'openrouter'].includes(String(entry.provider)))
         && typeof entry.response === 'string';
-    });
+    })
+    && (data.favorites === undefined || (
+      Array.isArray(data.favorites)
+      && data.favorites.every((value) => {
+        if (!value || typeof value !== 'object') return false;
+        const favorite = value as Record<string, unknown>;
+        return typeof favorite.id === 'string'
+          && typeof favorite.savedAt === 'number'
+          && Number.isFinite(favorite.savedAt)
+          && typeof favorite.query === 'string'
+          && (favorite.kind === 'dictionary' || favorite.kind === 'translation' || favorite.kind === 'ai' || favorite.kind === 'glossary')
+          && (favorite.provider === undefined || ['gemini', 'openai', 'deepseek', 'openrouter'].includes(String(favorite.provider)))
+          && typeof favorite.response === 'string';
+      })
+    ));
 }

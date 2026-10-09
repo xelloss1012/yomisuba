@@ -1,10 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BookOpen, Loader2, Search, X } from 'lucide-react';
+import { BookOpen, Loader2, Search, Star, X } from 'lucide-react';
 import {
   DictionaryLookup,
   JapaneseMorphologicalToken,
   getDictionarySearchTerms,
 } from '../utils/dictionary';
+import { formatDictionaryHistoryResponse } from '../utils/translationHistory';
+import {
+  isTranslationFavorite,
+  TranslationFavorite,
+  TranslationFavoriteCandidate,
+} from '../utils/translationFavorites';
 
 export interface PageWordToken extends JapaneseMorphologicalToken {
   range: Range;
@@ -17,8 +23,10 @@ export type PageWordCategory = 'noun' | 'verb' | 'adjective' | 'particle' | 'oth
 interface Props {
   isOpen: boolean;
   tokens: PageWordToken[];
+  favorites: TranslationFavorite[];
   onClose: () => void;
   onSelectWord: (token: PageWordToken) => void;
+  onToggleFavorite: (candidate: TranslationFavoriteCandidate) => void;
 }
 
 interface GlossaryItem {
@@ -49,8 +57,10 @@ const categoryBadgeClasses: Record<PageWordCategory, string> = {
 export const PageGlossaryModal: React.FC<Props> = ({
   isOpen,
   tokens,
+  favorites,
   onClose,
   onSelectWord,
+  onToggleFavorite,
 }) => {
   const [search, setSearch] = useState('');
   const [lookups, setLookups] = useState<Record<string, DictionaryLookup | string>>({});
@@ -178,12 +188,31 @@ export const PageGlossaryModal: React.FC<Props> = ({
             const lookup = lookups[key];
             const entry = lookup && typeof lookup !== 'string' ? lookup.entries[0] : undefined;
             const firstSense = entry?.senses[0];
+            const query = !token.joinedSuffix &&
+              !token.joinedConjugation &&
+              token.basic_form &&
+              token.basic_form !== '*'
+                ? token.basic_form
+                : token.surface_form;
+            const candidate: TranslationFavoriteCandidate | null =
+              lookup && typeof lookup !== 'string' && lookup.entries.length
+                ? {
+                    query,
+                    kind: 'glossary',
+                    response: formatDictionaryHistoryResponse(
+                      lookup.baseForm,
+                      lookup.searchTerms,
+                      lookup.entries,
+                    ),
+                  }
+                : null;
+            const favorite = candidate ? isTranslationFavorite(favorites, candidate) : false;
             return (
-              <li key={key}>
+              <li key={key} className="flex items-start gap-1 rounded-xl border border-zinc-200 px-2 dark:border-zinc-800">
                 <button
                   type="button"
                   onClick={() => onSelectWord(token)}
-                  className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-left transition-colors hover:border-indigo-300 hover:bg-indigo-50/60 dark:border-zinc-800 dark:hover:border-indigo-800 dark:hover:bg-indigo-950/30"
+                  className="min-w-0 flex-1 py-2 pl-1 text-left transition-colors"
                 >
                   <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                     <span className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
@@ -227,6 +256,22 @@ export const PageGlossaryModal: React.FC<Props> = ({
                     </span>
                   )}
                 </button>
+                {candidate && (
+                  <button
+                    type="button"
+                    onClick={() => onToggleFavorite(candidate)}
+                    className={`tap-area mt-1 shrink-0 rounded-lg p-2 ${
+                      favorite ? 'text-amber-500' : 'text-zinc-400 hover:text-amber-500'
+                    }`}
+                    aria-label={favorite
+                      ? `Quitar ${token.surface_form} del glosario de favoritos`
+                      : `Añadir ${token.surface_form} a favoritos`}
+                    title={favorite ? 'Quitar de favoritos' : 'Marcar definición como favorita'}
+                    aria-pressed={favorite}
+                  >
+                    <Star className={`h-4 w-4 ${favorite ? 'fill-current' : ''}`} />
+                  </button>
+                )}
               </li>
             );
           })}

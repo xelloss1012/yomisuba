@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Volume2, Languages, Loader2, Sparkles, Search } from 'lucide-react';
+import { X, Volume2, Languages, Loader2, Sparkles, Search, Star } from 'lucide-react';
 import { AiProvider } from '../types/epub';
 import {
   AI_PROVIDER_LABELS,
@@ -16,6 +16,11 @@ import {
   formatDictionaryHistoryResponse,
   TranslationHistoryKind,
 } from '../utils/translationHistory';
+import {
+  isTranslationFavorite,
+  TranslationFavorite,
+  TranslationFavoriteCandidate,
+} from '../utils/translationFavorites';
 
 interface Props {
   isOpen: boolean;
@@ -26,7 +31,9 @@ interface Props {
   openRouterModel: string;
   availableAiProviders: AiProvider[];
   aiApiKeys: Partial<Record<AiProvider, string>>;
+  favorites: TranslationFavorite[];
   onSaveHistory: (kind: TranslationHistoryKind, query: string, response: string, provider?: AiProvider) => void;
+  onToggleFavorite: (candidate: TranslationFavoriteCandidate) => void;
 }
 
 export const TranslationModal: React.FC<Props> = ({
@@ -38,10 +45,14 @@ export const TranslationModal: React.FC<Props> = ({
   openRouterModel,
   availableAiProviders,
   aiApiKeys,
+  favorites,
   onSaveHistory,
+  onToggleFavorite,
 }) => {
   const [translatedText, setTranslatedText] = useState<string>('');
+  const [translationError, setTranslationError] = useState(false);
   const [dictionaryTerms, setDictionaryTerms] = useState<{
+    query: string;
     baseForm: string;
     searchTerms: string[];
     entries: DictionaryEntry[];
@@ -66,6 +77,7 @@ export const TranslationModal: React.FC<Props> = ({
     let cancelled = false;
     explanationRequestRef.current += 1;
     setTranslatedText('');
+    setTranslationError(false);
     setDictionaryQuery(selectedText);
     setExplanation('');
     setExplanationError('');
@@ -91,6 +103,7 @@ export const TranslationModal: React.FC<Props> = ({
         if (cachedTranslation) {
           if (!cancelled) {
             setTranslatedText(cachedTranslation);
+            setTranslationError(false);
             onSaveHistory(resultKind, selectedText, cachedTranslation, aiProvider);
           }
           return;
@@ -111,10 +124,14 @@ export const TranslationModal: React.FC<Props> = ({
         }
         if (cancelled) return;
         setTranslatedText(result);
+        setTranslationError(false);
         saveCachedTranslation(provider, selectedText, result, providerKey, model);
         onSaveHistory(resultKind, selectedText, result, aiProvider);
       } catch (err) {
-        if (!cancelled) setTranslatedText(err instanceof Error ? err.message : 'Traducción no disponible.');
+        if (!cancelled) {
+          setTranslationError(true);
+          setTranslatedText(err instanceof Error ? err.message : 'Traducción no disponible.');
+        }
       } finally {
         if (!cancelled) setIsLoading(false);
       }
@@ -148,6 +165,7 @@ export const TranslationModal: React.FC<Props> = ({
       const lookup = await getDictionarySearchTerms(trimmedQuery);
       if (dictionaryRequestRef.current !== requestId) return;
       const terms = {
+        query: trimmedQuery,
         baseForm: lookup.baseForm,
         searchTerms: lookup.searchTerms,
         entries: lookup.entries,
@@ -173,6 +191,10 @@ export const TranslationModal: React.FC<Props> = ({
   const handleDictionarySubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     void lookupDictionary(dictionaryQuery);
+  };
+
+  const toggleFavorite = (candidate: TranslationFavoriteCandidate) => {
+    onToggleFavorite(candidate);
   };
 
   const handleSpeak = async () => {
@@ -219,6 +241,25 @@ export const TranslationModal: React.FC<Props> = ({
       if (explanationRequestRef.current === requestId) setIsExplaining(false);
     }
   };
+
+  const translationFavorite: TranslationFavoriteCandidate = {
+    query: selectedText,
+    kind: aiProvider ? 'ai' : 'translation',
+    ...(aiProvider ? { provider: aiProvider } : {}),
+    response: translatedText,
+  };
+  const isTranslationSaved = Boolean(
+    translatedText && !translationError && isTranslationFavorite(favorites, translationFavorite),
+  );
+  const explanationFavorite: TranslationFavoriteCandidate = {
+    query: selectedText,
+    kind: 'ai',
+    ...(explanationProvider ? { provider: explanationProvider } : {}),
+    response: explanation,
+  };
+  const isExplanationSaved = Boolean(
+    explanation && isTranslationFavorite(favorites, explanationFavorite),
+  );
 
   return (
     <div
@@ -279,8 +320,24 @@ export const TranslationModal: React.FC<Props> = ({
                 <span>Traduciendo...</span>
               </div>
             ) : (
-              <div className="text-sm text-zinc-800 dark:text-zinc-200 break-words leading-relaxed select-text">
-                {translatedText || 'Sin traducción.'}
+              <div className="flex items-start gap-2">
+                <div className="min-w-0 flex-1 break-words text-sm leading-relaxed text-zinc-800 dark:text-zinc-200 select-text">
+                  {translatedText || 'Sin traducción.'}
+                </div>
+                {translatedText && !translationError && (
+                  <button
+                    type="button"
+                    onClick={() => toggleFavorite(translationFavorite)}
+                    className={`tap-area shrink-0 rounded-lg p-2 ${
+                      isTranslationSaved ? 'text-amber-500' : 'text-zinc-400 hover:text-amber-500'
+                    }`}
+                    aria-label={isTranslationSaved ? 'Quitar traducción de favoritos' : 'Marcar traducción como favorita'}
+                    title={isTranslationSaved ? 'Quitar de favoritos' : 'Marcar traducción como favorita'}
+                    aria-pressed={isTranslationSaved}
+                  >
+                    <Star className={`h-4 w-4 ${isTranslationSaved ? 'fill-current' : ''}`} />
+                  </button>
+                )}
               </div>
             )}
             <div className="mt-3 border-t border-indigo-100 pt-3 dark:border-indigo-900/50">
@@ -328,6 +385,18 @@ export const TranslationModal: React.FC<Props> = ({
                   <div className="break-words select-text">
                     <MarkdownContent content={explanation} />
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => toggleFavorite(explanationFavorite)}
+                    className={`tap-area mt-2 rounded-lg p-2 ${
+                      isExplanationSaved ? 'text-amber-500' : 'text-zinc-400 hover:text-amber-500'
+                    }`}
+                    aria-label={isExplanationSaved ? 'Quitar explicación de favoritos' : 'Marcar explicación como favorita'}
+                    title={isExplanationSaved ? 'Quitar de favoritos' : 'Marcar explicación como favorita'}
+                    aria-pressed={isExplanationSaved}
+                  >
+                    <Star className={`h-4 w-4 ${isExplanationSaved ? 'fill-current' : ''}`} />
+                  </button>
                 </div>
               )}
             </div>
@@ -389,8 +458,21 @@ export const TranslationModal: React.FC<Props> = ({
                 </p>
               ) : (
                 <div className="space-y-2">
-                  {dictionaryTerms.entries.map((entry) => (
+                  {dictionaryTerms.entries.map((entry) => {
+                    const definitionFavorite: TranslationFavoriteCandidate = {
+                      query: dictionaryTerms.query,
+                      kind: 'dictionary',
+                      response: formatDictionaryHistoryResponse(
+                        dictionaryTerms.baseForm,
+                        dictionaryTerms.searchTerms,
+                        [entry],
+                      ),
+                    };
+                    const isDefinitionSaved = isTranslationFavorite(favorites, definitionFavorite);
+                    return (
                     <div key={`${entry.language}-${entry.id}`} className="rounded-lg bg-white/75 dark:bg-zinc-900/60 p-2.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                         <span className="font-semibold text-base text-zinc-900 dark:text-zinc-100">
                           {entry.kanji.length ? entry.kanji.join(' · ') : entry.kana.join(' · ')}
@@ -414,8 +496,25 @@ export const TranslationModal: React.FC<Props> = ({
                           </li>
                         ))}
                       </ol>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => toggleFavorite(definitionFavorite)}
+                          className={`tap-area shrink-0 rounded-lg p-2 ${
+                            isDefinitionSaved ? 'text-amber-500' : 'text-zinc-400 hover:text-amber-500'
+                          }`}
+                          aria-label={isDefinitionSaved
+                            ? `Quitar definición de ${entry.kanji.join(' · ') || entry.kana.join(' · ')} de favoritos`
+                            : `Marcar definición de ${entry.kanji.join(' · ') || entry.kana.join(' · ')} como favorita`}
+                          title={isDefinitionSaved ? 'Quitar de favoritos' : 'Marcar definición como favorita'}
+                          aria-pressed={isDefinitionSaved}
+                        >
+                          <Star className={`h-4 w-4 ${isDefinitionSaved ? 'fill-current' : ''}`} />
+                        </button>
+                      </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
               <p className="border-t border-emerald-200 pt-2 text-[10px] text-emerald-800 dark:border-emerald-900/60 dark:text-emerald-300">

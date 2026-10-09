@@ -39,6 +39,13 @@ import {
   TranslationHistoryEntry,
   TranslationHistoryKind,
 } from '../utils/translationHistory';
+import {
+  readTranslationFavorites,
+  toggleTranslationFavorite,
+  TranslationFavorite,
+  TranslationFavoriteCandidate,
+  writeTranslationFavorites,
+} from '../utils/translationFavorites';
 import { ReaderBookBackup } from '../utils/googleDriveBackup';
 import {
   DictionaryLookup,
@@ -310,6 +317,11 @@ export const EpubReader: React.FC<Props> = ({
     readTranslationHistory(translationHistoryStorageKey)
   );
   const translationHistoryRef = useRef(translationHistory);
+  const translationFavoritesStorageKey = `${bookStorageKey}_translation_favorites`;
+  const [translationFavorites, setTranslationFavorites] = useState<TranslationFavorite[]>(() =>
+    readTranslationFavorites(translationFavoritesStorageKey)
+  );
+  const translationFavoritesRef = useRef(translationFavorites);
   const annotationsStorageKey = `${bookStorageKey}_annotations`;
   const textAnnotationsRef = useRef<TextAnnotation[]>([]);
   const [textAnnotations, setTextAnnotations] = useState<TextAnnotation[]>(() => {
@@ -555,6 +567,26 @@ export const EpubReader: React.FC<Props> = ({
     }
     markReaderDataChanged();
   }, [markReaderDataChanged, translationHistoryStorageKey]);
+
+  const handleToggleTranslationFavorite = useCallback((
+    candidate: TranslationFavoriteCandidate,
+  ) => {
+    const next = toggleTranslationFavorite(
+      translationFavoritesStorageKey,
+      translationFavoritesRef.current,
+      candidate,
+    );
+    translationFavoritesRef.current = next;
+    setTranslationFavorites(next);
+    markReaderDataChanged();
+  }, [markReaderDataChanged, translationFavoritesStorageKey]);
+
+  const handleClearTranslationFavorites = useCallback(() => {
+    translationFavoritesRef.current = [];
+    setTranslationFavorites([]);
+    writeTranslationFavorites(translationFavoritesStorageKey, []);
+    markReaderDataChanged();
+  }, [markReaderDataChanged, translationFavoritesStorageKey]);
 
   useEffect(() => {
     try {
@@ -2498,6 +2530,7 @@ export const EpubReader: React.FC<Props> = ({
       })),
       annotations: textAnnotations,
       translationHistory,
+      favorites: translationFavorites,
     };
     pendingReaderBackupRef.current = backup;
     const timer = window.setTimeout(() => {
@@ -2518,6 +2551,7 @@ export const EpubReader: React.FC<Props> = ({
     isReaderPositioned,
     onBookDataChange,
     textAnnotations,
+    translationFavorites,
     translationHistory,
   ]);
 
@@ -3601,6 +3635,7 @@ export const EpubReader: React.FC<Props> = ({
         annotationCount={textAnnotations.length}
         onOpenHistory={() => setIsTranslationHistoryOpen(true)}
         historyCount={translationHistory.length}
+        favoriteCount={translationFavorites.length}
         onToggleSettings={() => setIsSettingsOpen(true)}
         onOpenFile={onCloseBook}
         settings={settings}
@@ -3854,22 +3889,29 @@ export const EpubReader: React.FC<Props> = ({
         openRouterModel={settings.openRouterModel}
         availableAiProviders={configuredAiProviders}
         aiApiKeys={settings.aiApiKeys}
+        favorites={translationFavorites}
         onSaveHistory={handleSaveTranslationHistory}
+        onToggleFavorite={handleToggleTranslationFavorite}
       />
 
       <TranslationHistoryModal
         isOpen={isTranslationHistoryOpen}
         entries={translationHistory}
+        favorites={translationFavorites}
         onClose={() => setIsTranslationHistoryOpen(false)}
         onRemove={handleRemoveTranslationHistoryEntry}
         onClear={handleClearTranslationHistory}
+        onToggleFavorite={handleToggleTranslationFavorite}
+        onClearFavorites={handleClearTranslationFavorites}
       />
 
       <PageGlossaryModal
         isOpen={isPageGlossaryOpen}
         tokens={pageWords}
+        favorites={translationFavorites}
         onClose={() => setIsPageGlossaryOpen(false)}
         onSelectWord={selectPageWord}
+        onToggleFavorite={handleToggleTranslationFavorite}
       />
 
       <BookSearchModal

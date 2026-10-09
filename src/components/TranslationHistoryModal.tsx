@@ -1,34 +1,54 @@
 import React, { useState } from 'react';
-import { BookOpen, Clock, Languages, Trash2, X } from 'lucide-react';
+import { BookOpen, Clock, Languages, Star, Trash2, X } from 'lucide-react';
 import { AI_PROVIDER_LABELS } from '../utils/aiTranslation';
 import {
   MAX_TRANSLATION_HISTORY_ENTRIES,
   TranslationHistoryEntry,
 } from '../utils/translationHistory';
+import {
+  isTranslationFavorite,
+  MAX_TRANSLATION_FAVORITES,
+  TranslationFavorite,
+  TranslationFavoriteCandidate,
+  TranslationFavoriteKind,
+} from '../utils/translationFavorites';
 
 interface Props {
   isOpen: boolean;
   entries: TranslationHistoryEntry[];
+  favorites: TranslationFavorite[];
   onClose: () => void;
   onRemove: (id: string) => void;
   onClear: () => void;
+  onToggleFavorite: (candidate: TranslationFavoriteCandidate) => void;
+  onClearFavorites: () => void;
 }
 
-const getKindLabel = (entry: TranslationHistoryEntry) => {
+const getKindLabel = (entry: { kind: TranslationFavoriteKind; provider?: string }) => {
   if (entry.kind === 'dictionary') return 'Diccionario';
-  if (entry.kind === 'ai' && entry.provider) return `IA · ${AI_PROVIDER_LABELS[entry.provider]}`;
+  if (entry.kind === 'glossary') return 'Glosario';
+  if (entry.kind === 'ai' && entry.provider) {
+    const provider = entry.provider as keyof typeof AI_PROVIDER_LABELS;
+    return `IA · ${AI_PROVIDER_LABELS[provider] || entry.provider}`;
+  }
   return 'Traducción';
 };
 
 export const TranslationHistoryModal: React.FC<Props> = ({
   isOpen,
   entries,
+  favorites,
   onClose,
   onRemove,
   onClear,
+  onToggleFavorite,
+  onClearFavorites,
 }) => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'history' | 'favorites'>('history');
   if (!isOpen) return null;
+  const displayedEntries = activeTab === 'history' ? entries : favorites;
+  const clearDisplayed = activeTab === 'history' ? onClear : onClearFavorites;
 
   return (
     <div
@@ -44,22 +64,24 @@ export const TranslationHistoryModal: React.FC<Props> = ({
       >
         <header className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
           <div className="flex items-center gap-2">
-            <Clock className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+            {activeTab === 'history'
+              ? <Clock className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+              : <Star className="h-5 w-5 fill-current text-amber-500" />}
             <h2 id="translation-history-title" className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
-              Historial de consultas
+              {activeTab === 'history' ? 'Historial de consultas' : 'Palabras favoritas'}
             </h2>
             <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
-              {entries.length}
+              {displayedEntries.length}
             </span>
           </div>
           <div className="flex items-center gap-1">
-            {entries.length > 0 && (
+            {displayedEntries.length > 0 && (
               <button
                 type="button"
-                onClick={onClear}
+                onClick={clearDisplayed}
                 className="tap-area rounded-lg px-2 py-1.5 text-xs text-red-600 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-950/40"
               >
-                Borrar todo
+                {activeTab === 'history' ? 'Borrar historial' : 'Borrar favoritos'}
               </button>
             )}
             <button
@@ -73,15 +95,47 @@ export const TranslationHistoryModal: React.FC<Props> = ({
           </div>
         </header>
 
-        {entries.length ? (
+        <div className="grid grid-cols-2 gap-1 border-b border-zinc-200 px-3 py-2 dark:border-zinc-800">
+          <button
+            type="button"
+            onClick={() => setActiveTab('history')}
+            aria-pressed={activeTab === 'history'}
+            className={`rounded-lg px-3 py-2 text-xs font-semibold ${
+              activeTab === 'history'
+                ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-200'
+                : 'text-zinc-500 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800'
+            }`}
+          >
+            Historial · {entries.length}
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('favorites')}
+            aria-pressed={activeTab === 'favorites'}
+            className={`rounded-lg px-3 py-2 text-xs font-semibold ${
+              activeTab === 'favorites'
+                ? 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200'
+                : 'text-zinc-500 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800'
+            }`}
+          >
+            Favoritos · {favorites.length}
+          </button>
+        </div>
+
+        {displayedEntries.length ? (
           <ul className="space-y-2 overflow-y-auto p-3">
-            {entries.map((entry) => {
+            {displayedEntries.map((entry) => {
               const expanded = expandedId === entry.id;
+              const candidate: TranslationFavoriteCandidate = {
+                query: entry.query,
+                kind: entry.kind,
+                ...(entry.provider ? { provider: entry.provider as TranslationFavoriteCandidate['provider'] } : {}),
+                response: entry.response,
+              };
+              const favorite = isTranslationFavorite(favorites, candidate);
+              const queriedAt = 'savedAt' in entry ? entry.savedAt : entry.queriedAt;
               return (
-                <li
-                  key={entry.id}
-                  className="rounded-xl border border-zinc-200 dark:border-zinc-800"
-                >
+                <li key={entry.id} className="rounded-xl border border-zinc-200 dark:border-zinc-800">
                   <div className="flex items-start gap-2 p-2">
                     <button
                       type="button"
@@ -90,12 +144,12 @@ export const TranslationHistoryModal: React.FC<Props> = ({
                       aria-expanded={expanded}
                     >
                       <span className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-300">
-                        {entry.kind === 'dictionary'
+                        {entry.kind === 'dictionary' || entry.kind === 'glossary'
                           ? <BookOpen className="h-3 w-3" />
                           : <Languages className="h-3 w-3" />}
                         {getKindLabel(entry)}
                         <span className="font-normal text-zinc-400">
-                          {new Date(entry.queriedAt).toLocaleString()}
+                          {new Date(queriedAt).toLocaleString()}
                         </span>
                       </span>
                       <span className="block truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">
@@ -107,15 +161,42 @@ export const TranslationHistoryModal: React.FC<Props> = ({
                         </span>
                       )}
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => onRemove(entry.id)}
-                      className="tap-area mt-1 rounded-lg p-2 text-zinc-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-300"
-                      aria-label={`Eliminar consulta: ${entry.query}`}
-                      title="Eliminar del historial"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    {activeTab === 'history' ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => onToggleFavorite(candidate)}
+                          className={`tap-area mt-1 rounded-lg p-2 hover:bg-amber-50 dark:hover:bg-amber-950/40 ${
+                            favorite ? 'text-amber-500' : 'text-zinc-500'
+                          }`}
+                          aria-label={favorite ? `Quitar de favoritos: ${entry.query}` : `Añadir a favoritos: ${entry.query}`}
+                          title={favorite ? 'Quitar de favoritos' : 'Añadir a favoritos'}
+                          aria-pressed={favorite}
+                        >
+                          <Star className={`h-4 w-4 ${favorite ? 'fill-current' : ''}`} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onRemove(entry.id)}
+                          className="tap-area mt-1 rounded-lg p-2 text-zinc-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-300"
+                          aria-label={`Eliminar consulta: ${entry.query}`}
+                          title="Eliminar del historial"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => onToggleFavorite(candidate)}
+                        className="tap-area mt-1 rounded-lg p-2 text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/40"
+                        aria-label={`Quitar de favoritos: ${entry.query}`}
+                        title="Quitar de favoritos"
+                        aria-pressed="true"
+                      >
+                        <Star className="h-4 w-4 fill-current" />
+                      </button>
+                    )}
                   </div>
                   {expanded && (
                     <div className="mx-3 mb-3 border-t border-zinc-100 pt-2 dark:border-zinc-800">
@@ -133,11 +214,15 @@ export const TranslationHistoryModal: React.FC<Props> = ({
           </ul>
         ) : (
           <p className="px-5 py-10 text-center text-sm text-zinc-500 dark:text-zinc-400">
-            Las consultas de diccionario, traducción e IA aparecerán aquí.
+            {activeTab === 'history'
+              ? 'Las consultas de diccionario, traducción e IA aparecerán aquí.'
+              : 'Guarda definiciones y traducciones con la estrella para encontrarlas aquí.'}
           </p>
         )}
         <p className="border-t border-zinc-100 px-4 py-2 text-center text-[10px] text-zinc-400 dark:border-zinc-800">
-          Se conservan como máximo las {MAX_TRANSLATION_HISTORY_ENTRIES} consultas más recientes de este libro.
+          {activeTab === 'history'
+            ? `Se conservan como máximo las ${MAX_TRANSLATION_HISTORY_ENTRIES} consultas más recientes de este libro.`
+            : `Se conservan como máximo ${MAX_TRANSLATION_FAVORITES} favoritos de este libro.`}
         </p>
       </section>
     </div>
