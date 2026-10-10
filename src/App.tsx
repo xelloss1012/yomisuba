@@ -421,16 +421,24 @@ export const App: React.FC = () => {
       }
       setRecentBooks((books) => [recentBook, ...books.filter((book) => book.id !== id)].slice(0, 8));
 
-      // Auto-detect Japanese or RTL metadata
-      const isJapanese =
-        parsed.metadata.language?.toLowerCase().startsWith('ja') ||
+      // Auto-detect writing mode and progression direction based on language and metadata
+      const lang = parsed.metadata.language?.toLowerCase() || '';
+      const isJapaneseOrRtl =
+        lang.startsWith('ja') ||
+        lang.startsWith('zh') ||
         parsed.metadata.direction === 'rtl';
 
-      if (isJapanese) {
+      if (isJapaneseOrRtl) {
         handleUpdateSettings({
           writingMode: 'vertical-rl',
           progressionDirection: 'rtl',
           fontFamily: 'mincho',
+        });
+      } else {
+        handleUpdateSettings({
+          writingMode: 'horizontal-tb',
+          progressionDirection: 'ltr',
+          fontFamily: 'serif',
         });
       }
       setCurrentEpub(parsed);

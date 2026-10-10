@@ -1913,9 +1913,14 @@ export const EpubReader: React.FC<Props> = ({
             if (sel) { handleSelection(); return; }
 
             if (!selecting && !sel && Math.abs(dx) >= pageSwipeThreshold) {
-              // Swipe follows the same physical direction as the page controls:
-              // moving right advances and moving left goes back.
-              if (dx > 0) doNextRef.current(); else doPrevRef.current();
+              // Swipe direction respects reading mode:
+              // For vertical/RTL: moving right (dx > 0) advances, moving left goes back.
+              // For horizontal/LTR: moving left (dx < 0) advances, moving right goes back.
+              if (isRtl) {
+                if (dx > 0) doNextRef.current(); else doPrevRef.current();
+              } else {
+                if (dx < 0) doNextRef.current(); else doPrevRef.current();
+              }
               return;
             }
 
