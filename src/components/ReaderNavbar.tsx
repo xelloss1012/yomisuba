@@ -75,9 +75,9 @@ export const ReaderNavbar: React.FC<Props> = ({
         isVisible ? 'translate-y-0 opacity-100 pointer-events-auto' : '-translate-y-full opacity-0 pointer-events-none'
       }`}
     >
-      <div className="bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md border-b border-zinc-200/80 dark:border-zinc-800/80 px-3 py-2.5 shadow-sm">
+      <div className="bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md border-b border-zinc-200/80 dark:border-zinc-800/80 px-3 py-3 shadow-sm">
         <div
-          className="flex min-w-0 items-center gap-1 overflow-x-auto pt-1 [&::-webkit-scrollbar]:hidden"
+          className="flex min-w-0 items-center gap-1 overflow-x-auto pt-2 [&::-webkit-scrollbar]:hidden"
           style={{ scrollbarWidth: 'none' }}
         >
           {/* Navigation and book actions */}
@@ -107,7 +107,7 @@ export const ReaderNavbar: React.FC<Props> = ({
           >
             <List className="h-4 w-4" />
             {bookmarkCount + annotationCount > 0 && (
-              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-400 px-1 text-[9px] font-bold text-amber-950">
+              <span className="absolute -right-0.5 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-400 px-1 text-[9px] font-bold text-amber-950">
                 {bookmarkCount + annotationCount}
               </span>
             )}
@@ -128,7 +128,7 @@ export const ReaderNavbar: React.FC<Props> = ({
           >
             <History className="h-4 w-4" />
             {historyCount + favoriteCount + frequentCount > 0 && (
-              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-indigo-500 px-1 text-[9px] font-bold text-white">
+              <span className="absolute -right-0.5 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-indigo-500 px-1 text-[9px] font-bold text-white">
                 {historyCount + favoriteCount + frequentCount}
               </span>
             )}
