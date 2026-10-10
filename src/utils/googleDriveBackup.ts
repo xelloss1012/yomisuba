@@ -7,8 +7,9 @@ import { TranslationFavorite } from './translationFavorites';
 import { FREQUENT_QUERIES_VERSION, FrequentQuery } from './frequentQueries';
 
 const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
-const DRIVE_READONLY_SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
 const DRIVE_SESSION_EXPECTED_KEY = 'ereader_google_drive_session_expected';
+const DRIVE_SESSION_SCOPE_VERSION_KEY = 'ereader_google_drive_scope_version';
+const DRIVE_SESSION_SCOPE_VERSION = 'drive.file.v1';
 const DRIVE_FOLDER_NAME = '.ereader';
 const READER_FOLDER_NAME = DRIVE_FOLDER_NAME;
 const BOOKS_FOLDER_NAME = 'books';
@@ -70,7 +71,7 @@ let initializePromise: Promise<void> | null = null;
 const readerBackupQueues = new Map<string, Promise<void>>();
 const driveFolderCache = new Map<string, Promise<string>>();
 export const googleDriveConfigured = Boolean(import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID);
-const DRIVE_SCOPES = ['email', 'profile', DRIVE_FILE_SCOPE, DRIVE_READONLY_SCOPE];
+const DRIVE_SCOPES = ['email', 'profile', DRIVE_FILE_SCOPE];
 
 function initializeGoogleLogin(): Promise<void> {
   const webClientId = import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID;
@@ -104,6 +105,7 @@ export async function signInToGoogleDrive(): Promise<GoogleDriveSession> {
   }
   const session = await createGoogleDriveSession(accessToken, result.result.idToken);
   localStorage.setItem(DRIVE_SESSION_EXPECTED_KEY, 'true');
+  localStorage.setItem(DRIVE_SESSION_SCOPE_VERSION_KEY, DRIVE_SESSION_SCOPE_VERSION);
   return session;
 }
 
@@ -119,6 +121,15 @@ async function createGoogleDriveSession(accessToken: string, idToken: string): P
 export async function restoreGoogleDriveSession(): Promise<GoogleDriveSession | null> {
   await initializeGoogleLogin();
   const expectedSession = localStorage.getItem(DRIVE_SESSION_EXPECTED_KEY) === 'true';
+  if (
+    expectedSession
+    && localStorage.getItem(DRIVE_SESSION_SCOPE_VERSION_KEY) !== DRIVE_SESSION_SCOPE_VERSION
+  ) {
+    await SocialLogin.logout({ provider: 'google' });
+    localStorage.removeItem(DRIVE_SESSION_EXPECTED_KEY);
+    localStorage.removeItem(DRIVE_SESSION_SCOPE_VERSION_KEY);
+    return null;
+  }
   if (Capacitor.isNativePlatform() && expectedSession) {
     try {
       await SocialLogin.refresh({
@@ -129,6 +140,7 @@ export async function restoreGoogleDriveSession(): Promise<GoogleDriveSession | 
       const { isLoggedIn } = await SocialLogin.isLoggedIn({ provider: 'google' });
       if (!isLoggedIn) {
         localStorage.removeItem(DRIVE_SESSION_EXPECTED_KEY);
+        localStorage.removeItem(DRIVE_SESSION_SCOPE_VERSION_KEY);
         throw new Error('La sesión de Google ha caducado o se ha revocado. Vuelve a conectar la cuenta.');
       }
       throw error;
@@ -136,7 +148,10 @@ export async function restoreGoogleDriveSession(): Promise<GoogleDriveSession | 
   }
   const { isLoggedIn } = await SocialLogin.isLoggedIn({ provider: 'google' });
   if (!isLoggedIn) {
-    if (expectedSession) localStorage.removeItem(DRIVE_SESSION_EXPECTED_KEY);
+    if (expectedSession) {
+      localStorage.removeItem(DRIVE_SESSION_EXPECTED_KEY);
+      localStorage.removeItem(DRIVE_SESSION_SCOPE_VERSION_KEY);
+    }
     return null;
   }
 
@@ -152,6 +167,7 @@ export async function restoreGoogleDriveSession(): Promise<GoogleDriveSession | 
   }
   const session = await createGoogleDriveSession(authorization.accessToken, authorization.jwt);
   localStorage.setItem(DRIVE_SESSION_EXPECTED_KEY, 'true');
+  localStorage.setItem(DRIVE_SESSION_SCOPE_VERSION_KEY, DRIVE_SESSION_SCOPE_VERSION);
   return session;
 }
 
@@ -162,6 +178,7 @@ export async function refreshGoogleDriveSession(): Promise<GoogleDriveSession | 
 export async function signOutGoogleDrive(): Promise<void> {
   await SocialLogin.logout({ provider: 'google' });
   localStorage.removeItem(DRIVE_SESSION_EXPECTED_KEY);
+  localStorage.removeItem(DRIVE_SESSION_SCOPE_VERSION_KEY);
 }
 
 async function driveRequest(accessToken: string, url: string, init: RequestInit = {}): Promise<Response> {
@@ -267,7 +284,15 @@ async function listBookFiles(accessToken: string): Promise<DriveFile[]> {
     files.push(...(result.files || []));
     pageToken = result.nextPageToken;
   } while (pageToken);
-  return files.filter((file) => file.name.toLowerCase().endsWith('.epub'));
+  return files.filter((file) => {
+    if (!file.name.toLowerCase().endsWith('.epub')) return false;
+    try {
+      const metadata = JSON.parse(file.description || '{}') as { ereaderManaged?: unknown };
+      return metadata.ereaderManaged === true;
+    } catch {
+      return false;
+    }
+  });
 }
 
 async function uploadFile(
@@ -422,6 +447,31 @@ export async function listGoogleDriveBooks(accessToken: string): Promise<GoogleD
   });
 }
 
+export async function findGoogleDriveBookForRecentBook(
+  accessToken: string,
+  book: RecentBook,
+): Promise<GoogleDriveBook | null> {
+  const file = await findBookFileByMetadata(accessToken, book);
+  if (!file) return null;
+  let metadata: Partial<GoogleDriveBook> = {};
+  try {
+    metadata = JSON.parse(file.description || '{}') as Partial<GoogleDriveBook>;
+  } catch {
+    // findBookFileByMetadata only returns files with valid managed-book metadata.
+  }
+  return {
+    id: file.id,
+    name: file.name,
+    title: typeof metadata.title === 'string' ? metadata.title : book.title,
+    creator: typeof metadata.creator === 'string' ? metadata.creator : book.creator,
+    size: Number(file.size || 0),
+    modifiedTime: file.modifiedTime || null,
+    coverDataUrl: typeof metadata.coverDataUrl === 'string' && metadata.coverDataUrl.startsWith('data:image/')
+      ? metadata.coverDataUrl
+      : undefined,
+  };
+}
+
 async function findBookFileByMetadata(accessToken: string, book: RecentBook): Promise<DriveFile | null> {
   const files = await listBookFiles(accessToken);
   for (const file of files) {
@@ -440,6 +490,41 @@ async function findBookFileByMetadata(accessToken: string, book: RecentBook): Pr
     }
   }
   return null;
+}
+
+async function deleteDriveFile(accessToken: string, fileId: string): Promise<void> {
+  await driveRequest(
+    accessToken,
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}`,
+    { method: 'DELETE' },
+  );
+}
+
+export async function deleteGoogleDriveBook(
+  accessToken: string,
+  cloudBook: GoogleDriveBook,
+): Promise<void> {
+  const file = await getDriveFile(accessToken, cloudBook.id);
+  if (!file.name.toLowerCase().endsWith('.epub')) {
+    throw new Error('El archivo seleccionado no tiene extensión .epub.');
+  }
+  let metadata: { ereaderManaged?: unknown; title?: unknown; creator?: unknown } = {};
+  try {
+    metadata = JSON.parse(file.description || '{}') as typeof metadata;
+  } catch {
+    throw new Error('No se puede borrar este archivo: no contiene metadatos válidos de EReader.');
+  }
+  if (metadata.ereaderManaged !== true) {
+    throw new Error('No se puede borrar este archivo porque no consta como copia creada por EReader.');
+  }
+
+  await deleteDriveFile(accessToken, file.id);
+  if (typeof metadata.title === 'string' && typeof metadata.creator === 'string') {
+    const bookKey = `ereader_book_${encodeURIComponent(`${metadata.title}|${metadata.creator}`)}`;
+    const stateId = await hashText(bookKey);
+    const stateFile = await findFile(accessToken, `${BOOK_STATE_PREFIX}${stateId}.json`);
+    if (stateFile) await deleteDriveFile(accessToken, stateFile.id);
+  }
 }
 
 export async function uploadGoogleDriveBook(accessToken: string, book: RecentBook): Promise<void> {

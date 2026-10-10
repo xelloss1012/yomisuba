@@ -1,5 +1,5 @@
 import React from 'react';
-import { CloudDownload, CloudUpload, LogIn, LogOut, RefreshCw } from 'lucide-react';
+import { CloudDownload, CloudUpload, LogIn, LogOut, RefreshCw, Trash2 } from 'lucide-react';
 import { GoogleDriveBook, GoogleDriveSession } from '../utils/googleDriveBackup';
 import { BookCoverThumbnail } from './BookCoverThumbnail';
 import { RecentBook } from '../utils/recentBooks';
@@ -16,6 +16,7 @@ interface Props {
   onRestoreSettings: () => void;
   onUploadBook: (book: RecentBook) => void;
   onDownloadBook: (book: GoogleDriveBook) => void;
+  onDeleteBook: (book: GoogleDriveBook) => void;
   onRefreshBooks: () => void;
 }
 
@@ -31,6 +32,7 @@ export const GoogleDriveBackupPanel: React.FC<Props> = ({
   onRestoreSettings,
   onUploadBook,
   onDownloadBook,
+  onDeleteBook,
   onRefreshBooks,
 }) => (
   <section className="mt-6 w-full min-w-0 rounded-2xl border border-indigo-200 bg-indigo-50/60 p-3 text-left dark:border-indigo-900/60 dark:bg-indigo-950/20 sm:p-4">
@@ -38,7 +40,7 @@ export const GoogleDriveBackupPanel: React.FC<Props> = ({
       <div className="min-w-0 flex-1">
         <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">Copias en tu Google Drive</h2>
         <p className="mt-1 text-[11px] text-zinc-600 dark:text-zinc-400">
-          Ajustes y lectura se respaldan automáticamente. Para copiar un EPUB, pulsa «Subir a Drive» junto al libro.
+          Ajustes y lectura se respaldan automáticamente. Solo se muestran los EPUB guardados por EReader.
         </p>
       </div>
       {!session ? (
@@ -134,7 +136,7 @@ export const GoogleDriveBackupPanel: React.FC<Props> = ({
               </button>
             </div>
             <p className="mb-2 text-[10px] text-zinc-500 dark:text-zinc-400">
-              Los EPUB de Drive/.ereader/books aparecen aquí, incluidos los copiados manualmente.
+              Se muestran los EPUB importados con EReader; los archivos añadidos manualmente a Drive no son accesibles.
             </p>
             {cloudBooks.length ? (
               <div className="max-h-56 space-y-2 overflow-y-auto">
@@ -148,23 +150,35 @@ export const GoogleDriveBackupPanel: React.FC<Props> = ({
                         {book.creator ? ` · ${book.creator}` : ''}
                       </span>
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => onDownloadBook(book)}
-                      disabled={busy}
-                      className="inline-flex min-h-10 w-full shrink-0 items-center justify-center gap-1.5 rounded-md bg-indigo-100/70 px-2.5 py-2 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 dark:bg-indigo-900/40 dark:text-indigo-300 dark:hover:bg-indigo-900/60 sm:w-auto"
-                      aria-label={`${localBooks.some((localBook) => localBook.title === book.title && localBook.creator === book.creator) ? 'Restaurar la última lectura de' : 'Descargar'} ${book.title} desde Google Drive`}
-                      title={localBooks.some((localBook) => localBook.title === book.title && localBook.creator === book.creator)
-                        ? 'Restaurar el último progreso guardado en Drive'
-                        : 'Descargar este libro y restaurar su lectura'}
-                    >
-                      <CloudDownload className="h-4 w-4" />
-                      <span className="text-[10px] font-semibold">
-                        {localBooks.some((localBook) => localBook.title === book.title && localBook.creator === book.creator)
-                          ? 'Actualizar'
-                          : 'Descargar'}
-                      </span>
-                    </button>
+                    <div className="flex w-full shrink-0 gap-2 sm:w-auto">
+                      <button
+                        type="button"
+                        onClick={() => onDownloadBook(book)}
+                        disabled={busy}
+                        className="inline-flex min-h-10 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-md bg-indigo-100/70 px-2.5 py-2 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 dark:bg-indigo-900/40 dark:text-indigo-300 dark:hover:bg-indigo-900/60 sm:flex-none"
+                        aria-label={`${localBooks.some((localBook) => localBook.title === book.title && localBook.creator === book.creator) ? 'Restaurar la última lectura de' : 'Descargar'} ${book.title} desde Google Drive`}
+                        title={localBooks.some((localBook) => localBook.title === book.title && localBook.creator === book.creator)
+                          ? 'Restaurar el último progreso guardado en Drive'
+                          : 'Descargar este libro y restaurar su lectura'}
+                      >
+                        <CloudDownload className="h-4 w-4" />
+                        <span className="text-[10px] font-semibold">
+                          {localBooks.some((localBook) => localBook.title === book.title && localBook.creator === book.creator)
+                            ? 'Actualizar'
+                            : 'Descargar'}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onDeleteBook(book)}
+                        disabled={busy}
+                        className="inline-flex min-h-10 w-10 shrink-0 items-center justify-center rounded-md text-zinc-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-red-950/40 dark:hover:text-red-300"
+                        aria-label={`Eliminar la copia de ${book.title} de Google Drive`}
+                        title="Eliminar la copia y sus datos de lectura de Drive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>

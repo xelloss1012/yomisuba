@@ -113,9 +113,16 @@ descargar. Su estado se restaura al abrirlo si hay una copia. Para actualizar el
 progreso de un EPUB ya guardado localmente, usa la acción **Actualizar** junto
 al libro en la lista de Google Drive. No hay base de datos compartida entre
 usuarios ni archivo ZIP. Los ajustes y los datos de lectura se guardan en
-`.ereader`; los EPUB se guardan con su nombre original en `.reader/books`.
-La app lista los EPUB de esa carpeta y el selector permite importar los que se
-hayan copiado allí manualmente.
+`.ereader`; los EPUB se guardan con su nombre original en `.ereader/books`.
+Desde la lista de Drive se puede eliminar la copia EPUB y sus datos de lectura.
+Al quitar un libro de recientes, si existe una copia en Drive, se puede elegir
+si conservarla o borrarla también.
+En Android, el botón habitual «Seleccionar archivo EPUB» abre el selector del
+sistema, desde el que se puede elegir un libro del dispositivo o de un proveedor
+como Google Drive. El libro se abre y se guarda localmente; para copiarlo a
+Drive, usa después «Subir a Drive» en la lista de libros de este dispositivo.
+La lista de Drive contiene los libros guardados por EReader; los archivos
+añadidos manualmente a Drive no se enumeran.
 
 ### Futuras fuentes de lectura (propuesta)
 
@@ -151,8 +158,8 @@ pretendan soportar. Son estimaciones preliminares, no un compromiso de entrega.
 Para habilitar Drive:
 
 1. En Google Cloud Console crea un proyecto, activa **Google Drive API** y
-   configura la pantalla de consentimiento OAuth. Añade los permisos OAuth
-   `drive.file` y `drive.readonly`. Si permanece en modo
+   configura la pantalla de consentimiento OAuth. Añade el permiso OAuth
+   `drive.file`. Si permanece en modo
    **Testing**, añade las cuentas que probarán la app como usuarios de prueba.
 2. Crea un cliente OAuth de tipo **Web application**. En web, añade los
    orígenes autorizados de la aplicación. Para Android, crea además un cliente
@@ -164,14 +171,18 @@ Para habilitar Drive:
    No se necesita Firebase ni un `google-services.json`.
 4. Ejecuta `npm run android:sync` y vuelve a compilar la aplicación.
 
-Google pedirá autorización para crear y actualizar sus respaldos con `drive.file`
-y para listar/leer los EPUB con `drive.readonly`. La app solo muestra EPUB
-situados directamente en `.reader/books`, incluidos los copiados manualmente.
-Los EPUB subidos desde la app conservan su nombre original. La app
-usa el ID de cliente web también en Android; el cliente OAuth Android autoriza
+Google pedirá autorización para crear, listar, leer y actualizar los archivos
+creados por EReader usando únicamente `drive.file`. La app no accede a otros
+archivos de Drive ni lista EPUB copiados manualmente. Los EPUB importados desde
+el selector del sistema se abren y se guardan localmente; se pueden copiar a
+Drive con la acción «Subir a Drive». Esos libros aparecen junto con los
+guardados previamente desde la app. Los EPUB guardados en Drive conservan su
+nombre original. La app usa el ID de cliente web también en Android; el cliente OAuth Android autoriza
 el paquete y certificado de firma. En Android se restaura la sesión nativa y se
 renueva el token al volver a la app; Google puede volver a pedir autorización si
 la cuenta revoca el acceso o caducan las credenciales de inicio de sesión. Los
+usuarios con una sesión de una versión anterior tendrán que volver a conectar
+Google para aplicar el permiso limitado `drive.file`. Los
 ajustes y datos de lectura son JSON, y los EPUB son archivos individuales; no
 están cifrados por la app. La configuración incluye cualquier clave IA guardada
 y queda sujeta a la seguridad de la cuenta Google y Drive.

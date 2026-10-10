@@ -5,9 +5,11 @@ import { extractEpubCoverBlob, parseEpub } from './utils/epubParser';
 import { FileDropZone } from './components/FileDropZone';
 import { EpubReader } from './components/EpubReader';
 import { setReaderAutoRotate } from './utils/readerOrientation';
-import { createBookId, getLastBookId, getRecentBook, listRecentBooks, RecentBook, saveRecentBook, setLastBookId } from './utils/recentBooks';
+import { createBookId, deleteRecentBook, getLastBookId, getRecentBook, listRecentBooks, RecentBook, saveRecentBook, setLastBookId } from './utils/recentBooks';
 import {
+  deleteGoogleDriveBook,
   downloadGoogleDriveBook,
+  findGoogleDriveBookForRecentBook,
   getGoogleDriveSettingsDate,
   GoogleDriveBook,
   GoogleDriveSession,
@@ -198,9 +200,8 @@ export const App: React.FC = () => {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, []);
 
-  // Show the cover of every Google Drive book. Books uploaded by EReader already
-  // carry a cover in their metadata; the rest are downloaded once, read, and
-  // cached back into the file metadata so they are never fetched twice.
+  // EReader-managed books normally include their cover in metadata. If an older
+  // managed book does not, load it once and cache the thumbnail on the Drive file.
   useEffect(() => {
     if (!googleDriveSession) return;
     const pending = googleDriveBooks.filter(
@@ -337,7 +338,7 @@ export const App: React.FC = () => {
           fontFamily: 'mincho',
         });
       }
-
+      setCurrentEpub(parsed);
       setCurrentEpub(parsed);
     } catch (err: any) {
       console.error('Error al abrir el archivo EPUB:', err);
@@ -399,6 +400,40 @@ export const App: React.FC = () => {
 
   const handleOpenRecent = (book: RecentBook) => {
     void openBook(book.blob, book.id, book.name);
+  };
+
+  const handleRemoveRecentBook = async (book: RecentBook) => {
+    setIsDriveBusy(true);
+    setErrorMessage(null);
+    try {
+      let cloudBook: GoogleDriveBook | null = null;
+      if (googleDriveSession) {
+        cloudBook = await findGoogleDriveBookForRecentBook(googleDriveSession.accessToken, book);
+      }
+
+      let deleteDriveCopy = false;
+      if (cloudBook) {
+        deleteDriveCopy = window.confirm(
+          `«${book.title}» tiene una copia en Google Drive. ¿Quitarla también de Drive junto con sus datos de lectura?\n\nAceptar: borrar de Drive y de recientes.\nCancelar: conservar Drive y quitar solo de recientes.`,
+        );
+      } else {
+        const confirmed = window.confirm(googleDriveSession
+          ? `¿Quitar «${book.title}» de los libros recientes de este dispositivo?`
+          : `¿Quitar «${book.title}» de los libros recientes? No hay una sesión de Google, así que no se puede comprobar ni borrar una copia de Drive.`);
+        if (!confirmed) return;
+      }
+
+      if (deleteDriveCopy && cloudBook && googleDriveSession) {
+        await deleteGoogleDriveBook(googleDriveSession.accessToken, cloudBook);
+        setGoogleDriveBooks(await listGoogleDriveBooks(googleDriveSession.accessToken));
+      }
+      await deleteRecentBook(book.id);
+      setRecentBooks((books) => books.filter((item) => item.id !== book.id));
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsDriveBusy(false);
+    }
   };
 
   const handleCloseBook = () => {
@@ -472,6 +507,16 @@ export const App: React.FC = () => {
     });
   };
 
+  const handleDeleteDriveBook = (cloudBook: GoogleDriveBook) => {
+    if (!googleDriveSession || !window.confirm(
+      `¿Eliminar «${cloudBook.title}» y sus datos de lectura de Google Drive? Esta acción no se puede deshacer.`,
+    )) return;
+    void runDriveAction(async () => {
+      await deleteGoogleDriveBook(googleDriveSession.accessToken, cloudBook);
+      setGoogleDriveBooks(await listGoogleDriveBooks(googleDriveSession.accessToken));
+    });
+  };
+
   const handleDownloadDriveBook = (cloudBook: GoogleDriveBook) => {
     if (!googleDriveSession || !window.confirm(
       `Descargar «${cloudBook.title}» y restaurar sus datos de lectura locales?`
@@ -525,6 +570,7 @@ export const App: React.FC = () => {
         <FileDropZone
           onFileLoaded={handleFileLoaded}
           onOpenRecent={handleOpenRecent}
+          onRemoveRecentBook={(book) => { void handleRemoveRecentBook(book); }}
           recentBooks={recentBooks}
           isLoading={isLoading}
           googleDriveConfigured={googleDriveConfigured}
@@ -537,6 +583,7 @@ export const App: React.FC = () => {
           onRestoreDriveSettings={handleRestoreDriveSettings}
           onUploadDriveBook={handleUploadDriveBook}
           onDownloadDriveBook={handleDownloadDriveBook}
+          onDeleteDriveBook={handleDeleteDriveBook}
           onRefreshDriveBooks={handleRefreshDriveBooks}
         />
       )}

@@ -83,6 +83,28 @@ export async function getRecentBook(id: string): Promise<RecentBook | null> {
   return book;
 }
 
+export async function deleteRecentBook(id: string): Promise<void> {
+  const db = await openDatabase();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(STORE_NAME, 'readwrite');
+      transaction.objectStore(STORE_NAME).delete(id);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error || new Error('No se pudo quitar el libro de recientes.'));
+      transaction.onabort = () => reject(transaction.error || new Error('No se pudo quitar el libro de recientes.'));
+    });
+  } finally {
+    db.close();
+  }
+  try {
+    if (localStorage.getItem('ereader_last_book_id') === id) {
+      localStorage.removeItem('ereader_last_book_id');
+    }
+  } catch {
+    // The recent-book entry is removed even if the startup preference cannot be updated.
+  }
+}
+
 export function getLastBookId(): string | null {
   try {
     return localStorage.getItem('ereader_last_book_id');

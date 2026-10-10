@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { UploadCloud, BookOpen, Sparkles, FileText, CheckCircle2, Clock3 } from 'lucide-react';
+import { UploadCloud, BookOpen, Sparkles, FileText, CheckCircle2, Clock3, Trash2 } from 'lucide-react';
 import { createSampleJapaneseEpub } from '../utils/sampleBook';
 import { RecentBook } from '../utils/recentBooks';
 import { GoogleDriveBook, GoogleDriveSession } from '../utils/googleDriveBackup';
@@ -9,6 +9,7 @@ import { BookCoverThumbnail } from './BookCoverThumbnail';
 interface Props {
   onFileLoaded: (file: File | Blob) => void;
   onOpenRecent: (book: RecentBook) => void;
+  onRemoveRecentBook: (book: RecentBook) => void;
   recentBooks: RecentBook[];
   isLoading: boolean;
   googleDriveConfigured: boolean;
@@ -21,12 +22,14 @@ interface Props {
   onRestoreDriveSettings: () => void;
   onUploadDriveBook: (book: RecentBook) => void;
   onDownloadDriveBook: (book: GoogleDriveBook) => void;
+  onDeleteDriveBook: (book: GoogleDriveBook) => void;
   onRefreshDriveBooks: () => void;
 }
 
 export const FileDropZone: React.FC<Props> = ({
   onFileLoaded,
   onOpenRecent,
+  onRemoveRecentBook,
   recentBooks,
   isLoading,
   googleDriveConfigured,
@@ -39,6 +42,7 @@ export const FileDropZone: React.FC<Props> = ({
   onRestoreDriveSettings,
   onUploadDriveBook,
   onDownloadDriveBook,
+  onDeleteDriveBook,
   onRefreshDriveBooks,
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
@@ -95,6 +99,7 @@ export const FileDropZone: React.FC<Props> = ({
           onRestoreSettings={onRestoreDriveSettings}
           onUploadBook={onUploadDriveBook}
           onDownloadBook={onDownloadDriveBook}
+          onDeleteBook={onDeleteDriveBook}
           onRefreshBooks={onRefreshDriveBooks}
         />
 
@@ -171,21 +176,35 @@ export const FileDropZone: React.FC<Props> = ({
             </div>
             <div className="space-y-2">
               {recentBooks.map((book) => (
-                <button
+                <div
                   key={book.id}
-                  type="button"
-                  onClick={() => onOpenRecent(book)}
-                  disabled={isLoading}
-                  className="w-full rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white/70 dark:bg-zinc-800/60 px-3 py-2.5 text-left hover:border-indigo-400 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/30 transition-colors disabled:opacity-50"
+                  className="flex min-w-0 items-center gap-2 rounded-xl border border-zinc-200 bg-white/70 px-2 dark:border-zinc-700 dark:bg-zinc-800/60"
                 >
-                  <div className="flex items-center gap-3">
-                    <BookCoverThumbnail cover={book.cover} title={book.title} />
-                    <span className="min-w-0">
-                      <span className="block truncate text-xs font-semibold text-zinc-800 dark:text-zinc-200">{book.title}</span>
-                      <span className="block truncate text-[11px] text-zinc-500 dark:text-zinc-400">{book.creator} · {book.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => onOpenRecent(book)}
+                    disabled={isLoading}
+                    className="min-w-0 flex-1 py-2.5 pl-1 text-left transition-colors hover:text-indigo-700 disabled:opacity-50 dark:hover:text-indigo-300"
+                  >
+                    <span className="flex min-w-0 items-center gap-3">
+                      <BookCoverThumbnail cover={book.cover} title={book.title} />
+                      <span className="min-w-0">
+                        <span className="block truncate text-xs font-semibold text-zinc-800 dark:text-zinc-200">{book.title}</span>
+                        <span className="block truncate text-[11px] text-zinc-500 dark:text-zinc-400">{book.creator} · {book.name}</span>
+                      </span>
                     </span>
-                  </div>
-                </button>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onRemoveRecentBook(book)}
+                    disabled={isLoading || isDriveBusy}
+                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-red-950/40 dark:hover:text-red-300"
+                    aria-label={`Quitar ${book.title} de libros recientes`}
+                    title="Quitar de libros recientes"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
               ))}
             </div>
           </div>
