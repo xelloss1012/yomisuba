@@ -123,6 +123,10 @@ como Google Drive. El libro se abre y se guarda localmente; para copiarlo a
 Drive, usa después «Subir a Drive» en la lista de libros de este dispositivo.
 La lista de Drive contiene los libros guardados por EReader; los archivos
 añadidos manualmente a Drive no se enumeran.
+La lectura y la biblioteca local no esperan a que Drive responda. Sin conexión,
+los datos locales siguen disponibles y los cambios de lectura quedan en cola
+para sincronizarse al recuperar la conexión; las peticiones a Drive tienen un
+límite de espera.
 
 ### Futuras fuentes de lectura (propuesta)
 

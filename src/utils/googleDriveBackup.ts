@@ -10,6 +10,7 @@ const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const DRIVE_SESSION_EXPECTED_KEY = 'ereader_google_drive_session_expected';
 const DRIVE_SESSION_SCOPE_VERSION_KEY = 'ereader_google_drive_scope_version';
 const DRIVE_SESSION_SCOPE_VERSION = 'drive.file.v1';
+const PENDING_READER_DATA_KEY = 'ereader_pending_drive_reader_data_v1';
 const DRIVE_FOLDER_NAME = '.ereader';
 const READER_FOLDER_NAME = DRIVE_FOLDER_NAME;
 const BOOKS_FOLDER_NAME = 'books';
@@ -21,6 +22,10 @@ const MAX_BOOK_SIZE = 100 * 1024 * 1024;
 const COVER_THUMBNAIL_MAX_WIDTH = 160;
 const COVER_THUMBNAIL_QUALITY = 0.72;
 const MAX_COVER_METADATA_LENGTH = 32 * 1024;
+const DRIVE_REQUEST_TIMEOUT_MS = 12_000;
+const GOOGLE_AUTH_TIMEOUT_MS = 12_000;
+const GOOGLE_LOGIN_TIMEOUT_MS = 60_000;
+const READER_RESTORE_TIMEOUT_MS = 4_000;
 
 interface DriveFile {
   id: string;
@@ -48,6 +53,7 @@ export interface GoogleDriveBook {
 }
 
 export interface ReaderBookBackup {
+  formatVersion?: 1;
   bookKey: string;
   title: string;
   creator: string;
@@ -73,13 +79,25 @@ const driveFolderCache = new Map<string, Promise<string>>();
 export const googleDriveConfigured = Boolean(import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID);
 const DRIVE_SCOPES = ['email', 'profile', DRIVE_FILE_SCOPE];
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  });
+}
+
 function initializeGoogleLogin(): Promise<void> {
   const webClientId = import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID;
   if (!webClientId) throw new Error('Falta configurar VITE_GOOGLE_WEB_CLIENT_ID.');
   if (!initializePromise) {
-    initializePromise = SocialLogin.initialize({
-      google: { webClientId, mode: 'online' },
-    }).catch((error: unknown) => {
+    initializePromise = withTimeout(
+      SocialLogin.initialize({ google: { webClientId, mode: 'online' } }),
+      GOOGLE_AUTH_TIMEOUT_MS,
+      'La conexión con Google está tardando demasiado. Puedes seguir usando la aplicación sin Drive e intentarlo más tarde.',
+    ).catch((error: unknown) => {
       initializePromise = null;
       throw error;
     });
@@ -89,10 +107,11 @@ function initializeGoogleLogin(): Promise<void> {
 
 export async function signInToGoogleDrive(): Promise<GoogleDriveSession> {
   await initializeGoogleLogin();
-  const result = await SocialLogin.login({
-    provider: 'google',
-    options: { scopes: DRIVE_SCOPES },
-  });
+  const result = await withTimeout(
+    SocialLogin.login({ provider: 'google', options: { scopes: DRIVE_SCOPES } }),
+    GOOGLE_LOGIN_TIMEOUT_MS,
+    'El inicio de sesión de Google no respondió. Puedes seguir usando la aplicación sin Drive e intentarlo más tarde.',
+  );
   if (result.result.responseType !== 'online') {
     throw new Error('Google devolvió una respuesta de inicio de sesión no compatible.');
   }
@@ -110,7 +129,11 @@ export async function signInToGoogleDrive(): Promise<GoogleDriveSession> {
 }
 
 async function createGoogleDriveSession(accessToken: string, idToken: string): Promise<GoogleDriveSession> {
-  const { claims } = await SocialLogin.decodeIdToken({ idToken });
+  const { claims } = await withTimeout(
+    SocialLogin.decodeIdToken({ idToken }),
+    GOOGLE_AUTH_TIMEOUT_MS,
+    'Google tardó demasiado en validar la sesión.',
+  );
   return {
     accessToken,
     email: typeof claims.email === 'string' ? claims.email : '',
@@ -125,19 +148,28 @@ export async function restoreGoogleDriveSession(): Promise<GoogleDriveSession | 
     expectedSession
     && localStorage.getItem(DRIVE_SESSION_SCOPE_VERSION_KEY) !== DRIVE_SESSION_SCOPE_VERSION
   ) {
-    await SocialLogin.logout({ provider: 'google' });
+    await withTimeout(
+      SocialLogin.logout({ provider: 'google' }),
+      GOOGLE_AUTH_TIMEOUT_MS,
+      'No se pudo cerrar a tiempo la sesión anterior de Google.',
+    );
     localStorage.removeItem(DRIVE_SESSION_EXPECTED_KEY);
     localStorage.removeItem(DRIVE_SESSION_SCOPE_VERSION_KEY);
     return null;
   }
   if (Capacitor.isNativePlatform() && expectedSession) {
     try {
-      await SocialLogin.refresh({
-        provider: 'google',
-        options: { scopes: DRIVE_SCOPES },
-      });
+      await withTimeout(
+        SocialLogin.refresh({ provider: 'google', options: { scopes: DRIVE_SCOPES } }),
+        GOOGLE_AUTH_TIMEOUT_MS,
+        'La sesión de Google tardó demasiado en restaurarse.',
+      );
     } catch (error) {
-      const { isLoggedIn } = await SocialLogin.isLoggedIn({ provider: 'google' });
+      const { isLoggedIn } = await withTimeout(
+        SocialLogin.isLoggedIn({ provider: 'google' }),
+        GOOGLE_AUTH_TIMEOUT_MS,
+        'Google no respondió al comprobar la sesión.',
+      );
       if (!isLoggedIn) {
         localStorage.removeItem(DRIVE_SESSION_EXPECTED_KEY);
         localStorage.removeItem(DRIVE_SESSION_SCOPE_VERSION_KEY);
@@ -146,7 +178,11 @@ export async function restoreGoogleDriveSession(): Promise<GoogleDriveSession | 
       throw error;
     }
   }
-  const { isLoggedIn } = await SocialLogin.isLoggedIn({ provider: 'google' });
+  const { isLoggedIn } = await withTimeout(
+    SocialLogin.isLoggedIn({ provider: 'google' }),
+    GOOGLE_AUTH_TIMEOUT_MS,
+    'Google no respondió al comprobar la sesión.',
+  );
   if (!isLoggedIn) {
     if (expectedSession) {
       localStorage.removeItem(DRIVE_SESSION_EXPECTED_KEY);
@@ -156,12 +192,17 @@ export async function restoreGoogleDriveSession(): Promise<GoogleDriveSession | 
   }
 
   if (Capacitor.isNativePlatform() && !expectedSession) {
-    await SocialLogin.refresh({
-      provider: 'google',
-      options: { scopes: DRIVE_SCOPES },
-    });
+    await withTimeout(
+      SocialLogin.refresh({ provider: 'google', options: { scopes: DRIVE_SCOPES } }),
+      GOOGLE_AUTH_TIMEOUT_MS,
+      'La sesión de Google tardó demasiado en restaurarse.',
+    );
   }
-  const authorization = await SocialLogin.getAuthorizationCode({ provider: 'google' });
+  const authorization = await withTimeout(
+    SocialLogin.getAuthorizationCode({ provider: 'google' }),
+    GOOGLE_AUTH_TIMEOUT_MS,
+    'Google no respondió al recuperar el acceso a Drive.',
+  );
   if (!authorization.accessToken || !authorization.jwt) {
     throw new Error('La sesión de Google no tiene un token válido para Drive. Vuelve a conectar la cuenta.');
   }
@@ -176,16 +217,33 @@ export async function refreshGoogleDriveSession(): Promise<GoogleDriveSession | 
 }
 
 export async function signOutGoogleDrive(): Promise<void> {
-  await SocialLogin.logout({ provider: 'google' });
+  await withTimeout(
+    SocialLogin.logout({ provider: 'google' }),
+    GOOGLE_AUTH_TIMEOUT_MS,
+    'Google tardó demasiado en cerrar la sesión.',
+  );
   localStorage.removeItem(DRIVE_SESSION_EXPECTED_KEY);
   localStorage.removeItem(DRIVE_SESSION_SCOPE_VERSION_KEY);
 }
 
 async function driveRequest(accessToken: string, url: string, init: RequestInit = {}): Promise<Response> {
-  const response = await fetch(url, {
-    ...init,
-    headers: { Authorization: `Bearer ${accessToken}`, ...init.headers },
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), DRIVE_REQUEST_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...init,
+      signal: controller.signal,
+      headers: { Authorization: `Bearer ${accessToken}`, ...init.headers },
+    });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error('Google Drive no respondió a tiempo. Comprueba la conexión; puedes seguir leyendo sin sincronizar.');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
   if (!response.ok) {
     const detail = await response.text();
     if (response.status === 401) {
@@ -521,6 +579,7 @@ export async function deleteGoogleDriveBook(
   await deleteDriveFile(accessToken, file.id);
   if (typeof metadata.title === 'string' && typeof metadata.creator === 'string') {
     const bookKey = `ereader_book_${encodeURIComponent(`${metadata.title}|${metadata.creator}`)}`;
+    removePendingGoogleDriveReaderData(bookKey);
     const stateId = await hashText(bookKey);
     const stateFile = await findFile(accessToken, `${BOOK_STATE_PREFIX}${stateId}.json`);
     if (stateFile) await deleteDriveFile(accessToken, stateFile.id);
@@ -638,8 +697,69 @@ export async function saveGoogleDriveReaderData(
   readerBackupQueues.set(name, save);
   try {
     await save;
+    clearPendingGoogleDriveReaderData(data);
   } finally {
     if (readerBackupQueues.get(name) === save) readerBackupQueues.delete(name);
+  }
+}
+
+export async function syncPendingGoogleDriveReaderData(accessToken: string): Promise<void> {
+  for (const data of Object.values(getPendingGoogleDriveReaderData())) {
+    await saveGoogleDriveReaderData(accessToken, data);
+  }
+}
+
+export function queueGoogleDriveReaderData(data: ReaderBookBackup): void {
+  try {
+    const pending = getPendingGoogleDriveReaderData();
+    pending[data.bookKey] = { ...data, formatVersion: 1 };
+    localStorage.setItem(PENDING_READER_DATA_KEY, JSON.stringify(pending));
+  } catch (error) {
+    console.warn('No se pudo guardar localmente la cola de sincronización de Drive:', error);
+  }
+}
+
+export function getPendingGoogleDriveReaderData(): Record<string, ReaderBookBackup> {
+  try {
+    const stored: unknown = JSON.parse(localStorage.getItem(PENDING_READER_DATA_KEY) || '{}');
+    if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return {};
+    return Object.fromEntries(
+      Object.entries(stored).filter((entry): entry is [string, ReaderBookBackup] =>
+        isReaderBookBackup(entry[1]),
+      ),
+    );
+  } catch {
+    return {};
+  }
+}
+
+function clearPendingGoogleDriveReaderData(data: ReaderBookBackup): void {
+  try {
+    const pending = getPendingGoogleDriveReaderData();
+    if (JSON.stringify(pending[data.bookKey]) !== JSON.stringify({ ...data, formatVersion: 1 })) return;
+    delete pending[data.bookKey];
+    if (Object.keys(pending).length) {
+      localStorage.setItem(PENDING_READER_DATA_KEY, JSON.stringify(pending));
+    } else {
+      localStorage.removeItem(PENDING_READER_DATA_KEY);
+    }
+  } catch (error) {
+    console.warn('No se pudo limpiar la cola local de sincronización de Drive:', error);
+  }
+}
+
+function removePendingGoogleDriveReaderData(bookKey: string): void {
+  try {
+    const pending = getPendingGoogleDriveReaderData();
+    if (!pending[bookKey]) return;
+    delete pending[bookKey];
+    if (Object.keys(pending).length) {
+      localStorage.setItem(PENDING_READER_DATA_KEY, JSON.stringify(pending));
+    } else {
+      localStorage.removeItem(PENDING_READER_DATA_KEY);
+    }
+  } catch (error) {
+    console.warn('No se pudo quitar de la cola local el respaldo eliminado:', error);
   }
 }
 
@@ -647,15 +767,17 @@ export async function restoreGoogleDriveReaderData(
   accessToken: string,
   bookKey: string,
 ): Promise<ReaderBookBackup | null> {
-  const id = await hashText(bookKey);
-  const file = await findFile(accessToken, `${BOOK_STATE_PREFIX}${id}.json`);
-  if (!file) return null;
-  const data: unknown = JSON.parse(await (await downloadFile(accessToken, file)).text());
-  if (!isReaderBookBackup(data) || data.bookKey !== bookKey) {
-    throw new Error('Los datos de lectura de Google Drive no son válidos para este libro.');
-  }
-  data.favorites ||= [];
-  return data;
+  return withTimeout((async () => {
+    const id = await hashText(bookKey);
+    const file = await findFile(accessToken, `${BOOK_STATE_PREFIX}${id}.json`);
+    if (!file) return null;
+    const data: unknown = JSON.parse(await (await downloadFile(accessToken, file)).text());
+    if (!isReaderBookBackup(data) || data.bookKey !== bookKey) {
+      throw new Error('Los datos de lectura de Google Drive no son válidos para este libro.');
+    }
+    data.favorites ||= [];
+    return data;
+  })(), READER_RESTORE_TIMEOUT_MS, 'La restauración desde Drive tardó demasiado.');
 }
 
 export function applyGoogleDriveReaderData(data: ReaderBookBackup): void {
