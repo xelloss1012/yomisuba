@@ -2,6 +2,8 @@
 
 Una aplicación web moderna tipo Kindle desarrollada en **React + TypeScript + Vite + Tailwind CSS**, optimizada para la lectura de libros EPUB tanto en formato horizontal occidental como en **formato vertical tradicional japonés (`vertical-rl` / 縦書き)** con soporte completo de **furigana (`<ruby>`)**, ilustraciones, estilos e índice de contenidos.
 
+> **Nota sobre el proyecto**: Esta aplicación ha sido diseñada para uso personal, adaptada a las necesidades y preferencias del autor, y se publica en GitHub de forma totalmente libre y gratuita por si a alguien le resulta útil o desea crear su propia versión (fork). Ha sido desarrollada prácticamente en su totalidad con la asistencia de Inteligencia Artificial.
+
 ---
 
 ## 🌟 Características Implementadas
@@ -159,37 +161,32 @@ texto pegado, TXT y HTML local podrían requerir 1–3 días incluyendo integrac
 y pruebas; las URL podrían añadir 2–5 días o más, según los sitios que se
 pretendan soportar. Son estimaciones preliminares, no un compromiso de entrega.
 
-Para habilitar Drive:
+Para habilitar y configurar Google Drive y la autenticación OAuth:
 
-1. En Google Cloud Console crea un proyecto, activa **Google Drive API** y
-   configura la pantalla de consentimiento OAuth. Añade el permiso OAuth
-   `drive.file`. Si permanece en modo
-   **Testing**, añade las cuentas que probarán la app como usuarios de prueba.
-2. Crea un cliente OAuth de tipo **Web application**. En web, añade los
-   orígenes autorizados de la aplicación. Para Android, crea además un cliente
-   OAuth Android con el ID de paquete `com.ereader.japanesevertical` y la
-   huella SHA-1 del certificado que firma la APK (debug y release si usarás
-   ambos).
-3. Copia `.env.example` a `.env.local` y asigna a
-   `VITE_GOOGLE_WEB_CLIENT_ID` el ID del cliente web (`...apps.googleusercontent.com`).
-   No se necesita Firebase ni un `google-services.json`.
-4. Ejecuta `npm run android:sync` y vuelve a compilar la aplicación.
+1. **Google Cloud Console**:
+   - Crea un proyecto en [Google Cloud Console](https://console.cloud.google.com/).
+   - Activa la **Google Drive API**.
+   - Configura la pantalla de consentimiento OAuth indicando la **Página principal de la aplicación** (ej. `https://<tu-usuario>.github.io/<tu-repositorio>/`) y la **URL de política de privacidad** (ej. `https://<tu-usuario>.github.io/<tu-repositorio>/privacy.html`).
+   - Añade el ámbito de permiso OAuth: `https://www.googleapis.com/auth/drive.file` (acceso exclusivo a archivos creados o abiertos por la aplicación).
+   - Si la aplicación permanece en modo **Testing**, añade las cuentas de correo autorizadas como usuarios de prueba.
 
-Google pedirá autorización para crear, listar, leer y actualizar los archivos
-creados por EReader usando únicamente `drive.file`. La app no accede a otros
-archivos de Drive ni lista EPUB copiados manualmente. Los EPUB importados desde
-el selector del sistema se abren y se guardan localmente; se pueden copiar a
-Drive con la acción «Subir a Drive». Esos libros aparecen junto con los
-guardados previamente desde la app. Los EPUB guardados en Drive conservan su
-nombre original. La app usa el ID de cliente web también en Android; el cliente OAuth Android autoriza
-el paquete y certificado de firma. En Android se restaura la sesión nativa y se
-renueva el token al volver a la app; Google puede volver a pedir autorización si
-la cuenta revoca el acceso o caducan las credenciales de inicio de sesión. Los
-usuarios con una sesión de una versión anterior tendrán que volver a conectar
-Google para aplicar el permiso limitado `drive.file`. Los
-ajustes y datos de lectura son JSON, y los EPUB son archivos individuales; no
-están cifrados por la app. La configuración incluye cualquier clave IA guardada
-y queda sujeta a la seguridad de la cuenta Google y Drive.
+2. **Credenciales de Cliente OAuth**:
+   - Crea un cliente OAuth de tipo **Aplicación web** (Web application) y anota su Client ID (`...apps.googleusercontent.com`).
+   - Configura los orígenes JavaScript autorizados (ej. `http://localhost:3000` y tu URL de GitHub Pages).
+
+3. **Configuración en el código (API Key / Client ID)**:
+   - Por motivos de seguridad, el archivo `.env` con las credenciales reales no se incluye en el repositorio público de GitHub. La versión distribuida oficial utiliza la clave configurada por el autor.
+   - Si clonas o creas tu propia versión (fork) a partir de este repositorio, copia `.env.example` a `.env.local` (o `.env`) y asigna tu propio Client ID a `VITE_GOOGLE_WEB_CLIENT_ID`:
+     ```env
+     VITE_GOOGLE_WEB_CLIENT_ID=tu-cliente-id.apps.googleusercontent.com
+     ```
+   - No se requiere Firebase ni un archivo `google-services.json`.
+
+4. **Compilación en Android (opcional)**:
+   - Para Android, puedes crear un cliente OAuth Android en Google Cloud Console utilizando el ID de paquete `com.ereader.japanesevertical` y la huella SHA-1 de tu certificado.
+   - Ejecuta `npm run android:sync` y compila la aplicación (`npm run android:build`).
+
+Google pedirá autorización para crear, listar, leer y actualizar los archivos creados por EReader usando únicamente `drive.file`. La app no accede a otros archivos de Drive ni lista EPUB copiados manualmente. Los EPUB importados desde el selector del sistema se abren y se guardan localmente; se pueden copiar a Drive con la acción «Subir a Drive». Esos libros aparecen junto con los guardados previamente desde la app. Los EPUB guardados en Drive conservan su nombre original. La app usa el ID de cliente web también en Android; el cliente OAuth Android autoriza el paquete y certificado de firma. En Android se restaura la sesión nativa y se renueva el token al volver a la app; Google puede volver a pedir autorización si la cuenta revoca el acceso o caducan las credenciales de inicio de sesión. Los ajustes y datos de lectura son JSON, y los EPUB son archivos individuales; no están cifrados por la app. La configuración incluye cualquier clave IA guardada y queda sujeta a la seguridad de la cuenta Google y Drive.
 
 ---
 
