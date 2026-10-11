@@ -1,6 +1,6 @@
 import React from 'react';
 import { TocItem } from '../types/epub';
-import { X, BookOpen, ChevronRight } from 'lucide-react';
+import { X, BookOpen, ChevronRight, Home } from 'lucide-react';
 import { formatPageDisplay } from '../utils/paginationDisplay';
 
 interface Props {
@@ -112,6 +112,36 @@ export const ReaderToc: React.FC<Props> = ({
           <div className="text-xs font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-3">
             Capítulos ({toc.length})
           </div>
+
+          {spineHrefs.length > 0 && (
+            <div className="mb-3 pb-3 border-b border-zinc-200 dark:border-zinc-800">
+              <button
+                type="button"
+                onClick={() => {
+                  onSelectChapter(spineHrefs[0]);
+                  onClose();
+                }}
+                className={`w-full text-left py-2.5 px-3 rounded-lg flex items-center justify-between text-sm transition-colors ${
+                  currentSpineIndex === 0
+                    ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 font-semibold'
+                    : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60'
+                }`}
+              >
+                <div className="flex items-center justify-between min-w-0 flex-1 pr-2">
+                  <span className="truncate flex items-center gap-2">
+                    <Home className="w-4 h-4 text-indigo-500 shrink-0" />
+                    Principio del libro
+                  </span>
+                  {isBookPaginationReady && (
+                    <span className="text-xs text-zinc-400 dark:text-zinc-500 tabular-nums shrink-0 ml-2">
+                      {formatPageDisplay(0, bookTotalPages, paginationMode, printedPages)}
+                    </span>
+                  )}
+                </div>
+              </button>
+            </div>
+          )}
+
           {toc.length > 0 ? (
             renderTocList(toc)
           ) : (
