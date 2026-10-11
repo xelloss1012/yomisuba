@@ -1,5 +1,7 @@
 import React from 'react';
 import { BookMetadata, ReaderSettingsState } from '../types/epub';
+import { GoogleDriveSession } from '../utils/googleDriveBackup';
+import { SyncStatusBadge } from './SyncStatusBadge';
 import {
   Menu,
   SlidersHorizontal,
@@ -36,6 +38,11 @@ interface Props {
   onOpenPageGlossary: () => void;
   settings: ReaderSettingsState;
   onUpdateSettings: (newSettings: Partial<ReaderSettingsState>) => void;
+  googleDriveSession?: GoogleDriveSession | null;
+  isDriveBusy?: boolean;
+  syncError?: string | null;
+  onRetry?: () => void;
+  lastSyncedDate?: string | null;
 }
 
 export const ReaderNavbar: React.FC<Props> = ({
@@ -59,6 +66,11 @@ export const ReaderNavbar: React.FC<Props> = ({
   onOpenPageGlossary,
   settings,
   onUpdateSettings,
+  googleDriveSession,
+  isDriveBusy,
+  syncError,
+  onRetry,
+  lastSyncedDate,
 }) => {
   const isVertical = settings.writingMode === 'vertical-rl';
   const isAnalyzerActive = settings.autoAnalyzePage || isWordSelectionMode;
@@ -218,11 +230,22 @@ export const ReaderNavbar: React.FC<Props> = ({
         </div>
 
         {/* Book title on its own row keeps it readable beside the toolbar actions. */}
-        <div className="pt-1.5 text-center">
-          <div className="truncate text-xs font-semibold text-zinc-800 dark:text-zinc-100 sm:text-sm">
-            {metadata.title}
+        <div className="pt-1.5 flex items-center justify-between px-2">
+          <div className="flex items-center gap-2 min-w-0">
+            {googleDriveSession && onRetry && (
+              <SyncStatusBadge
+                googleDriveSession={googleDriveSession}
+                isDriveBusy={isDriveBusy}
+                syncError={syncError}
+                onRetry={onRetry}
+                lastSyncedDate={lastSyncedDate}
+              />
+            )}
+            <div className="truncate text-xs font-semibold text-zinc-800 dark:text-zinc-100 sm:text-sm">
+              {metadata.title}
+            </div>
           </div>
-          <div className="truncate text-[10px] text-zinc-500 dark:text-zinc-400 sm:text-xs">
+          <div className="truncate text-[10px] text-zinc-500 dark:text-zinc-400 sm:text-xs shrink-0 pl-2">
             {metadata.creator} {chapterTitle ? `• ${chapterTitle}` : ''}
           </div>
         </div>

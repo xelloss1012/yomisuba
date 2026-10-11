@@ -2,6 +2,8 @@ import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMe
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { AiProvider, ParsedEpub, ReaderSettingsState } from '../types/epub';
+import { GoogleDriveSession } from '../utils/googleDriveBackup';
+import { SyncStatusBadge } from './SyncStatusBadge';
 import { ReaderNavbar } from './ReaderNavbar';
 import { ReaderFooter } from './ReaderFooter';
 import { ReaderSettings } from './ReaderSettings';
@@ -264,6 +266,11 @@ interface Props {
   selectedTheme: ReaderSettingsState['theme'];
   onUpdateSettings: (newSettings: Partial<ReaderSettingsState>) => void;
   onBookDataChange?: (data: ReaderBookBackup) => void;
+  googleDriveSession?: GoogleDriveSession | null;
+  isDriveBusy?: boolean;
+  syncError?: string | null;
+  onRetry?: () => void;
+  lastSyncedDate?: string | null;
 }
 
 export const EpubReader: React.FC<Props> = ({
@@ -273,6 +280,11 @@ export const EpubReader: React.FC<Props> = ({
   selectedTheme,
   onUpdateSettings,
   onBookDataChange,
+  googleDriveSession,
+  isDriveBusy,
+  syncError,
+  onRetry,
+  lastSyncedDate,
 }) => {
   const [currentSpineIndex, setCurrentSpineIndex] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
@@ -3707,6 +3719,11 @@ export const EpubReader: React.FC<Props> = ({
         isWordSelectionMode={isWordSelectionMode}
         onToggleAutoAnalysis={handleToggleAutoAnalysis}
         onOpenPageGlossary={handleOpenPageGlossary}
+        googleDriveSession={googleDriveSession}
+        isDriveBusy={isDriveBusy}
+        syncError={syncError}
+        onRetry={onRetry}
+        lastSyncedDate={lastSyncedDate}
       />
 
       {selectionEdgeIndicator && isSelectionAdjusting && (
@@ -3769,28 +3786,45 @@ export const EpubReader: React.FC<Props> = ({
             : 'Abriendo libro…'}
       </div>
 
-      {/* Keep the toggle in the bottom chrome instead of over the text header area. */}
-      <button
-        onClick={() => setShowUi((visible) => !visible)}
-        onContextMenu={(event) => {
-          // Long-press toggles the on-screen diagnostics trace.
-          event.preventDefault();
-          setDebugEnabled((enabled) => !enabled);
-        }}
-        className={`tap-area-free fixed z-[55] p-2 rounded-full backdrop-blur-md shadow-md transition-colors ${
-          showUi
-            ? 'right-3 bottom-[118px]'
-            : 'left-3 bottom-[max(env(safe-area-inset-bottom,8px),8px)]'
-        } ${
-          showUi
-            ? 'bg-white/90 text-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-200'
-            : 'bg-zinc-900/40 text-white/80'
-        }`}
-        title={showUi ? 'Ocultar menú' : 'Mostrar menú'}
-        aria-label={showUi ? 'Ocultar menú' : 'Mostrar menú'}
-      >
-        {showUi ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
-      </button>
+      {/* Menu toggle & Sync badge in bottom-left when UI is hidden (!showUi), hidden when UI appears */}
+      <div className={`fixed z-[55] flex items-center gap-2 bottom-[max(env(safe-area-inset-bottom,8px),8px)] left-3 transition-opacity ${
+        showUi ? 'pointer-events-none opacity-0' : 'opacity-100'
+      }`}>
+        <button
+          onClick={() => setShowUi(true)}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            setDebugEnabled((enabled) => !enabled);
+          }}
+          className="tap-area-free p-2 rounded-full backdrop-blur-md shadow-md transition-colors bg-zinc-900/40 text-white/80"
+          title="Mostrar menú"
+          aria-label="Mostrar menú"
+        >
+          <Menu className="w-4 h-4" />
+        </button>
+
+        {googleDriveSession && onRetry && (
+          <SyncStatusBadge
+            googleDriveSession={googleDriveSession}
+            isDriveBusy={isDriveBusy}
+            syncError={syncError}
+            onRetry={onRetry}
+            lastSyncedDate={lastSyncedDate}
+          />
+        )}
+      </div>
+
+      {/* Close button when UI is shown */}
+      {showUi && (
+        <button
+          onClick={() => setShowUi(false)}
+          className="tap-area-free fixed z-[55] p-2 rounded-full backdrop-blur-md shadow-md transition-colors right-3 bottom-[118px] bg-white/90 text-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-200"
+          title="Ocultar menú"
+          aria-label="Ocultar menú"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      )}
 
       <button
         type="button"

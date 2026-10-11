@@ -60,6 +60,7 @@ export const App: React.FC = () => {
   const [currentEpub, setCurrentEpub] = useState<ParsedEpub | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
   const [recentBooks, setRecentBooks] = useState<RecentBook[]>([]);
   const [googleDriveSession, setGoogleDriveSession] = useState<GoogleDriveSession | null>(null);
   const googleDriveSessionRef = React.useRef<GoogleDriveSession | null>(null);
@@ -109,10 +110,17 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (!googleDriveSession || !driveSettingsReady || settingsRevision === 0 || !isOnline) return;
     const timer = window.setTimeout(() => {
+      setIsDriveBusy(true);
       void saveGoogleDriveSettings(googleDriveSession.accessToken, settings)
-        .then(setGoogleDriveSettingsDate)
+        .then((date) => {
+          setGoogleDriveSettingsDate(date);
+          setSyncError(null);
+        })
         .catch((error: unknown) => {
-          setErrorMessage(`No se pudieron guardar los ajustes en Google Drive: ${error instanceof Error ? error.message : String(error)}`);
+          setSyncError(`No se pudieron guardar los ajustes en Google Drive: ${error instanceof Error ? error.message : String(error)}`);
+        })
+        .finally(() => {
+          setIsDriveBusy(false);
         });
     }, 900);
     return () => window.clearTimeout(timer);
@@ -147,53 +155,70 @@ export const App: React.FC = () => {
   }, []);
 
   const loadDriveData = async (session: GoogleDriveSession, restoreSettings = true): Promise<void> => {
-    const settingsRevisionAtStart = settingsRevisionRef.current;
-    if (restoreSettings) setDriveSettingsReady(false);
-    const [settingsDateResult, booksResult] = await Promise.allSettled([
-      getGoogleDriveSettingsDate(session.accessToken),
-      listGoogleDriveBooks(session.accessToken),
-    ]);
+    setIsDriveBusy(true);
+    try {
+      const settingsRevisionAtStart = settingsRevisionRef.current;
+      if (restoreSettings) setDriveSettingsReady(false);
+      const [settingsDateResult, booksResult] = await Promise.allSettled([
+        getGoogleDriveSettingsDate(session.accessToken),
+        listGoogleDriveBooks(session.accessToken),
+      ]);
 
-    if (settingsDateResult.status === 'fulfilled') {
-      setGoogleDriveSettingsDate(settingsDateResult.value);
-    }
-    if (booksResult.status === 'fulfilled') {
-      setGoogleDriveBooks(booksResult.value);
-    }
+      if (settingsDateResult.status === 'fulfilled') {
+        setGoogleDriveSettingsDate(settingsDateResult.value);
+      }
+      if (booksResult.status === 'fulfilled') {
+        setGoogleDriveBooks(booksResult.value);
+      }
 
-    let settingsLoaded = false;
-    if (settingsDateResult.status === 'fulfilled') {
-      if (!restoreSettings) {
-        settingsLoaded = true;
-      } else if (!settingsDateResult.value) {
-        settingsLoaded = restoreSettings;
-      } else if (restoreSettings) {
-        try {
-          const restored = await restoreGoogleDriveSettings(session.accessToken);
-          if (settingsRevisionAtStart === settingsRevisionRef.current) {
-            setSettings({ ...DEFAULT_SETTINGS, ...restored });
-          }
+      let settingsLoaded = false;
+      if (settingsDateResult.status === 'fulfilled') {
+        if (!restoreSettings) {
           settingsLoaded = true;
-        } catch (error) {
-          if (navigator.onLine) {
-            setErrorMessage(`No se pudieron restaurar los ajustes de Google Drive; se mantienen los locales: ${error instanceof Error ? error.message : String(error)}`);
+        } else if (!settingsDateResult.value) {
+          settingsLoaded = restoreSettings;
+        } else if (restoreSettings) {
+          try {
+            const restored = await restoreGoogleDriveSettings(session.accessToken);
+            if (settingsRevisionAtStart === settingsRevisionRef.current) {
+              setSettings({ ...DEFAULT_SETTINGS, ...restored });
+            }
+            settingsLoaded = true;
+          } catch (error) {
+            if (navigator.onLine) {
+              setSyncError(`No se pudieron restaurar los ajustes de Google Drive: ${error instanceof Error ? error.message : String(error)}`);
+            }
           }
         }
       }
-    }
 
-    if (settingsLoaded) {
-      setDriveSettingsReady(true);
-      settingsRevisionRef.current += 1;
-      setSettingsRevision(settingsRevisionRef.current);
-    }
-
-    if (navigator.onLine) {
-      const failures = [settingsDateResult, booksResult].filter((result) => result.status === 'rejected');
-      if (failures.length) {
-        const reason = failures[0].status === 'rejected' ? failures[0].reason : null;
-        setErrorMessage(`Google Drive no está disponible; puedes seguir usando la aplicación y se volverá a intentar al recuperar la conexión: ${reason instanceof Error ? reason.message : String(reason)}`);
+      if (settingsLoaded) {
+        setDriveSettingsReady(true);
+        settingsRevisionRef.current += 1;
+        setSettingsRevision(settingsRevisionRef.current);
       }
+
+      if (navigator.onLine) {
+        const failures = [settingsDateResult, booksResult].filter((result) => result.status === 'rejected');
+        if (failures.length) {
+          const reason = failures[0].status === 'rejected' ? failures[0].reason : null;
+          setSyncError(`Google Drive no está disponible: ${reason instanceof Error ? reason.message : String(reason)}`);
+        } else {
+          setSyncError(null);
+        }
+      }
+    } finally {
+      setIsDriveBusy(false);
+    }
+  };
+
+  const handleRetrySync = () => {
+    setSyncError(null);
+    const session = googleDriveSessionRef.current;
+    if (session) {
+      void loadDriveData(session).catch((error: unknown) => {
+        setSyncError(error instanceof Error ? error.message : String(error));
+      });
     }
   };
 
@@ -211,6 +236,7 @@ export const App: React.FC = () => {
           setDriveSettingsReady(false);
           setGoogleDriveSettingsDate(null);
           setGoogleDriveBooks([]);
+          setSyncError(null);
           return;
         }
         await loadDriveData(session);
@@ -219,7 +245,7 @@ export const App: React.FC = () => {
       driveSessionRefreshPromiseRef.current = currentRestore;
       void currentRestore.catch((error: unknown) => {
         if (!cancelled && navigator.onLine) {
-          setErrorMessage(`Google Drive no está disponible; puedes seguir usando la aplicación y reintentarlo más tarde: ${error instanceof Error ? error.message : String(error)}`);
+          setSyncError(`No se pudo conectar con Google Drive: ${error instanceof Error ? error.message : String(error)}`);
         }
       }).finally(() => {
         if (restoring === currentRestore) restoring = null;
@@ -232,7 +258,7 @@ export const App: React.FC = () => {
       if (session) {
         void loadDriveData(session, false).catch((error: unknown) => {
           if (navigator.onLine) {
-            setErrorMessage(`Google Drive no está disponible; puedes seguir usando la aplicación y reintentarlo más tarde: ${error instanceof Error ? error.message : String(error)}`);
+            setSyncError(`No se pudo conectar con Google Drive: ${error instanceof Error ? error.message : String(error)}`);
           }
         });
       } else {
@@ -256,11 +282,17 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     if (!googleDriveSession || !isOnline) return;
-    void syncPendingGoogleDriveReaderData(googleDriveSession.accessToken).catch((error: unknown) => {
-      if (navigator.onLine) {
-        setErrorMessage(`Quedan datos de lectura pendientes de sincronizar con Drive: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    });
+    setIsDriveBusy(true);
+    void syncPendingGoogleDriveReaderData(googleDriveSession.accessToken)
+      .then(() => setSyncError(null))
+      .catch((error: unknown) => {
+        if (navigator.onLine) {
+          setSyncError(`Pendiente de sincronizar con Drive: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      })
+      .finally(() => {
+        setIsDriveBusy(false);
+      });
   }, [googleDriveSession, isOnline]);
 
   useEffect(() => {
@@ -278,10 +310,11 @@ export const App: React.FC = () => {
             setDriveSettingsReady(false);
             setGoogleDriveSettingsDate(null);
             setGoogleDriveBooks([]);
+            setSyncError(null);
           }
         })
         .catch((error: unknown) => {
-          setErrorMessage(`No se pudo renovar la sesión de Google: ${error instanceof Error ? error.message : String(error)}`);
+          setSyncError(`No se pudo renovar la sesión de Google: ${error instanceof Error ? error.message : String(error)}`);
         })
         .finally(() => {
           driveSessionRefreshPromiseRef.current = null;
@@ -656,6 +689,11 @@ export const App: React.FC = () => {
           selectedTheme={settings.theme}
           onUpdateSettings={handleUpdateSettings}
           onBookDataChange={handleBookDataChange}
+          googleDriveSession={googleDriveSession}
+          isDriveBusy={isDriveBusy}
+          syncError={syncError}
+          onRetry={handleRetrySync}
+          lastSyncedDate={googleDriveSettingsDate}
         />
       ) : (
         <FileDropZone
@@ -676,6 +714,8 @@ export const App: React.FC = () => {
           onDownloadDriveBook={handleDownloadDriveBook}
           onDeleteDriveBook={handleDeleteDriveBook}
           onRefreshDriveBooks={handleRefreshDriveBooks}
+          syncError={syncError}
+          onRetry={handleRetrySync}
         />
       )}
     </div>
