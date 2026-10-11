@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Cloud, Check, Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Cloud, Check, Loader2, AlertTriangle, RefreshCw, UploadCloud } from 'lucide-react';
 import { GoogleDriveSession } from '../utils/googleDriveBackup';
 
 interface Props {
@@ -8,6 +8,9 @@ interface Props {
   syncError?: string | null;
   onRetry?: () => void;
   lastSyncedDate?: string | null;
+  isBookUploaded?: boolean;
+  onUploadBook?: () => void;
+  align?: 'left' | 'right';
 }
 
 export const SyncStatusBadge: React.FC<Props> = ({
@@ -16,6 +19,9 @@ export const SyncStatusBadge: React.FC<Props> = ({
   syncError = null,
   onRetry,
   lastSyncedDate,
+  isBookUploaded = true,
+  onUploadBook,
+  align = 'right',
 }) => {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -28,20 +34,37 @@ export const SyncStatusBadge: React.FC<Props> = ({
     if (syncError) {
       return <AlertTriangle className="w-4 h-4 text-amber-500 animate-pulse" />;
     }
+    if (!isBookUploaded) {
+      return <UploadCloud className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />;
+    }
     return <Check className="w-4 h-4 text-emerald-500" />;
   };
 
   const getStatusBg = () => {
     if (syncError) return 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800/80';
     if (isDriveBusy) return 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800/80';
+    if (!isBookUploaded) return 'bg-indigo-50/60 dark:bg-indigo-950/30 border-indigo-200 dark:border-indigo-800/60';
     return 'bg-white/90 dark:bg-zinc-900/90 border-zinc-200/80 dark:border-zinc-800/80';
   };
 
+  const alignmentClass = align === 'left' ? 'absolute left-0 mt-2' : 'absolute right-0 mt-2';
+
   return (
-    <div className="relative z-50">
+    <div className="relative z-50 inline-block">
       <button
-        onClick={() => setIsOpen(!isOpen)}
-        title={syncError ? `Aviso de Google Drive: ${syncError}` : isDriveBusy ? 'Sincronizando con Google Drive...' : 'Sincronizado con Google Drive'}
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsOpen(!isOpen);
+        }}
+        title={
+          syncError
+            ? `Aviso de Google Drive: ${syncError}`
+            : isDriveBusy
+              ? 'Sincronizando con Google Drive...'
+              : !isBookUploaded
+                ? 'Progreso sincronizado (El archivo del libro no está en Drive)'
+                : 'Sincronizado con Google Drive'
+        }
         aria-label="Estado de sincronización de Google Drive"
         className={`tap-area flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-xs shadow-sm backdrop-blur-sm transition-all ${getStatusBg()} text-zinc-700 dark:text-zinc-200 hover:scale-105`}
       >
@@ -50,14 +73,17 @@ export const SyncStatusBadge: React.FC<Props> = ({
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-72 rounded-2xl bg-white dark:bg-zinc-900 p-4 shadow-2xl border border-zinc-200 dark:border-zinc-800 text-xs text-zinc-700 dark:text-zinc-300 animate-in fade-in zoom-in-95 duration-150">
+        <div className={`${alignmentClass} w-72 rounded-2xl bg-white dark:bg-zinc-900 p-4 shadow-2xl border border-zinc-200 dark:border-zinc-800 text-xs text-zinc-700 dark:text-zinc-300 animate-in fade-in zoom-in-95 duration-150`}>
           <div className="flex items-center justify-between mb-2">
             <span className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
               <Cloud className="w-4 h-4 text-indigo-600" />
               Google Drive
             </span>
             <button
-              onClick={() => setIsOpen(false)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsOpen(false);
+              }}
               className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 font-bold px-1"
               aria-label="Cerrar"
             >
@@ -73,7 +99,8 @@ export const SyncStatusBadge: React.FC<Props> = ({
               </div>
               {onRetry && (
                 <button
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     onRetry();
                     setIsOpen(false);
                   }}
@@ -84,10 +111,32 @@ export const SyncStatusBadge: React.FC<Props> = ({
                 </button>
               )}
             </div>
+          ) : !isBookUploaded ? (
+            <div className="space-y-3">
+              <div className="rounded-xl bg-indigo-50 dark:bg-indigo-950/40 p-2.5 text-indigo-900 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-900">
+                <p className="font-medium mb-1">Progreso sincronizado</p>
+                <p className="text-[11px] opacity-90">
+                  Tus ajustes y puntos de lectura se guardan en Drive, pero el archivo EPUB de este libro aún no se ha subido a tu nube.
+                </p>
+              </div>
+              {onUploadBook && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onUploadBook();
+                    setIsOpen(false);
+                  }}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 transition-colors shadow-sm"
+                >
+                  <UploadCloud className="w-4 h-4" />
+                  Subir libro a Drive
+                </button>
+              )}
+            </div>
           ) : (
             <div className="space-y-2">
               <p className="text-zinc-600 dark:text-zinc-400">
-                {isDriveBusy ? 'Actualizando datos con Google Drive...' : 'Tus datos de lectura y ajustes están sincronizados con tu cuenta.'}
+                {isDriveBusy ? 'Actualizando datos con Google Drive...' : 'Tus datos de lectura, ajustes y libro están sincronizados con tu cuenta.'}
               </p>
               {lastSyncedDate && (
                 <p className="text-[10px] text-zinc-400">

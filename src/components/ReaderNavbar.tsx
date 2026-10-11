@@ -43,6 +43,8 @@ interface Props {
   syncError?: string | null;
   onRetry?: () => void;
   lastSyncedDate?: string | null;
+  isBookUploaded?: boolean;
+  onUploadBook?: () => void;
 }
 
 export const ReaderNavbar: React.FC<Props> = ({
@@ -71,6 +73,8 @@ export const ReaderNavbar: React.FC<Props> = ({
   syncError,
   onRetry,
   lastSyncedDate,
+  isBookUploaded,
+  onUploadBook,
 }) => {
   const isVertical = settings.writingMode === 'vertical-rl';
   const isAnalyzerActive = settings.autoAnalyzePage || isWordSelectionMode;
@@ -231,23 +235,28 @@ export const ReaderNavbar: React.FC<Props> = ({
 
         {/* Book title on its own row keeps it readable beside the toolbar actions. */}
         <div className="pt-1.5 flex items-center justify-between px-2">
-          <div className="flex items-center gap-2 min-w-0">
-            {googleDriveSession && onRetry && (
+          <div className="min-w-0 flex-1 pr-2">
+            <div className="truncate text-xs font-semibold text-zinc-800 dark:text-zinc-100 sm:text-sm">
+              {metadata.title}
+            </div>
+            <div className="truncate text-[10px] text-zinc-500 dark:text-zinc-400 sm:text-xs">
+              {metadata.creator} {chapterTitle ? `• ${chapterTitle}` : ''}
+            </div>
+          </div>
+          {googleDriveSession && onRetry && (
+            <div className="shrink-0">
               <SyncStatusBadge
                 googleDriveSession={googleDriveSession}
                 isDriveBusy={isDriveBusy}
                 syncError={syncError}
                 onRetry={onRetry}
                 lastSyncedDate={lastSyncedDate}
+                isBookUploaded={isBookUploaded}
+                onUploadBook={onUploadBook}
+                align="right"
               />
-            )}
-            <div className="truncate text-xs font-semibold text-zinc-800 dark:text-zinc-100 sm:text-sm">
-              {metadata.title}
             </div>
-          </div>
-          <div className="truncate text-[10px] text-zinc-500 dark:text-zinc-400 sm:text-xs shrink-0 pl-2">
-            {metadata.creator} {chapterTitle ? `• ${chapterTitle}` : ''}
-          </div>
+          )}
         </div>
       </div>
     </header>

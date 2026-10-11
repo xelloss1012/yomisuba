@@ -5,7 +5,6 @@ import { RecentBook } from '../utils/recentBooks';
 import { GoogleDriveBook, GoogleDriveSession } from '../utils/googleDriveBackup';
 import { GoogleDriveBackupPanel } from './GoogleDriveBackupPanel';
 import { BookCoverThumbnail } from './BookCoverThumbnail';
-import { SyncStatusBadge } from './SyncStatusBadge';
 
 interface Props {
   onFileLoaded: (file: File | Blob) => void;
@@ -25,8 +24,6 @@ interface Props {
   onDownloadDriveBook: (book: GoogleDriveBook) => void;
   onDeleteDriveBook: (book: GoogleDriveBook) => void;
   onRefreshDriveBooks: () => void;
-  syncError?: string | null;
-  onRetry?: () => void;
 }
 
 export const FileDropZone: React.FC<Props> = ({
@@ -47,8 +44,6 @@ export const FileDropZone: React.FC<Props> = ({
   onDownloadDriveBook,
   onDeleteDriveBook,
   onRefreshDriveBooks,
-  syncError,
-  onRetry,
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
 
@@ -77,18 +72,7 @@ export const FileDropZone: React.FC<Props> = ({
   };
 
   return (
-    <div className="h-full overflow-y-auto overscroll-y-contain bg-gradient-to-br from-stone-50 via-zinc-100 to-stone-200 dark:from-zinc-950 dark:via-zinc-900 dark:to-stone-950 flex flex-col items-center justify-start p-4 pb-8 sm:p-6 text-zinc-800 dark:text-zinc-200 relative">
-      {googleDriveSession && onRetry && (
-        <div className="absolute top-4 right-4 z-20">
-          <SyncStatusBadge
-            googleDriveSession={googleDriveSession}
-            isDriveBusy={isDriveBusy}
-            syncError={syncError}
-            onRetry={onRetry}
-            lastSyncedDate={googleDriveSettingsDate}
-          />
-        </div>
-      )}
+    <div className="h-full overflow-y-auto overscroll-y-contain bg-gradient-to-br from-stone-50 via-zinc-100 to-stone-200 dark:from-zinc-950 dark:via-zinc-900 dark:to-stone-950 flex flex-col items-center justify-start p-4 pb-8 sm:p-6 text-zinc-800 dark:text-zinc-200">
       <div className="w-full max-w-xl shrink-0 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-zinc-200/80 dark:border-zinc-800/80 p-6 sm:p-10 text-center">
         {/* Brand & Badge */}
         <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-100 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 text-xs font-semibold mb-6">

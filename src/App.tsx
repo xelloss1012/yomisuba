@@ -667,6 +667,25 @@ export const App: React.FC = () => {
     });
   };
 
+  const isCurrentBookUploaded = React.useMemo(() => {
+    if (!currentEpub || !googleDriveBooks.length) return false;
+    const title = currentEpub.metadata.title?.toLowerCase().trim();
+    return googleDriveBooks.some((b) => {
+      const bTitle = b.title?.toLowerCase().trim();
+      return Boolean(title && bTitle && (bTitle === title || bTitle.includes(title) || title.includes(bTitle)));
+    });
+  }, [currentEpub, googleDriveBooks]);
+
+  const handleUploadCurrentBook = () => {
+    if (!googleDriveSession || !currentEpub) return;
+    const currentBook = recentBooks.find((b) => b.title === currentEpub.metadata.title);
+    if (!currentBook) {
+      alert('No se encuentra el archivo local de este libro para subirlo.');
+      return;
+    }
+    handleUploadDriveBook(currentBook);
+  };
+
   return (
     <div className="fixed inset-0 w-full h-full overflow-hidden select-none bg-stone-100 dark:bg-zinc-950">
       {errorMessage && (
@@ -694,6 +713,8 @@ export const App: React.FC = () => {
           syncError={syncError}
           onRetry={handleRetrySync}
           lastSyncedDate={googleDriveSettingsDate}
+          isBookUploaded={isCurrentBookUploaded}
+          onUploadBook={handleUploadCurrentBook}
         />
       ) : (
         <FileDropZone
@@ -714,8 +735,6 @@ export const App: React.FC = () => {
           onDownloadDriveBook={handleDownloadDriveBook}
           onDeleteDriveBook={handleDeleteDriveBook}
           onRefreshDriveBooks={handleRefreshDriveBooks}
-          syncError={syncError}
-          onRetry={handleRetrySync}
         />
       )}
     </div>

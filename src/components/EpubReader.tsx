@@ -271,6 +271,8 @@ interface Props {
   syncError?: string | null;
   onRetry?: () => void;
   lastSyncedDate?: string | null;
+  isBookUploaded?: boolean;
+  onUploadBook?: () => void;
 }
 
 export const EpubReader: React.FC<Props> = ({
@@ -285,6 +287,8 @@ export const EpubReader: React.FC<Props> = ({
   syncError,
   onRetry,
   lastSyncedDate,
+  isBookUploaded = true,
+  onUploadBook,
 }) => {
   const [currentSpineIndex, setCurrentSpineIndex] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
@@ -3724,6 +3728,8 @@ export const EpubReader: React.FC<Props> = ({
         syncError={syncError}
         onRetry={onRetry}
         lastSyncedDate={lastSyncedDate}
+        isBookUploaded={isBookUploaded}
+        onUploadBook={onUploadBook}
       />
 
       {selectionEdgeIndicator && isSelectionAdjusting && (
@@ -3810,6 +3816,9 @@ export const EpubReader: React.FC<Props> = ({
             syncError={syncError}
             onRetry={onRetry}
             lastSyncedDate={lastSyncedDate}
+            isBookUploaded={isBookUploaded}
+            onUploadBook={onUploadBook}
+            align="left"
           />
         )}
       </div>
