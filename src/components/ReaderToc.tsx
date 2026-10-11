@@ -1,6 +1,7 @@
 import React from 'react';
 import { TocItem } from '../types/epub';
 import { X, BookOpen, ChevronRight } from 'lucide-react';
+import { formatPageDisplay } from '../utils/paginationDisplay';
 
 interface Props {
   isOpen: boolean;
@@ -10,6 +11,12 @@ interface Props {
   spineHrefs: string[];
   onSelectChapter: (href: string) => void;
   bookTitle: string;
+  resolveSpineIndex: (href: string) => number;
+  getGlobalPage: (spineIndex: number, page: number) => number;
+  bookTotalPages: number;
+  paginationMode: 'device' | 'printed' | 'percent';
+  printedPages?: number;
+  isBookPaginationReady: boolean;
 }
 
 export const ReaderToc: React.FC<Props> = ({
@@ -20,6 +27,12 @@ export const ReaderToc: React.FC<Props> = ({
   spineHrefs,
   onSelectChapter,
   bookTitle,
+  resolveSpineIndex,
+  getGlobalPage,
+  bookTotalPages,
+  paginationMode,
+  printedPages,
+  isBookPaginationReady,
 }) => {
   if (!isOpen) return null;
 
@@ -31,6 +44,11 @@ export const ReaderToc: React.FC<Props> = ({
         {items.map((item, idx) => {
           const itemHrefBase = item.href.split('#')[0];
           const isCurrent = currentHref.endsWith(itemHrefBase) || itemHrefBase.endsWith(currentHref);
+          const spineIndex = resolveSpineIndex(item.href);
+          const globalPage = spineIndex >= 0 ? getGlobalPage(spineIndex, 0) : 0;
+          const pageLabel = isBookPaginationReady && spineIndex >= 0
+            ? formatPageDisplay(globalPage, bookTotalPages, paginationMode, printedPages)
+            : '';
 
           return (
             <li key={item.id || idx}>
@@ -46,7 +64,14 @@ export const ReaderToc: React.FC<Props> = ({
                     : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60'
                 }`}
               >
-                <span className="truncate pr-2">{item.label}</span>
+                <div className="flex items-center justify-between min-w-0 flex-1 pr-2">
+                  <span className="truncate">{item.label}</span>
+                  {pageLabel && (
+                    <span className="text-xs text-zinc-400 dark:text-zinc-500 tabular-nums shrink-0 ml-2">
+                      {pageLabel}
+                    </span>
+                  )}
+                </div>
                 {item.subitems && item.subitems.length > 0 ? (
                   <ChevronRight className="w-4 h-4 text-zinc-400 shrink-0" />
                 ) : null}
@@ -76,6 +101,7 @@ export const ReaderToc: React.FC<Props> = ({
           <button
             onClick={onClose}
             className="p-1 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 transition-colors shrink-0"
+            aria-label="Cerrar índice"
           >
             <X className="w-5 h-5" />
           </button>

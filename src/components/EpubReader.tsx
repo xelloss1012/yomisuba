@@ -4206,6 +4206,12 @@ export const EpubReader: React.FC<Props> = ({
         spineHrefs={spineHrefs}
         onSelectChapter={handleSelectTocChapter}
         bookTitle={epub.metadata.title}
+        resolveSpineIndex={resolveSpineIndex}
+        getGlobalPage={getGlobalPage}
+        bookTotalPages={bookTotalPages}
+        paginationMode={settings.paginationMode}
+        printedPages={printedPages}
+        isBookPaginationReady={isBookPaginationReady}
       />
 
       <ReaderSettings
