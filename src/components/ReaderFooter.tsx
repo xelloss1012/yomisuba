@@ -70,9 +70,6 @@ export const ReaderFooter: React.FC<Props> = ({
     onSeekPage(requestedPage);
   };
 
-  const bookProgressPercent =
-    displayChapterCount > 0 ? Math.round((displayChapter / displayChapterCount) * 100) : 0;
-
   // In RTL (Japanese vertical), left advances to NEXT page, right goes back to PREVIOUS.
   // In LTR (Western horizontal), left goes to PREVIOUS, right advances to NEXT.
   const handleLeftClick = isRtl ? onNextPage : onPrevPage;
@@ -180,7 +177,7 @@ export const ReaderFooter: React.FC<Props> = ({
               {formatPageDisplay(safeDisplayPage, safeTotalPages, paginationMode, printedPages)}
             </div>
             <div className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5 truncate max-w-[180px] sm:max-w-none">
-              Capítulo {displayChapter}/{displayChapterCount} • Libro {bookProgressPercent}%
+              Capítulo {displayChapter}/{displayChapterCount}
               {paginationMode !== 'device' && ` • [${paginationMode === 'printed' ? 'Impresas' : 'Porcentaje'}]`}
             </div>
           </button>
