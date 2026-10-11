@@ -154,6 +154,14 @@ export const App: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    if (!isOnline && googleDriveSession) {
+      setSyncError('Sin conexión a Internet (modo offline)');
+    } else if (isOnline && syncError?.includes('Sin conexión')) {
+      setSyncError(null);
+    }
+  }, [isOnline, googleDriveSession, syncError]);
+
   const loadDriveData = async (session: GoogleDriveSession, restoreSettings = true): Promise<void> => {
     setIsDriveBusy(true);
     try {
@@ -431,7 +439,7 @@ export const App: React.FC = () => {
           if (readerData) applyGoogleDriveReaderData(readerData);
         } catch (error) {
           if (navigator.onLine) {
-            setErrorMessage(`El libro se abrirá con los datos locales; no se pudo actualizar la lectura desde Drive: ${error instanceof Error ? error.message : String(error)}`);
+            setSyncError(`No se pudo actualizar la lectura desde Drive: ${error instanceof Error ? error.message : String(error)}`);
           }
         }
       }
@@ -580,11 +588,11 @@ export const App: React.FC = () => {
 
   const runDriveAction = async (action: () => Promise<void>) => {
     setIsDriveBusy(true);
-    setErrorMessage(null);
     try {
       await action();
+      setSyncError(null);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : String(error));
+      setSyncError(error instanceof Error ? error.message : String(error));
     } finally {
       setIsDriveBusy(false);
     }
@@ -655,7 +663,7 @@ export const App: React.FC = () => {
     if (!googleDriveSession || !navigator.onLine) return;
     void saveGoogleDriveReaderData(googleDriveSession.accessToken, data).catch((error: unknown) => {
       if (navigator.onLine) {
-        setErrorMessage(`No se pudo guardar el progreso en Google Drive; queda pendiente y se reintentará: ${error instanceof Error ? error.message : String(error)}`);
+        setSyncError(`No se pudo guardar el progreso en Google Drive: ${error instanceof Error ? error.message : String(error)}`);
       }
     });
   };
