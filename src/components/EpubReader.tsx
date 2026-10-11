@@ -1575,8 +1575,9 @@ export const EpubReader: React.FC<Props> = ({
         const gestureAdjustmentEnabled = true;
         const vw = iframe.clientWidth || window.innerWidth;
         const vh = iframe.clientHeight || window.innerHeight;
-        const nudgeLimit = isVertical ? vh : vw;
+        const nudgeLimit = vw;
         const pageSwipeThreshold = 96;
+        const threshold = Math.max(pageSwipeThreshold, vw * 0.22);
 
         let sx = 0, sy = 0, st = 0, moved = false, selecting = false;
         let lastTouchEndAt = 0;
@@ -1858,16 +1859,15 @@ export const EpubReader: React.FC<Props> = ({
           const selection = iframe.contentWindow?.getSelection();
           const hasSelection = Boolean(selection?.rangeCount && selection.toString());
 
-          if (gestureAdjustmentEnabled && !hasSelection && !selecting && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
-            const rawDelta = isVertical ? dy : dx;
-            const nudge = Math.max(-nudgeLimit, Math.min(nudgeLimit, gestureNudgeStart + rawDelta));
+          if (gestureAdjustmentEnabled && !hasSelection && !selecting && Math.abs(dx) > 6) {
+            const nudge = Math.max(-nudgeLimit, Math.min(nudgeLimit, gestureNudgeStart + dx));
             pageNudgeRef.current = nudge;
             const page = currentPageRef.current;
             const scroller = doc.getElementById('reader-scroller');
             if (scroller) {
               scroller.style.transition = 'none';
               scroller.style.transform = isVertical
-                ? `translate(0px, ${-page * vh + nudge}px)`
+                ? `translate(${nudge}px, ${-page * vh}px)`
                 : `translateX(${-page * vw + nudge}px)`;
             }
           }
@@ -1902,20 +1902,13 @@ export const EpubReader: React.FC<Props> = ({
         const onEnd = (cx: number, cy: number, allowTapNavigation = true) => {
           const dt = Date.now() - st;
           const dx = cx - sx;
-          const dy = cy - sy;
-          const primaryDelta = isVertical ? dy : dx;
-          const threshold = nudgeLimit * 0.22;
 
-          if (gestureAdjustmentEnabled && moved && Math.abs(primaryDelta) >= threshold) {
+          if (gestureAdjustmentEnabled && moved && Math.abs(dx) >= threshold) {
             pageNudgeRef.current = 0;
-            if (isVertical) {
-              if (primaryDelta < 0) doNextRef.current(); else doPrevRef.current();
+            if (isRtl) {
+              if (dx > 0) doNextRef.current(); else doPrevRef.current();
             } else {
-              if (isRtl) {
-                if (primaryDelta > 0) doNextRef.current(); else doPrevRef.current();
-              } else {
-                if (primaryDelta < 0) doNextRef.current(); else doPrevRef.current();
-              }
+              if (dx < 0) doNextRef.current(); else doPrevRef.current();
             }
             return;
           }
