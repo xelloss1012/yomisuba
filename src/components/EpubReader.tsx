@@ -1582,6 +1582,7 @@ export const EpubReader: React.FC<Props> = ({
         let sx = 0, sy = 0, st = 0, moved = false, selecting = false;
         let lastTouchEndAt = 0;
         let gestureNudgeStart = 0;
+        let selectionStringAtStart = '';
         let selectionOrOverlayAtStart = false;
 
         const clearSelectionEdgeIndicator = () => {
@@ -1845,10 +1846,12 @@ export const EpubReader: React.FC<Props> = ({
         const onStart = (cx: number, cy: number) => {
           sx = cx; sy = cy; st = Date.now(); moved = false; selecting = false;
           gestureNudgeStart = pageNudgeRef.current;
+          const currentSel = iframe.contentWindow?.getSelection();
+          selectionStringAtStart = currentSel?.toString() || '';
           selectionOrOverlayAtStart = Boolean(
             selectedTextRef.current.trim() ||
             openOverlayRef.current ||
-            iframe.contentWindow?.getSelection()?.toString().trim()
+            selectionStringAtStart.trim()
           );
         };
         const onMove = (cx: number, cy: number) => {
@@ -1857,9 +1860,13 @@ export const EpubReader: React.FC<Props> = ({
           if (Math.abs(dx) > 6 || Math.abs(dy) > 6) moved = true;
 
           const selection = iframe.contentWindow?.getSelection();
-          const hasSelection = Boolean(selection?.rangeCount && selection.toString());
+          const currentSelectionString = selection?.toString() || '';
+          const isExtendingSelection = currentSelectionString.trim() !== selectionStringAtStart.trim();
 
-          if (gestureAdjustmentEnabled && !hasSelection && !selecting && Math.abs(dx) > 6) {
+          if (gestureAdjustmentEnabled && !isExtendingSelection && !selecting && Math.abs(dx) > 6) {
+            // Hide selection menu if we start dragging the page
+            setSelectionPos(null);
+
             const nudge = Math.max(-nudgeLimit, Math.min(nudgeLimit, gestureNudgeStart + dx));
             pageNudgeRef.current = nudge;
             const page = currentPageRef.current;
@@ -1872,8 +1879,9 @@ export const EpubReader: React.FC<Props> = ({
             }
           }
 
-          if (!hasSelection) return;
-          selecting = true;
+          if (isExtendingSelection) {
+            selecting = true;
+          }
         };
 
         const selectWordAtPoint = (cx: number, cy: number) => {
@@ -1905,6 +1913,18 @@ export const EpubReader: React.FC<Props> = ({
 
           if (gestureAdjustmentEnabled && moved && Math.abs(dx) >= threshold) {
             pageNudgeRef.current = 0;
+            // Clear selection when turning page
+            const win = iframe.contentWindow;
+            if (win) {
+              const sel = win.getSelection();
+              if (sel) {
+                sel.removeAllRanges();
+                selectedTextRef.current = '';
+                setSelectedText('');
+                setSelectionPos(null);
+              }
+            }
+
             if (isRtl) {
               if (dx > 0) doNextRef.current(); else doPrevRef.current();
             } else {
