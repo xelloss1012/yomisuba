@@ -1,7 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
-import { AiProvider, ParsedEpub, ReaderSettingsState } from '../types/epub';
+import { AiProvider, PaginationMode, ParsedEpub, ReaderSettingsState } from '../types/epub';
 import { GoogleDriveSession } from '../utils/googleDriveBackup';
 import { SyncStatusBadge } from './SyncStatusBadge';
 import { ReaderNavbar } from './ReaderNavbar';
@@ -452,6 +452,38 @@ export const EpubReader: React.FC<Props> = ({
   const isVertical = settings.writingMode === 'vertical-rl';
   const isRtl = isVertical || settings.progressionDirection === 'rtl';
   const isNativeAndroid = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
+  const [printedPages, setPrintedPages] = useState<number | undefined>(() => {
+    try {
+      const stored = localStorage.getItem(`${bookStorageKey}_printed_pages`);
+      const val = stored ? Number(stored) : NaN;
+      return !isNaN(val) && val > 0 ? val : undefined;
+    } catch {
+      return undefined;
+    }
+  });
+
+  const handleUpdatePrintedPages = useCallback((pages: number | undefined) => {
+    setPrintedPages(pages);
+    try {
+      if (pages && pages > 0) {
+        localStorage.setItem(`${bookStorageKey}_printed_pages`, String(pages));
+      } else {
+        localStorage.removeItem(`${bookStorageKey}_printed_pages`);
+      }
+    } catch {
+      // ignore
+    }
+  }, [bookStorageKey]);
+
+  const handleTogglePaginationMode = useCallback(() => {
+    const nextMode: PaginationMode =
+      settings.paginationMode === 'device'
+        ? 'printed'
+        : settings.paginationMode === 'printed'
+        ? 'percent'
+        : 'device';
+    onUpdateSettings({ paginationMode: nextMode });
+  }, [onUpdateSettings, settings.paginationMode]);
   const configuredAiProviders = useMemo(
     () => (['gemini', 'openai', 'deepseek', 'openrouter'] as AiProvider[]).filter(
       (provider) => Boolean(settings.aiApiKeys[provider]?.trim())
@@ -4103,6 +4135,9 @@ export const EpubReader: React.FC<Props> = ({
         onPrevChapter={handlePrevChapter}
         onNextChapter={handleNextChapter}
         bookmarkPages={bookmarkPageMarkers}
+        paginationMode={settings.paginationMode}
+        printedPages={printedPages}
+        onTogglePaginationMode={handleTogglePaginationMode}
       />
 
       {imageViewerSrc && (
@@ -4175,6 +4210,8 @@ export const EpubReader: React.FC<Props> = ({
         settings={settings}
         selectedTheme={selectedTheme}
         onUpdateSettings={onUpdateSettings}
+        printedPages={printedPages}
+        onUpdatePrintedPages={handleUpdatePrintedPages}
       />
     </div>
   );

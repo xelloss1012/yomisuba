@@ -57,6 +57,7 @@ export interface ReaderBookBackup {
   bookKey: string;
   title: string;
   creator: string;
+  printedPages?: number;
   position: { spineIndex: number; page: number; pageCount?: number; textOffset?: number };
   bookmarks: Array<{ spineIndex: number; page: number; pageCount?: number; textOffset?: number }>;
   annotations: Array<{ id: string; spineIndex: number; quote: string; prefix: string; suffix: string }>;
@@ -857,6 +858,7 @@ function isReaderBookBackup(value: unknown): value is ReaderBookBackup {
     && typeof data.bookKey === 'string'
     && typeof data.title === 'string'
     && typeof data.creator === 'string'
+    && (data.printedPages === undefined || (Number.isInteger(data.printedPages) && Number(data.printedPages) > 0))
     && isReadingPosition(data.position)
     && Array.isArray(data.bookmarks)
     && data.bookmarks.every(isReadingPosition)

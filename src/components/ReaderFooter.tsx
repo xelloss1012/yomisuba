@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, SkipBack, SkipForward } from 'lucide-react';
 import { ProgressionDirection } from '../types/epub';
+import { formatPageDisplay } from '../utils/paginationDisplay';
 
 interface Props {
   isVisible: boolean;
@@ -21,6 +22,9 @@ interface Props {
   onPrevChapter: () => void;
   onNextChapter: () => void;
   bookmarkPages: number[];
+  paginationMode: 'device' | 'printed' | 'percent';
+  printedPages?: number;
+  onTogglePaginationMode: () => void;
 }
 
 export const ReaderFooter: React.FC<Props> = ({
@@ -42,6 +46,9 @@ export const ReaderFooter: React.FC<Props> = ({
   onPrevChapter,
   onNextChapter,
   bookmarkPages,
+  paginationMode,
+  printedPages,
+  onTogglePaginationMode,
 }) => {
   const isRtl = direction === 'rtl' || isVertical;
   const safeTotalPages = Math.max(1, totalPages);
@@ -63,7 +70,6 @@ export const ReaderFooter: React.FC<Props> = ({
     onSeekPage(requestedPage);
   };
 
-  const progressPercent = Math.round(((safeDisplayPage + 1) / safeTotalPages) * 100);
   const bookProgressPercent =
     displayChapterCount > 0 ? Math.round((displayChapter / displayChapterCount) * 100) : 0;
 
@@ -164,17 +170,20 @@ export const ReaderFooter: React.FC<Props> = ({
           </button>
 
           {/* Center Info */}
-          <div className="flex-1 flex flex-col items-center justify-center px-1 text-center">
+          <button
+            type="button"
+            onClick={onTogglePaginationMode}
+            title="Cambiar modo de paginación (Dispositivo / Páginas impresas / Porcentaje)"
+            className="flex-1 flex flex-col items-center justify-center px-1 text-center cursor-pointer hover:opacity-80 transition-opacity bg-transparent border-0"
+          >
             <div className="text-xs font-bold text-zinc-800 dark:text-zinc-200">
-              Página {safeDisplayPage + 1} de {safeTotalPages}
-              <span className="text-[10px] font-normal text-zinc-500 ml-1">
-                ({progressPercent}%)
-              </span>
+              {formatPageDisplay(safeDisplayPage, safeTotalPages, paginationMode, printedPages)}
             </div>
             <div className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5 truncate max-w-[180px] sm:max-w-none">
               Capítulo {displayChapter}/{displayChapterCount} • Libro {bookProgressPercent}%
+              {paginationMode !== 'device' && ` • [${paginationMode === 'printed' ? 'Impresas' : 'Porcentaje'}]`}
             </div>
-          </div>
+          </button>
 
           {/* Right Page Turn Button */}
           <button

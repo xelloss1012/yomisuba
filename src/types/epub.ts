@@ -3,6 +3,7 @@ export type ProgressionDirection = 'rtl' | 'ltr' | 'auto';
 export type ReaderTheme = 'light' | 'sepia' | 'dark' | 'paper';
 export type FontFamily = 'mincho' | 'gothic' | 'serif' | 'sans';
 export type AiProvider = 'gemini' | 'openai' | 'deepseek' | 'openrouter';
+export type PaginationMode = 'device' | 'printed' | 'percent';
 
 export interface BookMetadata {
   title: string;
@@ -62,4 +63,5 @@ export interface ReaderSettingsState {
   letterSpacing: number; // in em
   aiApiKeys: Partial<Record<AiProvider, string>>;
   openRouterModel: string;
+  paginationMode: PaginationMode;
 }

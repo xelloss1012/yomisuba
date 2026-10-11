@@ -6,6 +6,7 @@ export interface RecentBook {
   lastOpened: number;
   blob: Blob;
   cover?: Blob;
+  printedPages?: number;
 }
 
 const DB_NAME = 'ereader_library';

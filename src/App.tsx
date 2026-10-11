@@ -49,6 +49,7 @@ const DEFAULT_SETTINGS: ReaderSettingsState = {
   letterSpacing: 0.05,
   aiApiKeys: {},
   openRouterModel: 'openrouter/free',
+  paginationMode: 'device',
 };
 
 const isNightTime = () => {

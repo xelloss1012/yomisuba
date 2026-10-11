@@ -9,6 +9,8 @@ interface Props {
   settings: ReaderSettingsState;
   selectedTheme: ReaderTheme;
   onUpdateSettings: (newSettings: Partial<ReaderSettingsState>) => void;
+  printedPages?: number;
+  onUpdatePrintedPages?: (pages: number | undefined) => void;
 }
 
 export const ReaderSettings: React.FC<Props> = ({
@@ -17,6 +19,8 @@ export const ReaderSettings: React.FC<Props> = ({
   settings,
   selectedTheme,
   onUpdateSettings,
+  printedPages,
+  onUpdatePrintedPages,
 }) => {
   if (!isOpen) return null;
 
@@ -92,6 +96,68 @@ export const ReaderSettings: React.FC<Props> = ({
                 <span className="text-xs opacity-75">Estándar / Occidental</span>
               </button>
             </div>
+          </div>
+
+          {/* Tipo de Paginación y Páginas Impresas */}
+          <div>
+            <label className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2 flex items-center gap-1.5">
+              <BookOpen className="w-4 h-4" /> Paginación por Defecto
+            </label>
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              {[
+                { id: 'device' as const, label: 'Dispositivo' },
+                { id: 'printed' as const, label: 'Impresas' },
+                { id: 'percent' as const, label: 'Porcentaje' },
+              ].map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => onUpdateSettings({ paginationMode: m.id })}
+                  className={`py-2 px-2 rounded-xl border text-xs font-medium transition-all ${
+                    settings.paginationMode === m.id
+                      ? 'border-indigo-600 bg-indigo-50/70 text-indigo-700 dark:bg-indigo-950/40 dark:border-indigo-500 dark:text-indigo-300 font-semibold shadow-sm'
+                      : 'border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300'
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+
+            {onUpdatePrintedPages && (
+              <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 p-3 space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Páginas impresas del libro</span>
+                  <span className="text-xs text-zinc-500">Opcional</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="1"
+                    max="10000"
+                    placeholder="Ej. 300"
+                    value={printedPages || ''}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      onUpdatePrintedPages(isNaN(val) || val <= 0 ? undefined : val);
+                    }}
+                    className="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-transparent px-3 py-1.5 text-sm text-zinc-900 dark:text-zinc-100"
+                  />
+                  {printedPages && (
+                    <button
+                      type="button"
+                      onClick={() => onUpdatePrintedPages(undefined)}
+                      className="text-xs text-rose-600 dark:text-rose-400 hover:underline px-2 py-1 shrink-0"
+                    >
+                      Borrar
+                    </button>
+                  )}
+                </div>
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                  Número de páginas de la edición impresa para calcular la equivalencia aproximada.
+                </p>
+              </div>
+            )}
           </div>
 
           <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-zinc-200 dark:border-zinc-700 p-3 text-zinc-700 dark:text-zinc-300">
