@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMe
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { AiProvider, PaginationMode, ParsedEpub, ReaderSettingsState } from '../types/epub';
-import { formatPageDisplay } from '../utils/paginationDisplay';
+import { formatPageDisplay, formatChapterPageDisplay } from '../utils/paginationDisplay';
 import { GoogleDriveSession } from '../utils/googleDriveBackup';
 import { SyncStatusBadge } from './SyncStatusBadge';
 import { ReaderNavbar } from './ReaderNavbar';
@@ -2755,7 +2755,9 @@ export const EpubReader: React.FC<Props> = ({
     const chapterLabel = chapterIndex >= 0
       ? epub.toc[chapterIndex].label
       : `Capítulo ${getDisplayChapter(position.spineIndex)}`;
+    const chapterTotal = currentCount || position.pageCount || 1;
     const bookPage = getGlobalPage(position.spineIndex, page) + 1;
+    const chapterPageDisplay = formatChapterPageDisplay(page, chapterTotal, settings.paginationMode, printedPages, bookTotalPages);
     const pageDisplay = formatPageDisplay(bookPage - 1, bookTotalPages, settings.paginationMode, printedPages);
     return {
       ...position,
@@ -2765,6 +2767,7 @@ export const EpubReader: React.FC<Props> = ({
       chapterLabel,
       bookPage,
       pageDisplay,
+      chapterPageDisplay,
     };
   }).filter((bookmark, index, items) =>
     items.findIndex((candidate) =>
@@ -2955,6 +2958,13 @@ export const EpubReader: React.FC<Props> = ({
 
   const annotationItems = textAnnotations.map((annotation) => {
     const location = annotationPages.get(annotation.id);
+    const currentCount = chapterPageCountsRef.current[annotation.spineIndex] || 0;
+    const chapterPage = location ? (currentCount ? mapPageToLayout(location.page, location.pageCount, currentCount) : location.page) : 0;
+    const chapterTotal = currentCount || location?.pageCount || 1;
+    const gPage = location ? getGlobalPage(annotation.spineIndex, chapterPage) : 0;
+    const chapterPageDisplay = formatChapterPageDisplay(chapterPage, chapterTotal, settings.paginationMode, printedPages, bookTotalPages);
+    const bookPageDisplay = formatPageDisplay(gPage, bookTotalPages, settings.paginationMode, printedPages);
+
     const pageLabel = !isBookmarksOpen
       ? undefined
       : location === undefined
@@ -2962,8 +2972,8 @@ export const EpubReader: React.FC<Props> = ({
         : location === null
           ? 'No se pudo localizar la página'
           : isBookPaginationReady
-            ? `Página ${location.page + 1} del capítulo · Página ${getGlobalPage(annotation.spineIndex, location.page) + 1} del libro`
-            : `Página ${location.page + 1} del capítulo`;
+            ? `${chapterPageDisplay} · ${bookPageDisplay}`
+            : chapterPageDisplay;
     return {
       ...annotation,
       chapterLabel: spineLabels[annotation.spineIndex] || `Sección ${annotation.spineIndex + 1}`,

@@ -19,3 +19,27 @@ export function formatPageDisplay(
   }
   return `Página ${safeGlobal + 1} de ${safeTotal} (${percent}%)`;
 }
+
+export function formatChapterPageDisplay(
+  chapterPage: number,
+  chapterTotalPages: number,
+  paginationMode: 'device' | 'printed' | 'percent',
+  printedPages?: number,
+  bookTotalPages?: number
+): string {
+  const cTotal = Math.max(1, chapterTotalPages);
+  const cPage = Math.min(Math.max(0, chapterPage), cTotal - 1);
+  const percent = Math.round(((cPage + 1) / cTotal) * 100);
+
+  if (paginationMode === 'printed') {
+    const bTotal = Math.max(1, bookTotalPages || cTotal);
+    const pTotal = printedPages && printedPages > 0 ? printedPages : cTotal;
+    const approxChapPrintedTotal = Math.max(1, Math.round((cTotal / bTotal) * pTotal));
+    const approxChapPrintedPage = Math.max(1, Math.min(approxChapPrintedTotal, Math.round((cPage / Math.max(1, cTotal - 1)) * (approxChapPrintedTotal - 1)) + 1));
+    return `Pág. ${approxChapPrintedPage} de ${approxChapPrintedTotal} del capítulo`;
+  }
+  if (paginationMode === 'percent') {
+    return `${percent}% del capítulo`;
+  }
+  return `Página ${cPage + 1} de ${cTotal} del capítulo`;
+}
