@@ -160,11 +160,15 @@ const applyPageWordHighlights = (
     highlights.set(`reader-word-${category}`, new HighlightConstructor(...ranges));
   });
 
+  const scroller = doc.getElementById('reader-scroller');
+  if (!scroller) return;
+  const scrollerRect = scroller.getBoundingClientRect();
+
   const previousSeparators = doc.querySelector('[data-page-word-separators]');
   previousSeparators?.remove();
   const separatorLayer = doc.createElement('div');
   separatorLayer.setAttribute('data-page-word-separators', '');
-  separatorLayer.style.cssText = 'position:fixed;inset:0;z-index:5;pointer-events:none;overflow:hidden;';
+  separatorLayer.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; z-index: 5; margin: 0; padding: 0; box-sizing: border-box;';
   const separatorColors: Record<PageWordCategory, string> = {
     noun: 'rgba(14,116,144,0.45)',
     verb: 'rgba(180,83,9,0.45)',
@@ -178,12 +182,14 @@ const applyPageWordHighlights = (
     if (!rect || rect.width <= 0 || rect.height <= 0) return;
     const separator = doc.createElement('span');
     const color = separatorColors[getPageWordCategory(token)];
+    const localLeft = rect.left - scrollerRect.left;
+    const localTop = rect.top - scrollerRect.top;
     separator.style.cssText = vertical
-      ? `position:absolute;left:${rect.left}px;top:${rect.bottom - 1}px;width:${rect.width}px;height:1px;box-shadow:0 1px 2px ${color};`
-      : `position:absolute;left:${rect.right - 1}px;top:${rect.top}px;width:1px;height:${rect.height}px;box-shadow:1px 0 2px ${color};`;
+      ? `position: absolute; left: ${localLeft}px; top: ${localTop + rect.height - 1}px; width: ${rect.width}px; height: 1px; box-shadow: 0 1px 2px ${color};`
+      : `position: absolute; left: ${localLeft + rect.width - 1}px; top: ${localTop}px; width: 1px; height: ${rect.height}px; box-shadow: 1px 0 2px ${color};`;
     separatorLayer.appendChild(separator);
   });
-  doc.body.appendChild(separatorLayer);
+  scroller.appendChild(separatorLayer);
 };
 
 interface PaginationCacheEntry {
@@ -921,7 +927,7 @@ export const EpubReader: React.FC<Props> = ({
       text-justify: inter-ideograph;
     }
     ${isVertical ? `
-    #reader-scroller > * {
+    #reader-scroller > *:not([data-page-word-separators]) {
       padding-top: ${padTop}px;
       padding-bottom: ${padBottom}px;
       margin-top: -${padTop}px;
@@ -3581,7 +3587,11 @@ export const EpubReader: React.FC<Props> = ({
 
       pageWordsRef.current = visibleWords;
       setPageWords(visibleWords);
-      applyPageWordHighlights(doc, visibleWords, isVertical);
+      applyPageWordHighlights(
+        doc,
+        visibleWords,
+        isVertical,
+      );
       wordSelectionModeRef.current = true;
       setIsWordSelectionMode(true);
       if (openGlossary) {
