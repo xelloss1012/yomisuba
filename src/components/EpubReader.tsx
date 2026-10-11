@@ -3793,9 +3793,15 @@ export const EpubReader: React.FC<Props> = ({
       </div>
 
       {/* Menu toggle & Sync badge in bottom-left when UI is hidden (!showUi), hidden when UI appears */}
-      <div className={`fixed z-[55] flex items-center gap-2 bottom-[max(env(safe-area-inset-bottom,8px),8px)] left-3 transition-opacity ${
-        showUi ? 'pointer-events-none opacity-0' : 'opacity-100'
-      }`}>
+      <div 
+        className={`fixed z-[999] flex items-center gap-2 bottom-[max(env(safe-area-inset-bottom,8px),8px)] left-3 transition-opacity pointer-events-auto ${
+          showUi ? 'pointer-events-none opacity-0' : 'opacity-100'
+        }`}
+        onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopImmediatePropagation(); }}
+        onTouchStart={(e) => { e.stopPropagation(); e.nativeEvent.stopImmediatePropagation(); }}
+        onTouchEnd={(e) => { e.stopPropagation(); e.nativeEvent.stopImmediatePropagation(); }}
+        onPointerDown={(e) => { e.stopPropagation(); e.nativeEvent.stopImmediatePropagation(); }}
+      >
         <button
           onClick={() => setShowUi(true)}
           onContextMenu={(event) => {
