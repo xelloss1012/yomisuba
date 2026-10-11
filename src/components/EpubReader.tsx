@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMe
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { AiProvider, PaginationMode, ParsedEpub, ReaderSettingsState } from '../types/epub';
+import { formatPageDisplay } from '../utils/paginationDisplay';
 import { GoogleDriveSession } from '../utils/googleDriveBackup';
 import { SyncStatusBadge } from './SyncStatusBadge';
 import { ReaderNavbar } from './ReaderNavbar';
@@ -2754,13 +2755,16 @@ export const EpubReader: React.FC<Props> = ({
     const chapterLabel = chapterIndex >= 0
       ? epub.toc[chapterIndex].label
       : `Capítulo ${getDisplayChapter(position.spineIndex)}`;
+    const bookPage = getGlobalPage(position.spineIndex, page) + 1;
+    const pageDisplay = formatPageDisplay(bookPage - 1, bookTotalPages, settings.paginationMode, printedPages);
     return {
       ...position,
       page,
       originalPage: position.page,
       ...(currentCount ? { pageCount: currentCount } : {}),
       chapterLabel,
-      bookPage: getGlobalPage(position.spineIndex, page) + 1,
+      bookPage,
+      pageDisplay,
     };
   }).filter((bookmark, index, items) =>
     items.findIndex((candidate) =>
@@ -3843,7 +3847,7 @@ export const EpubReader: React.FC<Props> = ({
         aria-live="polite"
       >
         {isBookPaginationReady && isReaderPositioned
-          ? `${globalPage + 1}/${Math.max(1, bookTotalPages)} · C${displayChapter}/${displayChapterCount}`
+          ? `${formatPageDisplay(globalPage, bookTotalPages, settings.paginationMode, printedPages)} · C${displayChapter}/${displayChapterCount}`
           : isReaderPositioned
             ? 'Calculando paginación…'
             : 'Abriendo libro…'}

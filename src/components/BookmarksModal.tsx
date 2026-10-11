@@ -13,6 +13,7 @@ export interface ReaderBookmark {
 interface BookmarkItem extends ReaderBookmark {
   chapterLabel: string;
   bookPage: number;
+  pageDisplay?: string;
 }
 
 interface AnnotationItem extends TextAnnotation {
@@ -124,7 +125,7 @@ export const BookmarksModal: React.FC<Props> = ({
                       {bookmark.chapterLabel}
                     </span>
                     <span className="mt-0.5 block text-xs text-zinc-500 dark:text-zinc-400">
-                      Página {bookmark.page + 1} del capítulo · Página {bookmark.bookPage} del libro
+                      Página {bookmark.page + 1} del capítulo · {bookmark.pageDisplay || `Página ${bookmark.bookPage} del libro`}
                     </span>
                   </button>
                   <button
