@@ -1092,7 +1092,7 @@ export const EpubReader: React.FC<Props> = ({
       const turned = shown && shown.spine === spine && shown.page !== page;
       shownPageRef.current = { spine, page };
       const reduceMotion = iframe.contentWindow?.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-      if (turned && !selectedTextRef.current.trim() && !reduceMotion && typeof scroller.animate === 'function') {
+      if (turned && !reduceMotion && typeof scroller.animate === 'function') {
         const from = (page > shown.page ? -1 : 1) * vw * 0.35;
         scroller.getAnimations().forEach((animation) => animation.cancel());
         scroller.animate(
