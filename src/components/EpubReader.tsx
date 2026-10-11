@@ -1572,8 +1572,10 @@ export const EpubReader: React.FC<Props> = ({
         }
 
         // ── Gesture & tap handlers attached inside the iframe ──
-        const gestureAdjustmentEnabled = false;
-        const nudgeLimit = 72;
+        const gestureAdjustmentEnabled = true;
+        const vw = iframe.clientWidth || window.innerWidth;
+        const vh = iframe.clientHeight || window.innerHeight;
+        const nudgeLimit = isVertical ? vh : vw;
         const pageSwipeThreshold = 96;
 
         let sx = 0, sy = 0, st = 0, moved = false, selecting = false;
@@ -1851,21 +1853,21 @@ export const EpubReader: React.FC<Props> = ({
         const onMove = (cx: number, cy: number) => {
           const dx = cx - sx;
           const dy = cy - sy;
-          if (Math.abs(dx) > 8 || Math.abs(dy) > 8) moved = true;
+          if (Math.abs(dx) > 6 || Math.abs(dy) > 6) moved = true;
 
           const selection = iframe.contentWindow?.getSelection();
           const hasSelection = Boolean(selection?.rangeCount && selection.toString());
 
-          if (gestureAdjustmentEnabled && !hasSelection && !selecting && Math.abs(dx) > 8 && Math.abs(dx) <= nudgeLimit && Math.abs(dx) > Math.abs(dy)) {
-            const nudge = Math.max(-nudgeLimit, Math.min(nudgeLimit, gestureNudgeStart + dx));
+          if (gestureAdjustmentEnabled && !hasSelection && !selecting && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+            const rawDelta = isVertical ? dy : dx;
+            const nudge = Math.max(-nudgeLimit, Math.min(nudgeLimit, gestureNudgeStart + rawDelta));
             pageNudgeRef.current = nudge;
             const page = currentPageRef.current;
-            const vw = iframe.clientWidth || window.innerWidth;
-            const vh = iframe.clientHeight || window.innerHeight;
             const scroller = doc.getElementById('reader-scroller');
             if (scroller) {
+              scroller.style.transition = 'none';
               scroller.style.transform = isVertical
-                ? `translate(${nudge}px, ${-page * vh}px)`
+                ? `translate(0px, ${-page * vh + nudge}px)`
                 : `translateX(${-page * vw + nudge}px)`;
             }
           }
@@ -1900,55 +1902,65 @@ export const EpubReader: React.FC<Props> = ({
         const onEnd = (cx: number, cy: number, allowTapNavigation = true) => {
           const dt = Date.now() - st;
           const dx = cx - sx;
+          const dy = cy - sy;
+          const primaryDelta = isVertical ? dy : dx;
+          const threshold = nudgeLimit * 0.22;
 
-          if (gestureAdjustmentEnabled && moved && Math.abs(dx) <= nudgeLimit) {
+          if (gestureAdjustmentEnabled && moved && Math.abs(primaryDelta) >= threshold) {
+            pageNudgeRef.current = 0;
+            if (isVertical) {
+              if (primaryDelta < 0) doNextRef.current(); else doPrevRef.current();
+            } else {
+              if (isRtl) {
+                if (primaryDelta > 0) doNextRef.current(); else doPrevRef.current();
+              } else {
+                if (primaryDelta < 0) doNextRef.current(); else doPrevRef.current();
+              }
+            }
             return;
           }
 
-          setTimeout(() => {
-            const sel = iframe.contentWindow?.getSelection()?.toString().trim();
-            const isTap = (allowTapNavigation || wordSelectionModeRef.current) && !moved && dt < 300;
-            if (isTap && wordSelectionModeRef.current && !openOverlayRef.current) {
-              if (selectWordAtPoint(cx, cy)) return;
+          if (gestureAdjustmentEnabled && moved) {
+            pageNudgeRef.current = 0;
+            const scroller = doc.getElementById('reader-scroller');
+            if (scroller) {
+              scroller.style.transition = 'transform 0.22s cubic-bezier(0.25, 1, 0.5, 1)';
             }
-            if (isTap && (selectionOrOverlayAtStart || sel || selectedTextRef.current.trim() || openOverlayRef.current)) {
-              iframe.contentWindow?.getSelection()?.removeAllRanges();
-              selectedTextRef.current = '';
-              setSelectedText('');
-              setSelectionPos(null);
-              selectionRangeRef.current = null;
-              selectionAnnotationRef.current = null;
-              selectedTextAnnotationIdRef.current = null;
-              setIsSelectionUnderlined(false);
-              setIsTocOpen(false);
-              setIsSettingsOpen(false);
-              setIsTranslateOpen(false);
-              setImageViewerSrc(null);
-              return;
-            }
-            if (sel) { handleSelection(); return; }
+            updatePagination();
+            setTimeout(() => { moved = false; }, 50);
+            return;
+          }
 
-            if (!selecting && !sel && Math.abs(dx) >= pageSwipeThreshold) {
-              // Swipe direction respects reading mode:
-              // For vertical/RTL: moving right (dx > 0) advances, moving left goes back.
-              // For horizontal/LTR: moving left (dx < 0) advances, moving right goes back.
-              if (isRtl) {
-                if (dx > 0) doNextRef.current(); else doPrevRef.current();
-              } else {
-                if (dx < 0) doNextRef.current(); else doPrevRef.current();
-              }
-              return;
-            }
+          const sel = iframe.contentWindow?.getSelection()?.toString().trim();
+          const isTap = (allowTapNavigation || wordSelectionModeRef.current) && !moved && dt < 300;
+          if (isTap && wordSelectionModeRef.current && !openOverlayRef.current) {
+            if (selectWordAtPoint(cx, cy)) return;
+          }
+          if (isTap && (selectionOrOverlayAtStart || sel || selectedTextRef.current.trim() || openOverlayRef.current)) {
+            iframe.contentWindow?.getSelection()?.removeAllRanges();
+            selectedTextRef.current = '';
+            setSelectedText('');
+            setSelectionPos(null);
+            selectionRangeRef.current = null;
+            selectionAnnotationRef.current = null;
+            selectedTextAnnotationIdRef.current = null;
+            setIsSelectionUnderlined(false);
+            setIsTocOpen(false);
+            setIsSettingsOpen(false);
+            setIsTranslateOpen(false);
+            setImageViewerSrc(null);
+            return;
+          }
+          if (sel) { handleSelection(); return; }
 
-            if (isTap) {
-              if (Date.now() - lastSelectionTime.current < 400) return;
-              const vw = iframe.clientWidth || window.innerWidth;
-              const ratio = cx / vw;
-              if (ratio >= 0.28 && ratio <= 0.72) {
-                setShowUi(p => !p);
-              }
+          if (isTap) {
+            if (Date.now() - lastSelectionTime.current < 400) return;
+            const vw = iframe.clientWidth || window.innerWidth;
+            const ratio = cx / vw;
+            if (ratio >= 0.28 && ratio <= 0.72) {
+              setShowUi(p => !p);
             }
-          }, 40);
+          }
         };
 
         logDebugRef.current('listeners ok');
