@@ -5,7 +5,7 @@ import { RecentBook } from '../utils/recentBooks';
 import { GoogleDriveBook, GoogleDriveSession } from '../utils/googleDriveBackup';
 import { GoogleDriveBackupPanel } from './GoogleDriveBackupPanel';
 import { BookCoverThumbnail } from './BookCoverThumbnail';
-import { t } from '../utils/i18n';
+import { t, AVAILABLE_LANGUAGES, UiLanguage } from '../utils/i18n';
 import { ReaderSettingsState } from '../types/epub';
 
 interface Props {
@@ -26,7 +26,7 @@ interface Props {
   onDownloadDriveBook: (book: GoogleDriveBook) => void;
   onDeleteDriveBook: (book: GoogleDriveBook) => void;
   onRefreshDriveBooks: () => void;
-  language: 'es' | 'en';
+  language: UiLanguage;
   onUpdateSettings: (newSettings: Partial<ReaderSettingsState>) => void;
 }
 
@@ -81,34 +81,26 @@ export const FileDropZone: React.FC<Props> = ({
     <div className="h-full overflow-y-auto overscroll-y-contain bg-gradient-to-br from-stone-50 via-zinc-100 to-stone-200 dark:from-zinc-950 dark:via-zinc-900 dark:to-stone-950 flex flex-col items-center justify-start p-4 pb-8 sm:p-6 text-zinc-800 dark:text-zinc-200">
       <div className="w-full max-w-xl shrink-0 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-zinc-200/80 dark:border-zinc-800/80 p-6 sm:p-10 text-center">
         {/* Language Selector on Main Page */}
-        <div className="flex items-center justify-between mb-6 bg-indigo-50/70 dark:bg-indigo-950/40 p-3 rounded-2xl border border-indigo-100 dark:border-indigo-800/80">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6 bg-indigo-50/70 dark:bg-indigo-950/40 p-3 rounded-2xl border border-indigo-100 dark:border-indigo-800/80">
           <div className="flex items-center gap-2 text-xs font-semibold text-indigo-700 dark:text-indigo-300">
             <Languages className="w-4 h-4" />
             <span>{t('language.label', language)}</span>
           </div>
-          <div className="flex gap-1">
-            <button
-              type="button"
-              onClick={() => onUpdateSettings({ language: 'es' })}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-                language === 'es'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'bg-transparent text-zinc-700 dark:text-zinc-300 hover:bg-indigo-100/60 dark:hover:bg-indigo-900/50'
-              }`}
-            >
-              Español
-            </button>
-            <button
-              type="button"
-              onClick={() => onUpdateSettings({ language: 'en' })}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-                language === 'en'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'bg-transparent text-zinc-700 dark:text-zinc-300 hover:bg-indigo-100/60 dark:hover:bg-indigo-900/50'
-              }`}
-            >
-              English
-            </button>
+          <div className="flex flex-wrap gap-1">
+            {AVAILABLE_LANGUAGES.map((langItem) => (
+              <button
+                key={langItem.code}
+                type="button"
+                onClick={() => onUpdateSettings({ language: langItem.code })}
+                className={`px-2.5 py-1 rounded-xl text-[11px] font-semibold transition-all ${
+                  language === langItem.code
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'bg-transparent text-zinc-700 dark:text-zinc-300 hover:bg-indigo-100/60 dark:hover:bg-indigo-900/50'
+                }`}
+              >
+                {langItem.label}
+              </button>
+            ))}
           </div>
         </div>
 

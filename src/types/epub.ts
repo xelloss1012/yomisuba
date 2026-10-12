@@ -1,3 +1,5 @@
+import { UiLanguage } from '../utils/i18n';
+
 export type WritingMode = 'vertical-rl' | 'horizontal-tb' | 'auto';
 export type ProgressionDirection = 'rtl' | 'ltr' | 'auto';
 export type ReaderTheme = 'light' | 'sepia' | 'dark' | 'paper';
@@ -64,5 +66,5 @@ export interface ReaderSettingsState {
   aiApiKeys: Partial<Record<AiProvider, string>>;
   openRouterModel: string;
   paginationMode: PaginationMode;
-  language: 'es' | 'en';
+  language: UiLanguage;
 }

@@ -16,14 +16,14 @@ import {
   FrequentQuery,
   normalizeFrequentQuery,
 } from '../utils/frequentQueries';
-import { t } from '../utils/i18n';
+import { t, UiLanguage } from '../utils/i18n';
 
 interface Props {
   isOpen: boolean;
   entries: TranslationHistoryEntry[];
   favorites: TranslationFavorite[];
   frequentQueries: FrequentQuery[];
-  language?: 'es' | 'en';
+  language?: UiLanguage;
   onClose: () => void;
   onRemove: (id: string) => void;
   onClear: () => void;
@@ -43,7 +43,7 @@ interface DisplayItem {
   candidate?: TranslationFavoriteCandidate;
 }
 
-const getKindLabel = (entry: { kind: TranslationFavoriteKind; provider?: string }, language: 'es' | 'en' = 'es') => {
+const getKindLabel = (entry: { kind: TranslationFavoriteKind; provider?: string }, language: UiLanguage = 'es') => {
   if (entry.kind === 'dictionary') return t('common.dictionary', language);
   if (entry.kind === 'glossary') return t('nav.glossary', language);
   if (entry.kind === 'ai' && entry.provider) {

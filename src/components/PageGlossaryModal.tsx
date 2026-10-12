@@ -11,7 +11,7 @@ import {
   TranslationFavorite,
   TranslationFavoriteCandidate,
 } from '../utils/translationFavorites';
-import { t } from '../utils/i18n';
+import { t, UiLanguage } from '../utils/i18n';
 
 export interface PageWordToken extends JapaneseMorphologicalToken {
   range: Range;
@@ -25,7 +25,7 @@ interface Props {
   isOpen: boolean;
   tokens: PageWordToken[];
   favorites: TranslationFavorite[];
-  language?: 'es' | 'en';
+  language?: UiLanguage;
   onClose: () => void;
   onSelectWord: (token: PageWordToken) => void;
   onToggleFavorite: (candidate: TranslationFavoriteCandidate) => void;

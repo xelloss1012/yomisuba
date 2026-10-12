@@ -1,6 +1,7 @@
 import TokenizerWorker from './tokenizer.worker?worker&inline';
 import jmdictEntries from '../data/jmdict-spa.json';
 import englishDictionaryUrl from '../data/jmdict-en.json.gz?inline';
+import { UiLanguage } from './i18n';
 
 export interface DictionarySense {
   partOfSpeech: string[];
@@ -465,7 +466,7 @@ const findRawEntries = (
   return [...ranked.values()].sort((left, right) => left.score - right.score);
 };
 
-export const getDictionarySearchTerms = async (value: string, language: 'es' | 'en' = 'es'): Promise<DictionaryLookup> => {
+export const getDictionarySearchTerms = async (value: string, language: UiLanguage = 'es'): Promise<DictionaryLookup> => {
   const originalText = normalizeSelection(value) || value.trim();
   if (!originalText) {
     return { originalText: '', baseForm: '', searchTerms: [], entries: [], hasCompleteMatch: false };
@@ -524,18 +525,21 @@ export const getDictionarySearchTerms = async (value: string, language: 'es' | '
       : 'No se pudo cargar el complemento inglés de JMdict.';
   }
 
-  const isEnglish = language === 'en';
+  const preferEnglish = language !== 'es';
+  const preferredDictLang = language === 'es' ? 'es' : 'en';
+  const otherDictLang = preferredDictLang === 'es' ? 'en' : 'es';
+
   const combined = [
     ...spanishResults.map((m) => ({
       entry: toEntry(m.entry, 'es'),
       score: m.score,
-      priority: m.score === 0 ? (isEnglish ? 1 : 0) : (isEnglish ? 3 : 2),
+      priority: m.score === 0 ? (preferEnglish ? 1 : 0) : (preferEnglish ? 3 : 2),
     })),
     ...englishResults
       .map((m) => ({
         entry: toEntry(m.entry, 'en'),
         score: m.score,
-        priority: m.score === 0 ? (isEnglish ? 0 : 1) : (isEnglish ? 2 : 3),
+        priority: m.score === 0 ? (preferEnglish ? 0 : 1) : (preferEnglish ? 2 : 3),
       })),
   ].sort((left, right) => {
     if (left.priority !== right.priority) {
@@ -545,8 +549,8 @@ export const getDictionarySearchTerms = async (value: string, language: 'es' | '
   });
 
   const topEntries = [
-    ...combined.filter((item) => item.entry.language === language).slice(0, 20),
-    ...combined.filter((item) => item.entry.language !== language).slice(0, 20),
+    ...combined.filter((item) => item.entry.language === preferredDictLang).slice(0, 20),
+    ...combined.filter((item) => item.entry.language === otherDictLang).slice(0, 20),
   ].sort((left, right) => {
     if (left.priority !== right.priority) {
       return left.priority - right.priority;

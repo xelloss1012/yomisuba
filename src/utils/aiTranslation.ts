@@ -1,4 +1,5 @@
 import { AiProvider } from '../types/epub';
+import { UiLanguage } from './i18n';
 
 export const AI_PROVIDER_LABELS: Record<AiProvider, string> = {
   gemini: 'Gemini',
@@ -83,46 +84,59 @@ export async function resolveOpenRouterModel(selection: string): Promise<string>
   return latestModel;
 }
 
-function translationPrompt(text: string, targetLanguage: 'es' | 'en' = 'es'): string {
-  if (targetLanguage === 'en') {
+const languageNames: Record<UiLanguage, string> = {
+  es: 'español',
+  en: 'English',
+  fr: 'French',
+  it: 'Italian',
+  de: 'German',
+  zh: 'Simplified Chinese',
+  ko: 'Korean',
+  vi: 'Vietnamese',
+};
+
+function translationPrompt(text: string, targetLanguage: UiLanguage = 'es'): string {
+  const target = languageNames[targetLanguage] || 'English';
+  if (targetLanguage === 'es') {
     return [
-      'Translate the following Japanese text to English.',
-      'Return only the translation, without explanations, notes, or markdown.',
+      'Traduce del japonés al español el texto siguiente.',
+      'Devuelve únicamente la traducción, sin explicaciones, notas ni markdown.',
       '',
       text,
     ].join('\n');
   }
   return [
-    'Traduce del japonés al español el texto siguiente.',
-    'Devuelve únicamente la traducción, sin explicaciones, notas ni markdown.',
+    `Translate the following Japanese text to ${target}.`,
+    'Return only the translation, without explanations, notes, or markdown.',
     '',
     text,
   ].join('\n');
 }
 
-function explanationPrompt(text: string, targetLanguage: 'es' | 'en' = 'es'): string {
-  if (targetLanguage === 'en') {
+function explanationPrompt(text: string, targetLanguage: UiLanguage = 'es'): string {
+  const target = languageNames[targetLanguage] || 'English';
+  if (targetLanguage === 'es') {
     return [
-      'Translate the Japanese text to English first, and then explain the translation you generated.',
-      'Include the translation at the beginning of the response and then explain the general meaning, grammatical structures, important conjugations, and relevant vocabulary.',
-      'Clarify nuances, register, or cultural context only when useful.',
-      'Do not use romaji or transliterate Japanese into the Latin alphabet in grammar or vocabulary explanations.',
-      'When indicating the reading or pronunciation of a Japanese word, write it in hiragana or katakana as appropriate.',
-      'Structure the response with "Translation" and "Explanation" headings, plus brief bullet points. Do not invent information if something is ambiguous.',
+      'Traduce primero el texto japonés al español y, a continuación, explica esa traducción que tú mismo has generado.',
+      'Incluye la traducción al principio de la respuesta y después explica el sentido general, las construcciones gramaticales, las conjugaciones importantes y el vocabulario relevante.',
+      'Aclara matices, registro o contexto cultural solo cuando sean útiles.',
+      'No uses romaji ni transliteres japonés al alfabeto latino en las explicaciones de gramática o vocabulario.',
+      'Cuando indiques la lectura o pronunciación de una palabra japonesa, escríbela en hiragana o katakana, según corresponda.',
+      'Estructura la respuesta con los apartados «Traducción» y «Explicación», además de viñetas breves. No inventes información si algo es ambiguo.',
       '',
-      'Japanese text:',
+      'Texto japonés:',
       text,
     ].join('\n');
   }
   return [
-    'Traduce primero el texto japonés al español y, a continuación, explica esa traducción que tú mismo has generado.',
-    'Incluye la traducción al principio de la respuesta y después explica el sentido general, las construcciones gramaticales, las conjugaciones importantes y el vocabulario relevante.',
-    'Aclara matices, registro o contexto cultural solo cuando sean útiles.',
-    'No uses romaji ni transliteres japonés al alfabeto latino en las explicaciones de gramática o vocabulario.',
-    'Cuando indiques la lectura o pronunciación de una palabra japonesa, escríbela en hiragana o katakana, según corresponda.',
-    'Estructura la respuesta con los apartados «Traducción» y «Explicación», además de viñetas breves. No inventes información si algo es ambiguo.',
+    `Translate the Japanese text to ${target} first, and then explain the translation you generated in ${target}.`,
+    'Include the translation at the beginning of the response and then explain the general meaning, grammatical structures, important conjugations, and relevant vocabulary.',
+    'Clarify nuances, register, or cultural context only when useful.',
+    'Do not use romaji or transliterate Japanese into the Latin alphabet in grammar or vocabulary explanations.',
+    'When indicating the reading or pronunciation of a Japanese word, write it in hiragana or katakana as appropriate.',
+    'Structure the response with "Translation" and "Explanation" headings, plus brief bullet points. Do not invent information if something is ambiguous.',
     '',
-    'Texto japonés:',
+    'Japanese text:',
     text,
   ].join('\n');
 }
@@ -308,11 +322,12 @@ export async function translateWithAi(
   apiKey: string,
   text: string,
   openRouterModel?: string,
-  targetLanguage: 'es' | 'en' = 'es',
+  targetLanguage: UiLanguage = 'es',
 ): Promise<string> {
-  const systemMessage = targetLanguage === 'en'
-    ? 'You are a precise Japanese to English translator.'
-    : 'Eres un traductor preciso de japonés a español.';
+  const target = languageNames[targetLanguage] || 'English';
+  const systemMessage = targetLanguage === 'es'
+    ? 'Eres un traductor preciso de japonés a español.'
+    : `You are a precise Japanese to ${target} translator.`;
   return generateWithAi(
     provider,
     apiKey,
@@ -328,11 +343,12 @@ export async function explainWithAi(
   apiKey: string,
   text: string,
   openRouterModel?: string,
-  targetLanguage: 'es' | 'en' = 'es',
+  targetLanguage: UiLanguage = 'es',
 ): Promise<string> {
-  const systemMessage = targetLanguage === 'en'
-    ? 'You are an expert Japanese teacher who explains clearly and accurately in English.'
-    : 'Eres un profesor experto de japonés que explica en español de forma clara y precisa.';
+  const target = languageNames[targetLanguage] || 'English';
+  const systemMessage = targetLanguage === 'es'
+    ? 'Eres un profesor experto de japonés que explica en español de forma clara y precisa.'
+    : `You are an expert Japanese teacher who explains clearly and accurately in ${target}.`;
   return generateWithAi(
     provider,
     apiKey,

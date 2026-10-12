@@ -2,7 +2,7 @@ import React from 'react';
 import { AiProvider, FontFamily, ReaderSettingsState, ReaderTheme } from '../types/epub';
 import { X, Type, AlignLeft, Sun, BookOpen, Compass, Languages } from 'lucide-react';
 import { DEFAULT_OPENROUTER_MODEL, OPENROUTER_MODEL_PRESETS } from '../utils/aiTranslation';
-import { t } from '../utils/i18n';
+import { t, AVAILABLE_LANGUAGES } from '../utils/i18n';
 
 interface Props {
   isOpen: boolean;
@@ -71,29 +71,21 @@ export const ReaderSettings: React.FC<Props> = ({
             <label className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2 flex items-center gap-1.5">
               <Languages className="w-4 h-4" /> {t('language.label', settings.language)}
             </label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => onUpdateSettings({ language: 'es' })}
-                className={`py-2.5 px-4 rounded-xl border text-xs font-semibold transition-all ${
-                  (settings.language || 'es') === 'es'
-                    ? 'border-indigo-600 bg-indigo-50/70 text-indigo-700 dark:bg-indigo-950/40 dark:border-indigo-500 dark:text-indigo-300 shadow-sm'
-                    : 'border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300'
-                }`}
-              >
-                Español
-              </button>
-              <button
-                type="button"
-                onClick={() => onUpdateSettings({ language: 'en' })}
-                className={`py-2.5 px-4 rounded-xl border text-xs font-semibold transition-all ${
-                  settings.language === 'en'
-                    ? 'border-indigo-600 bg-indigo-50/70 text-indigo-700 dark:bg-indigo-950/40 dark:border-indigo-500 dark:text-indigo-300 shadow-sm'
-                    : 'border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300'
-                }`}
-              >
-                English
-              </button>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {AVAILABLE_LANGUAGES.map((langItem) => (
+                <button
+                  key={langItem.code}
+                  type="button"
+                  onClick={() => onUpdateSettings({ language: langItem.code })}
+                  className={`py-2 px-3 rounded-xl border text-xs font-semibold transition-all ${
+                    (settings.language || 'es') === langItem.code
+                      ? 'border-indigo-600 bg-indigo-50/70 text-indigo-700 dark:bg-indigo-950/40 dark:border-indigo-500 dark:text-indigo-300 shadow-sm'
+                      : 'border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300'
+                  }`}
+                >
+                  {langItem.label}
+                </button>
+              ))}
             </div>
           </div>
 

@@ -3,7 +3,7 @@ import { CloudDownload, CloudUpload, LogIn, LogOut, RefreshCw, Trash2 } from 'lu
 import { GoogleDriveBook, GoogleDriveSession } from '../utils/googleDriveBackup';
 import { BookCoverThumbnail } from './BookCoverThumbnail';
 import { RecentBook } from '../utils/recentBooks';
-import { t } from '../utils/i18n';
+import { t, UiLanguage } from '../utils/i18n';
 
 interface Props {
   configured: boolean;
@@ -12,7 +12,7 @@ interface Props {
   localBooks: RecentBook[];
   cloudBooks: GoogleDriveBook[];
   busy: boolean;
-  language?: 'es' | 'en';
+  language?: UiLanguage;
   onSignIn: () => void;
   onSignOut: () => void;
   onRestoreSettings: () => void;
