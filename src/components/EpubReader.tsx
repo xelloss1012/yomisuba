@@ -1555,7 +1555,7 @@ export const EpubReader: React.FC<Props> = ({
         const doc = iframe.contentDocument || iframe.contentWindow?.document;
         if (!doc) return;
 
-        const { html: fullHtml, sidePad, fontSize, padTop } = buildChapterDocument(rawHtml);
+        const { html: fullHtml, padTop } = buildChapterDocument(rawHtml);
 
         doc.open();
         doc.write(fullHtml);
@@ -1647,8 +1647,6 @@ export const EpubReader: React.FC<Props> = ({
 
           const pageWidth = iframe.clientWidth || window.innerWidth;
           const pageHeight = iframe.clientHeight || window.innerHeight;
-          const edgeInset = fontSize * settings.lineHeight * 2.5;
-          const pageStartInset = isVertical ? padTop + edgeInset : sidePad + edgeInset;
 
           const canGoNext = currentPageRef.current < totalPagesRef.current - 1 || currentSpineRef.current < epub.spine.length - 1;
           const canGoPrev = currentPageRef.current > 0 || currentSpineRef.current > 0;
@@ -1695,12 +1693,8 @@ export const EpubReader: React.FC<Props> = ({
                 } else {
                   backward = true;
                 }
-                const atPageStart = isVertical
-                  ? prevSelectedCharRect.top <= pageStartInset &&
-                    prevSelectedCharRect.right >= pageWidth - sidePad - fontSize * 0.75
-                  : prevSelectedCharRect.left <= pageStartInset;
 
-                if (backward || atPageStart) isAtPrevEdge = true;
+                if (backward) isAtPrevEdge = true;
               }
             }
           }
@@ -1720,14 +1714,29 @@ export const EpubReader: React.FC<Props> = ({
           };
 
           let chosenDirection: 'next' | 'previous' | null = null;
-          if (isAtNextEdge && isAtPrevEdge) {
-            if (endChanged && !startChanged) chosenDirection = 'next';
-            else if (startChanged && !endChanged) chosenDirection = 'previous';
-            else chosenDirection = 'next';
-          } else if (isAtNextEdge) {
-            chosenDirection = 'next';
-          } else if (isAtPrevEdge) {
-            chosenDirection = 'previous';
+
+          if (startChanged && !endChanged) {
+            // El usuario está moviendo exclusivamente el tirador de INICIO
+            if (isAtPrevEdge) chosenDirection = 'previous';
+          } else if (endChanged && !startChanged) {
+            // El usuario está moviendo exclusivamente el tirador de FIN
+            if (isAtNextEdge) chosenDirection = 'next';
+          } else {
+            // Ambos extremos cambiaron o la selección está sostenida en reposo
+            const isBackwards = (sel: Selection) => {
+              const { anchorNode: aNode, focusNode: fNode, anchorOffset: aOff, focusOffset: fOff } = sel;
+              if (!aNode || !fNode) return false;
+              if (aNode === fNode) return fOff < aOff;
+              return Boolean(aNode.compareDocumentPosition(fNode) & Node.DOCUMENT_POSITION_PRECEDING);
+            };
+            const backwards = isBackwards(selection);
+            if (backwards) {
+              if (isAtPrevEdge) chosenDirection = 'previous';
+              else if (isAtNextEdge) chosenDirection = 'next';
+            } else {
+              if (isAtNextEdge) chosenDirection = 'next';
+              else if (isAtPrevEdge) chosenDirection = 'previous';
+            }
           }
 
           if (chosenDirection === 'next' && nextSelectedCharRect) {
