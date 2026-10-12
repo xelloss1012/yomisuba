@@ -441,6 +441,9 @@ export const EpubReader: React.FC<Props> = ({
   const selectionEdgeIndicatorRef = useRef<typeof selectionEdgeIndicator>(null);
   const selectionEdgeTurnRef = useRef<(direction: 'next' | 'previous') => void>(() => {});
   const selectionEdgeClearRef = useRef<() => void>(() => {});
+  const startEdgeActivationRef = useRef<(direction: 'next' | 'previous') => void>(() => {});
+  const cancelEdgeActivationRef = useRef<() => void>(() => {});
+  const lastPageTurnTimeRef = useRef(0);
   const selectionAnnotationRef = useRef<Omit<TextAnnotation, 'id'> | null>(null);
   const selectedTextAnnotationIdRef = useRef<string | null>(null);
   const openOverlayRef = useRef(false);
@@ -1406,22 +1409,19 @@ export const EpubReader: React.FC<Props> = ({
   useEffect(() => {
     let nativeTouchActive = false;
     let nativeTouchIsSelection = false;
-    let edgeTurnTriggered = false;
-    let previousEdgeArmed = false;
-    let previousIndicatorPosition: { x: number; y: number } | null = null;
-    let lastEdgeX = 0;
-    let lastEdgeY = 0;
     let edgeActivation: {
       direction: 'next' | 'previous';
       startedAt: number;
       interval: number;
     } | null = null;
+
     const cancelEdgeActivation = () => {
       if (!edgeActivation) return;
       window.clearInterval(edgeActivation.interval);
       edgeActivation = null;
       setSelectionEdgeActivation(null);
     };
+
     const startEdgeActivation = (direction: 'next' | 'previous') => {
       if (edgeActivation?.direction === direction) return;
       cancelEdgeActivation();
@@ -1433,15 +1433,16 @@ export const EpubReader: React.FC<Props> = ({
         window.clearInterval(interval);
         edgeActivation = null;
         setSelectionEdgeActivation(null);
-        edgeTurnTriggered = true;
-        lastEdgeX = nativeTouchPositionRef.current?.x || 0;
-        lastEdgeY = nativeTouchPositionRef.current?.y || 0;
-        logDebugRef.current(`native edge activated ${direction}`);
+        logDebugRef.current(`edge activated ${direction}`);
         selectionEdgeTurnRef.current(direction);
       }, 40);
       edgeActivation = { direction, startedAt, interval };
       setSelectionEdgeActivation({ direction, progress: 0 });
     };
+
+    startEdgeActivationRef.current = startEdgeActivation;
+    cancelEdgeActivationRef.current = cancelEdgeActivation;
+
     const onNativeTouchTrace = (event: Event) => {
       const { action, x, y, inside } = (event as CustomEvent<{
         action: string;
@@ -1454,9 +1455,6 @@ export const EpubReader: React.FC<Props> = ({
       if (action === 'DOWN') {
         cancelEdgeActivation();
         nativeTouchActive = true;
-        edgeTurnTriggered = false;
-        previousEdgeArmed = false;
-        previousIndicatorPosition = null;
         const selectionMenuTarget = document.elementFromPoint(x, y)?.closest('[data-selection-menu]');
         const iframeRect = iframeRef.current?.getBoundingClientRect();
         const startsInsideReader = Boolean(
@@ -1479,7 +1477,6 @@ export const EpubReader: React.FC<Props> = ({
       if (action === 'UP') {
         cancelEdgeActivation();
         nativeTouchActive = false;
-        edgeTurnTriggered = false;
         pointerActiveRef.current = false;
         nativeSelectionTookOverRef.current = false;
         selectionEdgeClearRef.current();
@@ -1505,57 +1502,21 @@ export const EpubReader: React.FC<Props> = ({
         cancelEdgeActivation();
         return;
       }
+    };
 
-      const indicator = selectionEdgeIndicatorRef.current;
-      if (!indicator || indicator.direction !== 'previous') {
-        previousEdgeArmed = false;
-        previousIndicatorPosition = null;
-      } else {
-        if (
-          previousIndicatorPosition &&
-          Math.hypot(
-            indicator.x - previousIndicatorPosition.x,
-            indicator.y - previousIndicatorPosition.y,
-          ) > 12
-        ) {
-          previousEdgeArmed = false;
-        }
-        previousIndicatorPosition = { x: indicator.x, y: indicator.y };
-      }
-      if (edgeTurnTriggered) {
-        if (Math.hypot(x - lastEdgeX, y - lastEdgeY) > 60) edgeTurnTriggered = false;
-        else return;
-      }
-      if (!indicator) {
-        cancelEdgeActivation();
-        return;
-      }
-      const distance = Math.hypot(x - indicator.x, y - indicator.y);
-      logDebugRef.current(
-        `native edge ${indicator.direction} d=${Math.round(distance)} at=${Math.round(x)},${Math.round(y)}`,
-      );
-      if (indicator.direction === 'previous') {
-        if (distance > 44) {
-          cancelEdgeActivation();
-          previousEdgeArmed = true;
-          return;
-        }
-        if (!previousEdgeArmed || distance > 32) {
-          cancelEdgeActivation();
-          return;
-        }
-      } else if (distance > 44) {
-        cancelEdgeActivation();
-        return;
-      }
-
-      startEdgeActivation(indicator.direction);
+    const handleWindowContextMenu = () => {
+      cancelEdgeActivation();
+      selectionEdgeClearRef.current();
     };
 
     window.addEventListener('ereader-native-touch', onNativeTouchTrace);
+    window.addEventListener('contextmenu', handleWindowContextMenu, { capture: true });
     return () => {
       cancelEdgeActivation();
+      startEdgeActivationRef.current = () => {};
+      cancelEdgeActivationRef.current = () => {};
       window.removeEventListener('ereader-native-touch', onNativeTouchTrace);
+      window.removeEventListener('contextmenu', handleWindowContextMenu, { capture: true });
     };
   }, []);
   // ─── LOAD CHAPTER ─────────────────────────────────────────────────────────────
@@ -1627,19 +1588,16 @@ export const EpubReader: React.FC<Props> = ({
         const clearSelectionEdgeIndicator = () => {
           selectionEdgeIndicatorRef.current = null;
           setSelectionEdgeIndicator(null);
+          cancelEdgeActivationRef.current();
         };
         selectionEdgeClearRef.current = clearSelectionEdgeIndicator;
-        const shouldKeepPreviousEdgeIndicator = () =>
-          isNativeAndroid &&
-          pointerActiveRef.current &&
-          selectionEdgeIndicatorRef.current?.direction === 'previous';
-        const isSelectionBackwards = (selection: Selection) => {
-          const { anchorNode, focusNode } = selection;
-          if (!anchorNode || !focusNode) return false;
-          if (anchorNode === focusNode) return selection.focusOffset < selection.anchorOffset;
-          return Boolean(anchorNode.compareDocumentPosition(focusNode) & Node.DOCUMENT_POSITION_PRECEDING);
-        };
         let activeSelectionEdge: { node: Node; offset: number; selectedForward: boolean } | null = null;
+        let lastSelectionEndpoints: {
+          startNode: Node | null;
+          startOffset: number;
+          endNode: Node | null;
+          endOffset: number;
+        } | null = null;
         const selectionTextWalker = doc.createTreeWalker(
           doc.getElementById('reader-scroller') || doc.body,
           NodeFilter.SHOW_TEXT,
@@ -1676,92 +1634,112 @@ export const EpubReader: React.FC<Props> = ({
           return null;
         };
         const getSelectionEdgeDirection = (): 'next' | 'previous' | null => {
+          if (Date.now() - lastPageTurnTimeRef.current < 600) return null;
           const selection = iframe.contentWindow?.getSelection();
           if (!selection?.rangeCount || !selection.toString()) return null;
           activeSelectionEdge = null;
-          const backwards = isSelectionBackwards(selection);
-          const startEndpointIsAnchor = !backwards;
-          const endpoints = [
-            {
-              node: selection.anchorNode,
-              offset: selection.anchorOffset,
-              isStart: startEndpointIsAnchor,
-            },
-            {
-              node: selection.focusNode,
-              offset: selection.focusOffset,
-              isStart: !startEndpointIsAnchor,
-            },
-          ];
-          const nativePoint = nativeTouchPositionRef.current;
-          const frame = iframe.getBoundingClientRect();
-          const scaleX = frame.width / Math.max(1, iframe.clientWidth);
-          const scaleY = frame.height / Math.max(1, iframe.clientHeight);
-          const pointerX = nativePoint ? (nativePoint.x - frame.left) / scaleX : null;
-          const pointerY = nativePoint ? (nativePoint.y - frame.top) / scaleY : null;
-          const endpoint = pointerX === null || pointerY === null
-            ? endpoints[1]
-            : endpoints.reduce((closest, candidate) => {
-                const char = getAdjacentCharRect(
-                  candidate.node,
-                  candidate.offset,
-                  candidate.isStart,
-                );
-                const closestChar = getAdjacentCharRect(
-                  closest.node,
-                  closest.offset,
-                  closest.isStart,
-                );
-                if (!char) return closest;
-                if (!closestChar) return candidate;
-                const distance = Math.hypot(
-                  (char.left + char.right) / 2 - pointerX,
-                  (char.top + char.bottom) / 2 - pointerY,
-                );
-                const closestDistance = Math.hypot(
-                  (closestChar.left + closestChar.right) / 2 - pointerX,
-                  (closestChar.top + closestChar.bottom) / 2 - pointerY,
-                );
-                return distance < closestDistance ? candidate : closest;
-              });
-          const selectedEdgeChar = getAdjacentCharRect(
-            endpoint.node,
-            endpoint.offset,
-            endpoint.isStart,
-          );
-          if (!endpoint.node || !selectedEdgeChar) {
-            activeSelectionEdge = null;
-            return null;
-          }
-          const neighbor = getAdjacentCharRect(endpoint.node, endpoint.offset, !endpoint.isStart);
+
+          const range = selection.getRangeAt(0);
+          const startNode = range.startContainer;
+          const startOffset = range.startOffset;
+          const endNode = range.endContainer;
+          const endOffset = range.endOffset;
+
           const pageWidth = iframe.clientWidth || window.innerWidth;
           const pageHeight = iframe.clientHeight || window.innerHeight;
-          let backward = false;
-          let forward = false;
-          if (neighbor && endpoint.isStart) {
-            backward = isVertical ? neighbor.bottom <= 1 : neighbor.right <= 1;
-          } else if (neighbor) {
-            forward = isVertical
-              ? neighbor.top >= pageHeight - 1
-              : neighbor.left >= pageWidth - 1;
-          }
           const edgeInset = fontSize * settings.lineHeight * 2.5;
-          const pageStartInset = isVertical
-            ? padTop + edgeInset
-            : sidePad + edgeInset;
-          const atPageStart = isVertical
-            ? selectedEdgeChar.top <= pageStartInset &&
-              selectedEdgeChar.right >= pageWidth - sidePad - fontSize * 0.75
-            : selectedEdgeChar.left <= pageStartInset;
-          const direction = endpoint.isStart && (backward || atPageStart)
-            ? 'previous'
-            : !endpoint.isStart && forward
-              ? 'next'
-              : null;
-          activeSelectionEdge = direction
-            ? { node: endpoint.node, offset: endpoint.offset, selectedForward: endpoint.isStart }
-            : null;
-          if (direction) return direction;
+          const pageStartInset = isVertical ? padTop + edgeInset : sidePad + edgeInset;
+
+          const canGoNext = currentPageRef.current < totalPagesRef.current - 1 || currentSpineRef.current < epub.spine.length - 1;
+          const canGoPrev = currentPageRef.current > 0 || currentSpineRef.current > 0;
+
+          // 1. Comprobar si el extremo final está en el borde final de la página (next)
+          let isAtNextEdge = false;
+          let nextSelectedCharRect: DOMRect | null = null;
+          if (canGoNext) {
+            nextSelectedCharRect = getAdjacentCharRect(endNode, endOffset, false);
+            if (nextSelectedCharRect) {
+              const inVisiblePage = isVertical
+                ? (nextSelectedCharRect.top >= 0 && nextSelectedCharRect.top < pageHeight)
+                : (nextSelectedCharRect.left >= 0 && nextSelectedCharRect.left < pageWidth);
+
+              if (inVisiblePage) {
+                const nextNeighbor = getAdjacentCharRect(endNode, endOffset, true);
+                if (nextNeighbor) {
+                  const forward = isVertical
+                    ? nextNeighbor.top >= pageHeight - 1
+                    : nextNeighbor.left >= pageWidth - 1;
+                  if (forward) isAtNextEdge = true;
+                } else {
+                  isAtNextEdge = true;
+                }
+              }
+            }
+          }
+
+          // 2. Comprobar si el extremo inicial está en el borde inicial de la página (previous)
+          let isAtPrevEdge = false;
+          let prevSelectedCharRect: DOMRect | null = null;
+          if (canGoPrev) {
+            prevSelectedCharRect = getAdjacentCharRect(startNode, startOffset, true);
+            if (prevSelectedCharRect) {
+              const inVisiblePage = isVertical
+                ? (prevSelectedCharRect.top >= 0 && prevSelectedCharRect.top < pageHeight)
+                : (prevSelectedCharRect.left >= 0 && prevSelectedCharRect.left < pageWidth);
+
+              if (inVisiblePage) {
+                const prevNeighbor = getAdjacentCharRect(startNode, startOffset, false);
+                let backward = false;
+                if (prevNeighbor) {
+                  backward = isVertical ? prevNeighbor.bottom <= 1 : prevNeighbor.right <= 1;
+                } else {
+                  backward = true;
+                }
+                const atPageStart = isVertical
+                  ? prevSelectedCharRect.top <= pageStartInset &&
+                    prevSelectedCharRect.right >= pageWidth - sidePad - fontSize * 0.75
+                  : prevSelectedCharRect.left <= pageStartInset;
+
+                if (backward || atPageStart) isAtPrevEdge = true;
+              }
+            }
+          }
+
+          const startChanged = !lastSelectionEndpoints ||
+            lastSelectionEndpoints.startNode !== startNode ||
+            lastSelectionEndpoints.startOffset !== startOffset;
+          const endChanged = !lastSelectionEndpoints ||
+            lastSelectionEndpoints.endNode !== endNode ||
+            lastSelectionEndpoints.endOffset !== endOffset;
+
+          lastSelectionEndpoints = {
+            startNode,
+            startOffset,
+            endNode,
+            endOffset,
+          };
+
+          let chosenDirection: 'next' | 'previous' | null = null;
+          if (isAtNextEdge && isAtPrevEdge) {
+            if (endChanged && !startChanged) chosenDirection = 'next';
+            else if (startChanged && !endChanged) chosenDirection = 'previous';
+            else chosenDirection = 'next';
+          } else if (isAtNextEdge) {
+            chosenDirection = 'next';
+          } else if (isAtPrevEdge) {
+            chosenDirection = 'previous';
+          }
+
+          if (chosenDirection === 'next' && nextSelectedCharRect) {
+            activeSelectionEdge = { node: endNode, offset: endOffset, selectedForward: false };
+            return 'next';
+          }
+          if (chosenDirection === 'previous' && prevSelectedCharRect) {
+            activeSelectionEdge = { node: startNode, offset: startOffset, selectedForward: true };
+            return 'previous';
+          }
+
+          activeSelectionEdge = null;
           return null;
         };
         const placeSelectionEdgeIndicator = (direction: 'next' | 'previous') => {
@@ -1799,6 +1777,8 @@ export const EpubReader: React.FC<Props> = ({
         };
         selectionEdgeTurnRef.current = (direction) => {
           clearSelectionEdgeIndicator();
+          cancelEdgeActivationRef.current();
+          lastPageTurnTimeRef.current = Date.now();
           if (direction === 'next') doNextRef.current();
           else doPrevRef.current();
         };
@@ -1835,7 +1815,7 @@ export const EpubReader: React.FC<Props> = ({
           }
 
           if (!selection?.rangeCount || !selection.toString()) {
-            if (shouldKeepPreviousEdgeIndicator()) return;
+            cancelEdgeActivationRef.current();
             clearSelectionEdgeIndicator();
             selectedTextRef.current = '';
             setSelectedText('');
@@ -1863,7 +1843,7 @@ export const EpubReader: React.FC<Props> = ({
             focusNode === doc.documentElement ||
             anchorNode === doc.documentElement
           ) {
-            if (shouldKeepPreviousEdgeIndicator()) return;
+            cancelEdgeActivationRef.current();
             clearSelectionEdgeIndicator();
             return;
           }
@@ -1878,8 +1858,14 @@ export const EpubReader: React.FC<Props> = ({
           }
           handleSelection();
           const edgeDirection = getSelectionEdgeDirection();
-          if (edgeDirection) placeSelectionEdgeIndicator(edgeDirection);
-          else if (!shouldKeepPreviousEdgeIndicator()) clearSelectionEdgeIndicator();
+          if (edgeDirection) {
+            setIsSelectionAdjusting(true);
+            placeSelectionEdgeIndicator(edgeDirection);
+            startEdgeActivationRef.current(edgeDirection);
+          } else {
+            cancelEdgeActivationRef.current();
+            clearSelectionEdgeIndicator();
+          }
         };
 
         const onStart = (cx: number, cy: number) => {
@@ -2067,14 +2053,15 @@ export const EpubReader: React.FC<Props> = ({
           });
         });
         let pendingSelectionFrame = 0;
-        doc.addEventListener('selectionchange', () => {
+        const onSelectionChange = () => {
           countDebugRef.current('selchg');
           if (pendingSelectionFrame) return;
           pendingSelectionFrame = window.requestAnimationFrame(() => {
             pendingSelectionFrame = 0;
             if (iframe.contentDocument === doc) handleIframeSelectionChange();
           });
-        });
+        };
+        doc.addEventListener('selectionchange', onSelectionChange);
         // The native selection handles report through pointer events, so this is
         // the stream the selection paging has to run on.
         doc.addEventListener('pointerdown', () => {
@@ -2101,9 +2088,11 @@ export const EpubReader: React.FC<Props> = ({
           nativeSelectionTookOverRef.current = true;
           lastPointerActivityRef.current = Date.now();
         }, { passive: true });
-        document.addEventListener('selectionchange', () => countDebugRef.current('selchg-top'));
+        document.addEventListener('selectionchange', onSelectionChange);
         doc.addEventListener('contextmenu', (e) => {
           e.preventDefault();
+          cancelEdgeActivationRef.current();
+          clearSelectionEdgeIndicator();
           if (!isNativeAndroid || !e.isTrusted || !selectedTextRef.current) return;
 
           if (selectionSettleRef.current !== undefined) {
@@ -3813,7 +3802,7 @@ export const EpubReader: React.FC<Props> = ({
         onUploadBook={onUploadBook}
       />
 
-      {selectionEdgeIndicator && isSelectionAdjusting && (
+      {selectionEdgeIndicator && (
         <div
           aria-hidden="true"
           className={`pointer-events-none fixed z-[75] flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white text-white transition-[background-color,transform,box-shadow] duration-150 ${
