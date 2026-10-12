@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { t } from '../utils/i18n';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { AiProvider, PaginationMode, ParsedEpub, ReaderSettingsState } from '../types/epub';
@@ -1293,7 +1294,7 @@ export const EpubReader: React.FC<Props> = ({
       }, 500);
       return true;
     } catch {
-      showWordAnalysisError('No se ha podido seleccionar esa palabra en la página.');
+      showWordAnalysisError(t('reader.selectWordError', settings.language));
       return false;
     }
   }, [showWordAnalysisError]);
@@ -2972,9 +2973,9 @@ export const EpubReader: React.FC<Props> = ({
     const pageLabel = !isBookmarksOpen
       ? undefined
       : location === undefined
-        ? 'Calculando página…'
+        ? t('reader.calculatingPage', settings.language)
         : location === null
-          ? 'No se pudo localizar la página'
+          ? t('reader.locatePageError', settings.language)
           : isBookPaginationReady
             ? `${chapterPageDisplay} · ${bookPageDisplay}`
             : chapterPageDisplay;
@@ -3008,7 +3009,7 @@ export const EpubReader: React.FC<Props> = ({
         null,
       );
       if (!target) {
-        showWordAnalysisError('No se ha podido localizar esta frase subrayada en el libro.');
+        showWordAnalysisError(t('reader.locateAnnotationError', settings.language));
         return;
       }
 
@@ -3033,7 +3034,7 @@ export const EpubReader: React.FC<Props> = ({
       }, 1300);
     } catch (error) {
       console.error('No se pudo abrir el subrayado guardado.', error);
-      showWordAnalysisError('No se ha podido abrir esta frase subrayada.');
+      showWordAnalysisError(t('reader.openAnnotationError', settings.language));
     }
   }, [
     isVertical,
@@ -3412,7 +3413,7 @@ export const EpubReader: React.FC<Props> = ({
     const doc = iframe?.contentDocument;
     const scroller = doc?.getElementById('reader-scroller');
     if (!iframe || !doc || !scroller) {
-      showWordAnalysisError('No se ha podido acceder al contenido de la página.');
+      showWordAnalysisError(t('reader.pageAccessError', settings.language));
       return;
     }
 
@@ -3454,7 +3455,7 @@ export const EpubReader: React.FC<Props> = ({
       }
 
       if (!pageText.trim()) {
-        throw new Error('No se ha encontrado texto visible para analizar en esta página.');
+        throw new Error(t('reader.noVisibleText', settings.language));
       }
 
       const morphology = await tokenizeJapanese(pageText);
@@ -3599,8 +3600,8 @@ export const EpubReader: React.FC<Props> = ({
       if (request !== pageAnalysisRequestRef.current) return;
       showWordAnalysisError(
         error instanceof Error
-          ? `No se pudo analizar la página: ${error.message}`
-          : 'No se pudo analizar la página con Kuromoji.'
+          ? t('reader.analysisError', settings.language).replace('{message}', error.message)
+          : t('reader.analysisGenericError', settings.language)
       );
     } finally {
       if (request === pageAnalysisRequestRef.current) setIsAnalyzingPage(false);

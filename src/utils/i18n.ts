@@ -18,7 +18,7 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'recent.title': 'Libros recientes',
     'language.label': 'Idioma de la interfaz',
 
-    // ReaderSettings
+    // ReaderSettings & Options
     'settings.title': 'Ajustes de Lectura',
     'settings.orientation': 'Orientación del Texto',
     'settings.vertical': '縦書き (Vertical)',
@@ -55,7 +55,7 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'settings.aiApiKey': 'Clave de API',
     'settings.aiModel': 'Modelo de OpenRouter',
 
-    // ReaderNavbar
+    // ReaderNavbar & ReaderFooter & Navigation
     'nav.open': 'Abrir',
     'nav.openTitle': 'Abrir otro libro EPUB',
     'nav.toc': 'Índice',
@@ -72,15 +72,22 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'nav.exitFullscreen': 'Salir de pantalla completa',
     'nav.analyzerOn': 'Desactivar el analizador automático en todas las páginas',
     'nav.analyzerOff': 'Activar el analizador automático en todas las páginas',
-
-    // ReaderFooter
-    'footer.page': 'Pág.',
+    'footer.page': 'Página',
     'footer.of': 'de',
     'footer.percent': '%',
     'footer.chapter': 'Capítulo',
-    'footer.nextChapter': 'Capítulo siguiente',
-    'footer.prevChapter': 'Capítulo anterior',
+    'footer.nextChapter': 'Siguiente',
+    'footer.prevChapter': 'Anterior',
     'footer.sliderTitle': 'Ir a una página del libro',
+    'reader.beginning': 'Principio del libro',
+    'reader.selectWordError': 'No se ha podido seleccionar esa palabra en la página.',
+    'reader.calculatingPage': 'Calculando página…',
+    'reader.locateAnnotationError': 'No se ha podido localizar esta frase subrayada en el libro.',
+    'reader.openAnnotationError': 'No se ha podido abrir esta frase subrayada.',
+    'reader.pageAccessError': 'No se ha podido acceder al contenido de la página.',
+    'reader.noVisibleText': 'No se ha encontrado texto visible para analizar en esta página.',
+    'reader.analysisError': 'No se pudo analizar la página: {message}',
+    'reader.analysisGenericError': 'No se pudo analizar la página con Kuromoji.',
 
     // TextSelectionMenu
     'menu.translate': 'Traducir',
@@ -88,7 +95,7 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'menu.copy': 'Copiar',
     'menu.copied': 'Copiado',
     'menu.dict': 'Diccionario',
-    'menu.tts': 'Pronunciación en japonés',
+    'menu.tts': 'Escuchar (Pronunciación en japonés)',
     'menu.searchInBook': 'Buscar en el libro',
     'menu.googleSearch': 'Buscar en Google',
     'menu.underline': 'Subrayar',
@@ -96,8 +103,8 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'menu.close': 'Cerrar',
 
     // TranslationModal
-    'translate.title': 'Diccionario y Traducción',
-    'translate.inputPlaceholder': 'Buscar palabra o texto...',
+    'translate.title': 'Traducción y Diccionario',
+    'translate.inputPlaceholder': 'Escribe una palabra o variante japonesa',
     'translate.searchBtn': 'Buscar',
     'translate.dictionary': 'Diccionario',
     'translate.aiTranslation': 'Traducción IA',
@@ -109,6 +116,13 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'translate.errorTranslate': 'No se pudo traducir el texto.',
     'translate.errorDict': 'No se pudo consultar el diccionario.',
     'translate.errorExplain': 'No se pudo generar la explicación.',
+    'translate.originalJapanese': 'Texto original (japonés)',
+    'translate.targetTranslation': 'Traducción al español',
+    'translate.localJmdict': 'Diccionario JMDict local · español e inglés',
+    'translate.explaining': 'Explicando…',
+    'translate.translating': 'Traduciendo...',
+    'translate.source': 'fuente',
+    'translate.license': 'licencia CC BY-SA 4.0',
 
     // BookmarksModal
     'bookmarks.title': 'Marcadores y Subrayados',
@@ -120,14 +134,14 @@ const translations: Record<UiLanguage, Record<string, string>> = {
 
     // BookSearchModal
     'search.title': 'Buscar en el libro',
-    'search.placeholder': 'Escribe una palabra o frase...',
+    'search.placeholder': 'Escribe una palabra o frase…',
     'search.empty': 'Introduce un término para buscar en el texto.',
-    'search.noResults': 'No se encontraron resultados.',
+    'search.noResults': 'Sin coincidencias',
     'search.results': 'Resultados',
     'search.recent': 'Búsquedas recientes',
     'search.clearRecents': 'Borrar recientes',
 
-    // GoogleDriveBackupPanel & SyncStatusBadge
+    // GoogleDriveBackupPanel & SyncStatusBadge (Messages & Alerts)
     'drive.title': 'Copia de seguridad en Google Drive',
     'drive.signIn': 'Conectar con Google Drive',
     'drive.signOut': 'Desconectar cuenta',
@@ -163,6 +177,7 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'drive.ariaDownload': 'Descargar',
     'drive.ariaDelete': 'Eliminar la copia de',
     'drive.titleDrive': 'de Google Drive',
+    'drive.alertNoConfigure': 'No se pudieron restaurar los ajustes de Google Drive',
 
     // PageGlossaryModal
     'glossary.title': 'Glosario de la página',
@@ -186,6 +201,18 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'common.confirm': 'Aceptar',
     'common.delete': 'Eliminar',
     'common.loading': 'Cargando...',
+    'common.page': 'Página',
+    'common.chapter': 'Capítulo',
+    'common.previous': 'Anterior',
+    'common.next': 'Siguiente',
+    'common.dictionary': 'Diccionario',
+    'common.translate': 'Traducir',
+    'common.search': 'Buscar',
+    'common.listen': 'Escuchar',
+    'common.source': 'fuente',
+    'common.license': 'licencia',
+    'common.horizontal': 'Horizontal',
+    'common.vertical': 'Vertical',
   },
   en: {
     // FileDropZone / Main Page
@@ -204,7 +231,7 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'recent.title': 'Recent books',
     'language.label': 'Interface Language',
 
-    // ReaderSettings
+    // ReaderSettings & Options
     'settings.title': 'Reading Settings',
     'settings.orientation': 'Text Orientation',
     'settings.vertical': '縦書き (Vertical)',
@@ -241,7 +268,7 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'settings.aiApiKey': 'API Key',
     'settings.aiModel': 'OpenRouter Model',
 
-    // ReaderNavbar
+    // ReaderNavbar & ReaderFooter & Navigation
     'nav.open': 'Open',
     'nav.openTitle': 'Open another EPUB book',
     'nav.toc': 'Table of Contents',
@@ -258,15 +285,22 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'nav.exitFullscreen': 'Exit fullscreen',
     'nav.analyzerOn': 'Disable automatic page analyzer on all pages',
     'nav.analyzerOff': 'Enable automatic page analyzer on all pages',
-
-    // ReaderFooter
     'footer.page': 'Page',
     'footer.of': 'of',
     'footer.percent': '%',
     'footer.chapter': 'Chapter',
-    'footer.nextChapter': 'Next chapter',
-    'footer.prevChapter': 'Previous chapter',
+    'footer.nextChapter': 'Next',
+    'footer.prevChapter': 'Previous',
     'footer.sliderTitle': 'Go to a book page',
+    'reader.beginning': 'Beginning of book',
+    'reader.selectWordError': 'Could not select that word on the page.',
+    'reader.calculatingPage': 'Calculating page...',
+    'reader.locateAnnotationError': 'Could not locate this highlighted phrase in the book.',
+    'reader.openAnnotationError': 'Could not open this highlighted phrase.',
+    'reader.pageAccessError': 'Could not access page content.',
+    'reader.noVisibleText': 'No visible text found to analyze on this page.',
+    'reader.analysisError': 'Could not analyze page: {message}',
+    'reader.analysisGenericError': 'Could not analyze page with Kuromoji.',
 
     // TextSelectionMenu
     'menu.translate': 'Translate',
@@ -274,7 +308,7 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'menu.copy': 'Copy',
     'menu.copied': 'Copied',
     'menu.dict': 'Dictionary',
-    'menu.tts': 'Japanese pronunciation',
+    'menu.tts': 'Listen (Japanese pronunciation)',
     'menu.searchInBook': 'Search in book',
     'menu.googleSearch': 'Search in Google',
     'menu.underline': 'Underline',
@@ -282,8 +316,8 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'menu.close': 'Close',
 
     // TranslationModal
-    'translate.title': 'Dictionary & Translation',
-    'translate.inputPlaceholder': 'Search word or text...',
+    'translate.title': 'Translation & Dictionary',
+    'translate.inputPlaceholder': 'Type a word or Japanese variant',
     'translate.searchBtn': 'Search',
     'translate.dictionary': 'Dictionary',
     'translate.aiTranslation': 'AI Translation',
@@ -295,6 +329,13 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'translate.errorTranslate': 'Could not translate text.',
     'translate.errorDict': 'Could not query dictionary.',
     'translate.errorExplain': 'Could not generate explanation.',
+    'translate.originalJapanese': 'Original text (Japanese)',
+    'translate.targetTranslation': 'English translation',
+    'translate.localJmdict': 'Local JMDict dictionary · Spanish & English',
+    'translate.explaining': 'Explaining...',
+    'translate.translating': 'Translating...',
+    'translate.source': 'source',
+    'translate.license': 'CC BY-SA 4.0 license',
 
     // BookmarksModal
     'bookmarks.title': 'Bookmarks & Underlines',
@@ -306,14 +347,14 @@ const translations: Record<UiLanguage, Record<string, string>> = {
 
     // BookSearchModal
     'search.title': 'Search in book',
-    'search.placeholder': 'Type a word or phrase...',
+    'search.placeholder': 'Type a word or phrase…',
     'search.empty': 'Enter a search term to find in the text.',
-    'search.noResults': 'No results found.',
+    'search.noResults': 'No results',
     'search.results': 'Results',
     'search.recent': 'Recent searches',
     'search.clearRecents': 'Clear recents',
 
-    // GoogleDriveBackupPanel & SyncStatusBadge
+    // GoogleDriveBackupPanel & SyncStatusBadge (Messages & Alerts)
     'drive.title': 'Google Drive Backup',
     'drive.signIn': 'Connect to Google Drive',
     'drive.signOut': 'Disconnect account',
@@ -349,6 +390,7 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'drive.ariaDownload': 'Download',
     'drive.ariaDelete': 'Delete copy of',
     'drive.titleDrive': 'from Google Drive',
+    'drive.alertNoConfigure': 'Could not restore Google Drive settings',
 
     // PageGlossaryModal
     'glossary.title': 'Page Glossary',
@@ -372,6 +414,18 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'common.confirm': 'Confirm',
     'common.delete': 'Delete',
     'common.loading': 'Loading...',
+    'common.page': 'Page',
+    'common.chapter': 'Chapter',
+    'common.previous': 'Previous',
+    'common.next': 'Next',
+    'common.dictionary': 'Dictionary',
+    'common.translate': 'Translate',
+    'common.search': 'Search',
+    'common.listen': 'Listen',
+    'common.source': 'source',
+    'common.license': 'license',
+    'common.horizontal': 'Horizontal',
+    'common.vertical': 'Vertical',
   },
 };
 

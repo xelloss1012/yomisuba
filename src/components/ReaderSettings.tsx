@@ -26,16 +26,16 @@ export const ReaderSettings: React.FC<Props> = ({
   if (!isOpen) return null;
 
   const themes: { id: ReaderTheme; label: string; bg: string; text: string; border: string }[] = [
-    { id: 'light', label: 'Blanco', bg: 'bg-white', text: 'text-zinc-900', border: 'border-zinc-300' },
-    { id: 'paper', label: 'Papel', bg: 'bg-[#faf7f0]', text: 'text-[#2c2825]', border: 'border-[#dfd7ca]' },
-    { id: 'sepia', label: 'Sepia', bg: 'bg-[#f4ede4]', text: 'text-[#5c4838]', border: 'border-[#d7c0a9]' },
-    { id: 'dark', label: 'Noche', bg: 'bg-[#18181b]', text: 'text-[#e4e4e7]', border: 'border-[#3f3f46]' },
+    { id: 'light', label: t('settings.themeLight', settings.language), bg: 'bg-white', text: 'text-zinc-900', border: 'border-zinc-300' },
+    { id: 'paper', label: t('settings.themePaper', settings.language), bg: 'bg-[#faf7f0]', text: 'text-[#2c2825]', border: 'border-[#dfd7ca]' },
+    { id: 'sepia', label: t('settings.themeSepia', settings.language), bg: 'bg-[#f4ede4]', text: 'text-[#5c4838]', border: 'border-[#d7c0a9]' },
+    { id: 'dark', label: t('settings.themeDark', settings.language), bg: 'bg-[#18181b]', text: 'text-[#e4e4e7]', border: 'border-[#3f3f46]' },
   ];
 
   const fonts: { id: FontFamily; label: string; sample: string; family: string }[] = [
     { id: 'mincho', label: 'Mincho (明朝体)', sample: '美しい日本語', family: '"Noto Serif JP", serif' },
     { id: 'gothic', label: 'Gothic (ゴシック体)', sample: '美しい日本語', family: '"Noto Sans JP", sans-serif' },
-    { id: 'serif', label: 'Serif Occidental', sample: 'Typography', family: 'Georgia, serif' },
+    { id: 'serif', label: settings.language === 'en' ? 'Western Serif' : 'Serif Occidental', sample: 'Typography', family: 'Georgia, serif' },
     { id: 'sans', label: 'Sans-serif', sample: 'Typography', family: 'system-ui, sans-serif' },
   ];
   const aiProviders: { id: AiProvider; label: string; hint: string }[] = [
@@ -100,7 +100,7 @@ export const ReaderSettings: React.FC<Props> = ({
           {/* Dirección y Modo de Escritura (Japonés vertical vs horizontal) */}
           <div>
             <label className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2 flex items-center gap-1.5">
-              <Compass className="w-4 h-4" /> Orientación del Texto
+              <Compass className="w-4 h-4" /> {t('settings.orientation', settings.language)}
             </label>
             <div className="grid grid-cols-2 gap-2">
               <button
@@ -112,8 +112,8 @@ export const ReaderSettings: React.FC<Props> = ({
                     : 'border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300'
                 }`}
               >
-                <span className="text-base">縦書き (Vertical)</span>
-                <span className="text-xs opacity-75">Japonés Tradicional (RTL)</span>
+                <span className="text-base">{t('settings.vertical', settings.language)}</span>
+                <span className="text-xs opacity-75">{t('settings.verticalHint', settings.language)}</span>
               </button>
               <button
                 type="button"
@@ -124,8 +124,8 @@ export const ReaderSettings: React.FC<Props> = ({
                     : 'border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300'
                 }`}
               >
-                <span className="text-base">横書き (Horizontal)</span>
-                <span className="text-xs opacity-75">Estándar / Occidental</span>
+                <span className="text-base">{t('settings.horizontal', settings.language)}</span>
+                <span className="text-xs opacity-75">{t('settings.horizontalHint', settings.language)}</span>
               </button>
             </div>
           </div>
@@ -133,13 +133,13 @@ export const ReaderSettings: React.FC<Props> = ({
           {/* Tipo de Paginación y Páginas Impresas */}
           <div>
             <label className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2 flex items-center gap-1.5">
-              <BookOpen className="w-4 h-4" /> Paginación por Defecto
+              <BookOpen className="w-4 h-4" /> {t('settings.pagination', settings.language)}
             </label>
             <div className="grid grid-cols-3 gap-2 mb-3">
               {[
-                { id: 'device' as const, label: 'Dispositivo' },
-                { id: 'printed' as const, label: 'Impresas' },
-                { id: 'percent' as const, label: 'Porcentaje' },
+                { id: 'device' as const, label: t('settings.paginationDevice', settings.language) },
+                { id: 'printed' as const, label: t('settings.paginationPrinted', settings.language) },
+                { id: 'percent' as const, label: t('settings.paginationPercent', settings.language) },
               ].map((m) => (
                 <button
                   key={m.id}
@@ -159,8 +159,8 @@ export const ReaderSettings: React.FC<Props> = ({
             {onUpdatePrintedPages && (
               <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 p-3 space-y-2">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Páginas impresas del libro</span>
-                  <span className="text-xs text-zinc-500">Opcional</span>
+                  <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{t('settings.printedPages', settings.language)}</span>
+                  <span className="text-xs text-zinc-500">{t('settings.optional', settings.language)}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <input
@@ -181,12 +181,12 @@ export const ReaderSettings: React.FC<Props> = ({
                       onClick={() => onUpdatePrintedPages(undefined)}
                       className="text-xs text-rose-600 dark:text-rose-400 hover:underline px-2 py-1 shrink-0"
                     >
-                      Borrar
+                      {t('settings.clear', settings.language)}
                     </button>
                   )}
                 </div>
                 <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                  Número de páginas de la edición impresa para calcular la equivalencia aproximada.
+                  {t('settings.printedHint', settings.language)}
                 </p>
               </div>
             )}
@@ -200,9 +200,9 @@ export const ReaderSettings: React.FC<Props> = ({
               className="mt-0.5 h-4 w-4 accent-indigo-600"
             />
             <span>
-              <span className="block text-sm font-medium">Permitir giro automático</span>
+              <span className="block text-sm font-medium">{t('settings.autoRotate', settings.language)}</span>
               <span className="mt-0.5 block text-xs text-zinc-500 dark:text-zinc-400">
-                Permite cambiar entre vertical y horizontal al girar el móvil. Desactivado, la aplicación permanece en vertical.
+                {t('settings.autoRotateHint', settings.language)}
               </span>
             </span>
           </label>
@@ -215,9 +215,9 @@ export const ReaderSettings: React.FC<Props> = ({
               className="mt-0.5 h-4 w-4 accent-indigo-600"
             />
             <span>
-              <span className="block text-sm font-medium">Mostrar furigana</span>
+              <span className="block text-sm font-medium">{t('settings.furigana', settings.language)}</span>
               <span className="mt-0.5 block text-xs text-zinc-500 dark:text-zinc-400">
-                Muestra u oculta la lectura sobre los kanji.
+                {t('settings.furiganaHint', settings.language)}
               </span>
             </span>
           </label>
@@ -230,9 +230,9 @@ export const ReaderSettings: React.FC<Props> = ({
               className="mt-0.5 h-4 w-4 accent-indigo-600"
             />
             <span>
-              <span className="block text-sm font-medium">Analizar páginas automáticamente</span>
+              <span className="block text-sm font-medium">{t('settings.autoAnalyze', settings.language)}</span>
               <span className="mt-0.5 block text-xs text-zinc-500 dark:text-zinc-400">
-                Activa la selección por palabras unos instantes después de abrir cada página.
+                {t('settings.autoAnalyzeHint', settings.language)}
               </span>
             </span>
           </label>
@@ -240,18 +240,18 @@ export const ReaderSettings: React.FC<Props> = ({
           {/* Tema / Color de fondo */}
           <div>
             <label className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2 flex items-center gap-1.5">
-              <Sun className="w-4 h-4" /> Tema y Color
+              <Sun className="w-4 h-4" /> {t('settings.theme', settings.language)}
             </label>
             <div className="grid grid-cols-4 gap-2">
-              {themes.map((t) => (
+              {themes.map((th) => (
                 <button
-                  key={t.id}
-                  onClick={() => onUpdateSettings({ theme: t.id })}
-                  className={`py-2 px-1 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all ${t.bg} ${t.border} ${t.text} ${
-                    selectedTheme === t.id ? 'ring-2 ring-indigo-500 ring-offset-2 dark:ring-offset-zinc-900 font-bold shadow-md' : 'opacity-85 hover:opacity-100'
+                  key={th.id}
+                  onClick={() => onUpdateSettings({ theme: th.id })}
+                  className={`py-2 px-1 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all ${th.bg} ${th.border} ${th.text} ${
+                    selectedTheme === th.id ? 'ring-2 ring-indigo-500 ring-offset-2 dark:ring-offset-zinc-900 font-bold shadow-md' : 'opacity-85 hover:opacity-100'
                   }`}
                 >
-                  <span className="text-xs font-medium">{t.label}</span>
+                  <span className="text-xs font-medium">{th.label}</span>
                 </button>
               ))}
             </div>
@@ -263,9 +263,9 @@ export const ReaderSettings: React.FC<Props> = ({
                 className="mt-0.5 h-4 w-4 accent-indigo-600"
               />
               <span>
-                <span className="block text-sm font-medium">Modo noche automático</span>
+                <span className="block text-sm font-medium">{t('settings.nightMode', settings.language)}</span>
                 <span className="mt-0.5 block text-xs text-zinc-500 dark:text-zinc-400">
-                  Activa Noche de 20:00 a 8:00; el resto del día usa el tema seleccionado.
+                  {t('settings.nightModeHint', settings.language)}
                 </span>
               </span>
             </label>
@@ -274,7 +274,7 @@ export const ReaderSettings: React.FC<Props> = ({
           {/* Tipografía */}
           <div>
             <label className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2 flex items-center gap-1.5">
-              <BookOpen className="w-4 h-4" /> Fuente
+              <BookOpen className="w-4 h-4" /> {t('settings.fontFamily', settings.language)}
             </label>
             <div className="grid grid-cols-2 gap-2">
               {fonts.map((f) => (
@@ -299,7 +299,7 @@ export const ReaderSettings: React.FC<Props> = ({
           <div>
             <div className="flex justify-between items-center mb-2">
               <label className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
-                <Type className="w-4 h-4" /> Tamaño de Fuente
+                <Type className="w-4 h-4" /> {t('settings.fontSize', settings.language)}
               </label>
               <span className="text-xs font-semibold px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300">
                 {settings.fontSize}px
@@ -336,7 +336,7 @@ export const ReaderSettings: React.FC<Props> = ({
           <div>
             <div className="flex justify-between items-center mb-2">
               <label className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
-                <AlignLeft className="w-4 h-4" /> Interlineado
+                <AlignLeft className="w-4 h-4" /> {t('settings.lineHeight', settings.language)}
               </label>
               <span className="text-xs font-semibold px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300">
                 {settings.lineHeight.toFixed(1)}
@@ -344,9 +344,9 @@ export const ReaderSettings: React.FC<Props> = ({
             </div>
             <div className="grid grid-cols-3 gap-2">
               {[
-                { val: 1.5, label: 'Compacto' },
-                { val: 1.9, label: 'Normal' },
-                { val: 2.3, label: 'Amplio' },
+                { val: 1.5, label: settings.language === 'en' ? 'Compact' : 'Compacto' },
+                { val: 1.9, label: settings.language === 'en' ? 'Normal' : 'Normal' },
+                { val: 2.3, label: settings.language === 'en' ? 'Wide' : 'Amplio' },
               ].map((lh) => (
                 <button
                   key={lh.val}
@@ -363,12 +363,12 @@ export const ReaderSettings: React.FC<Props> = ({
             </div>
 
             {/* Traducción con IA */}
-            <div>
+            <div className="mt-6">
               <label className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2 flex items-center gap-1.5">
-                <span className="text-sm">✦</span> Traducción con IA
+                <span className="text-sm">✦</span> {t('settings.aiSection', settings.language)}
               </label>
               <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mb-3">
-                Las claves se guardan solo en este navegador. Se envían directamente al proveedor elegido.
+                {settings.language === 'en' ? 'Keys are stored only in this browser and sent directly to the selected provider.' : 'Las claves se guardan solo en este navegador. Se envían directamente al proveedor elegido.'}
               </p>
               <div className="space-y-2">
                 {aiProviders.map((provider) => (
@@ -395,7 +395,7 @@ export const ReaderSettings: React.FC<Props> = ({
                 ))}
                 <div>
                   <span className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1">
-                    Modelos predefinidos de OpenRouter
+                    {t('settings.aiModel', settings.language)}
                   </span>
                   <select
                     value={OPENROUTER_MODEL_PRESETS.some((model) => model.id === settings.openRouterModel)
@@ -411,7 +411,7 @@ export const ReaderSettings: React.FC<Props> = ({
                     {OPENROUTER_MODEL_PRESETS.map((model) => (
                       <option key={model.id} value={model.id}>{model.label}</option>
                     ))}
-                    <option value="custom">ID de modelo personalizado…</option>
+                    <option value="custom">{settings.language === 'en' ? 'Custom model ID...' : 'ID de modelo personalizado…'}</option>
                   </select>
                   {settings.openRouterModel === '' || !OPENROUTER_MODEL_PRESETS.some((model) => model.id === settings.openRouterModel) ? (
                     <input
@@ -425,7 +425,7 @@ export const ReaderSettings: React.FC<Props> = ({
                     />
                   ) : null}
                   <span className="mt-1 block text-[10px] text-zinc-500 dark:text-zinc-400">
-                    Los modelos «Último disponible» se resuelven desde el catálogo actual de OpenRouter. Predeterminado: {DEFAULT_OPENROUTER_MODEL}.
+                    {settings.language === 'en' ? `Default: ${DEFAULT_OPENROUTER_MODEL}.` : `Predeterminado: ${DEFAULT_OPENROUTER_MODEL}.`}
                   </span>
                 </div>
               </div>

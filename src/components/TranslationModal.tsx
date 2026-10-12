@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Volume2, Languages, Loader2, Sparkles, Search, Star } from 'lucide-react';
 import { AiProvider } from '../types/epub';
 import {
@@ -151,10 +151,10 @@ export const TranslationModal: React.FC<Props> = ({
         if (hasUsableTranslation(result)) {
           recordSuccessfulSearch(selectedText, searchId);
         }
-      } catch (err) {
+      } catch {
         if (!cancelled) {
           setTranslationError(true);
-          setTranslatedText(err instanceof Error ? err.message : 'Traducción no disponible.');
+          setTranslatedText(t('translate.errorTranslate', language));
         }
       } finally {
         if (!cancelled) setIsLoading(false);
@@ -162,35 +162,15 @@ export const TranslationModal: React.FC<Props> = ({
     };
 
     void translate();
-    return () => { cancelled = true; };
-  }, [aiApiKey, aiProvider, availableAiProviders, frequentSearchToken, isOpen, onRecordFrequentQuery, onSaveHistory, openRouterModel, selectedText]);
-
-  useEffect(() => {
-    if (!isOpen || !selectedText) return;
-    const searchId = frequentSearchToken;
-    const requestId = dictionaryRequestRef.current + 1;
-    dictionaryRequestRef.current = requestId;
-    setDictionaryQuery(selectedText);
-    void lookupDictionary(selectedText, requestId, searchId);
     return () => {
-      if (dictionaryRequestRef.current === requestId) {
-        dictionaryRequestRef.current += 1;
-      }
+      cancelled = true;
     };
-  }, [frequentSearchToken, isOpen, selectedText]);
+  }, [isOpen, selectedText, aiProvider, aiApiKey, openRouterModel, availableAiProviders, frequentSearchToken, language, onSaveHistory, onRecordFrequentQuery]);
 
-  const lookupDictionary = async (
-    query: string,
-    requestId = dictionaryRequestRef.current + 1,
-    searchId: string | number = frequentSearchToken,
-  ) => {
+  const lookupDictionary = useCallback(async (query: string) => {
     const trimmedQuery = query.trim();
-    if (!trimmedQuery) {
-      setDictionaryTerms(null);
-      setDictionaryError('Escribe una palabra para buscar.');
-      setIsDictionaryLoading(false);
-      return;
-    }
+    if (!trimmedQuery) return;
+    const requestId = dictionaryRequestRef.current + 1;
     dictionaryRequestRef.current = requestId;
     setDictionaryTerms(null);
     setDictionaryError('');
@@ -212,26 +192,26 @@ export const TranslationModal: React.FC<Props> = ({
           trimmedQuery,
           formatDictionaryHistoryResponse(terms.baseForm, terms.searchTerms, terms.entries)
         );
-        recordSuccessfulSearch(trimmedQuery, searchId);
+        recordSuccessfulSearch(trimmedQuery, dictionarySearchCountRef.current + 1);
       }
     } catch (error) {
       if (dictionaryRequestRef.current === requestId) {
-        setDictionaryError(error instanceof Error ? error.message : 'No se pudo consultar el diccionario.');
+        setDictionaryError(error instanceof Error ? error.message : t('translate.errorDict', language));
       }
     } finally {
       if (dictionaryRequestRef.current === requestId) setIsDictionaryLoading(false);
     }
-  };
+  }, [language, onSaveHistory]);
+
+  useEffect(() => {
+    if (!isOpen || !selectedText) return;
+    dictionarySearchCountRef.current += 1;
+    void lookupDictionary(selectedText);
+  }, [isOpen, selectedText, lookupDictionary]);
 
   const handleDictionarySubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    dictionarySearchCountRef.current += 1;
-    const searchToken = `${frequentSearchToken}:dictionary:${dictionarySearchCountRef.current}`;
-    void lookupDictionary(dictionaryQuery, dictionaryRequestRef.current + 1, searchToken);
-  };
-
-  const toggleFavorite = (candidate: TranslationFavoriteCandidate) => {
-    onToggleFavorite(candidate);
+    void lookupDictionary(dictionaryQuery);
   };
 
   const handleSpeak = async () => {
@@ -240,30 +220,23 @@ export const TranslationModal: React.FC<Props> = ({
     try {
       await speakJapanese(selectedText);
     } catch (error) {
-      setSpeechError(error instanceof Error ? error.message : 'No se pudo reproducir la pronunciación.');
+      setSpeechError(error instanceof Error ? error.message : t('translate.errorExplain', language));
     } finally {
       setIsSpeaking(false);
     }
   };
 
-  if (!isOpen) return null;
-
   const handleExplain = async () => {
-    if (!explanationProvider) {
-      setExplanationError('Configura una IA en Ajustes para solicitar una explicación.');
-      return;
-    }
-    const key = aiApiKeys[explanationProvider] || (aiProvider === explanationProvider ? aiApiKey : '') || '';
+    if (!explanationProvider) return;
+    const key = aiApiKeys[explanationProvider]?.trim();
     if (!key) {
-      setExplanationError(`No hay una clave configurada para ${AI_PROVIDER_LABELS[explanationProvider]}.`);
+      setExplanationError(t('translate.explainPrompt', language));
       return;
     }
-
     const requestId = explanationRequestRef.current + 1;
     explanationRequestRef.current = requestId;
-    setExplanation('');
-    setExplanationError('');
     setIsExplaining(true);
+    setExplanationError('');
     try {
       const model = explanationProvider === 'openrouter'
         ? await resolveOpenRouterModel(openRouterModel.trim() || DEFAULT_OPENROUTER_MODEL)
@@ -272,12 +245,14 @@ export const TranslationModal: React.FC<Props> = ({
       if (explanationRequestRef.current === requestId) setExplanation(result);
     } catch (error) {
       if (explanationRequestRef.current === requestId) {
-        setExplanationError(error instanceof Error ? error.message : 'No se pudo generar la explicación.');
+        setExplanationError(error instanceof Error ? error.message : t('translate.errorExplain', language));
       }
     } finally {
       if (explanationRequestRef.current === requestId) setIsExplaining(false);
     }
   };
+
+  if (!isOpen) return null;
 
   const translationFavorite: TranslationFavoriteCandidate = {
     query: selectedText,
@@ -285,51 +260,52 @@ export const TranslationModal: React.FC<Props> = ({
     ...(aiProvider ? { provider: aiProvider } : {}),
     response: translatedText,
   };
-  const isTranslationSaved = Boolean(
-    translatedText && !translationError && isTranslationFavorite(favorites, translationFavorite),
-  );
+  const isTranslationSaved = isTranslationFavorite(favorites, translationFavorite);
+
   const explanationFavorite: TranslationFavoriteCandidate = {
     query: selectedText,
     kind: 'ai',
-    ...(explanationProvider ? { provider: explanationProvider } : {}),
+    provider: explanationProvider || 'ai',
     response: explanation,
   };
-  const isExplanationSaved = Boolean(
-    explanation && isTranslationFavorite(favorites, explanationFavorite),
-  );
+  const isExplanationSaved = isTranslationFavorite(favorites, explanationFavorite);
+
+  const toggleFavorite = (candidate: TranslationFavoriteCandidate) => {
+    onToggleFavorite(candidate);
+  };
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in"
+      className="fixed inset-0 z-[80] flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center animate-fade-in"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
+        className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-900 sm:rounded-2xl"
+        onClick={(event) => event.stopPropagation()}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/30">
+        <header className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
           <div className="flex items-center gap-2">
-            <Languages className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-            <h3 className="font-semibold text-zinc-900 dark:text-zinc-100 text-sm">
-              Traducción y Diccionario
-            </h3>
+            <Languages className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+            <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
+              {t('translate.title', language)}
+            </h2>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1 rounded-full text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+            className="tap-area rounded-full p-2 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            aria-label={t('nav.close', language)}
           >
-            <X className="w-5 h-5" />
+            <X className="h-5 w-5" />
           </button>
-        </div>
+        </header>
 
-        {/* Content */}
-        <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 space-y-4">
           {/* Original Text */}
-          <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-xl p-3.5 border border-zinc-200 dark:border-zinc-750">
+          <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-xl p-3.5 border border-zinc-200 dark:border-zinc-700/80">
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
-                Texto Original (Japonés)
+                {t('translate.originalJapanese', language)}
               </span>
               <button
                 onClick={handleSpeak}
@@ -337,7 +313,7 @@ export const TranslationModal: React.FC<Props> = ({
                 className="flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-50"
               >
                 <Volume2 className={`w-3.5 h-3.5 ${isSpeaking ? 'animate-pulse text-amber-500' : ''}`} />
-                <span>{isSpeaking ? 'Reproduciendo...' : 'Escuchar'}</span>
+                <span>{isSpeaking ? (language === 'en' ? 'Playing...' : 'Reproduciendo...') : t('common.listen', language)}</span>
               </button>
             </div>
             <div className="text-base font-serif text-zinc-800 dark:text-zinc-200 break-words leading-relaxed select-text">
@@ -349,17 +325,17 @@ export const TranslationModal: React.FC<Props> = ({
           {/* Translation */}
           <div className="bg-indigo-50/40 dark:bg-indigo-950/20 rounded-xl p-3.5 border border-indigo-100 dark:border-indigo-900/40">
             <div className="text-[11px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 mb-1.5">
-              {aiProvider ? `Traducción con ${AI_PROVIDER_LABELS[aiProvider]}` : 'Traducción al Español'}
+              {aiProvider ? `Traducción con ${AI_PROVIDER_LABELS[aiProvider]}` : t('translate.targetTranslation', language)}
             </div>
             {isLoading ? (
               <div className="flex items-center gap-2 py-2 text-xs text-zinc-500">
                 <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
-                <span>Traduciendo...</span>
+                <span>{t('translate.translating', language)}</span>
               </div>
             ) : (
               <div className="flex items-start gap-2">
                 <div className="min-w-0 flex-1 break-words text-sm leading-relaxed text-zinc-800 dark:text-zinc-200 select-text">
-                  {translatedText || 'Sin traducción.'}
+                  {translatedText || t('translate.noTranslation', language)}
                 </div>
                 {translatedText && !translationError && (
                   <button
@@ -401,7 +377,7 @@ export const TranslationModal: React.FC<Props> = ({
                   {isExplaining
                     ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     : <Sparkles className="h-3.5 w-3.5" />}
-                  {isExplaining ? 'Explicando…' : 'Explicar con IA'}
+                  {isExplaining ? t('translate.explaining', language) : t('translate.explainBtn', language)}
                   {availableAiProviders.length === 1 && (
                     <span className="font-normal opacity-80">
                       · {AI_PROVIDER_LABELS[availableAiProviders[0]]}
@@ -417,7 +393,7 @@ export const TranslationModal: React.FC<Props> = ({
               {explanation && (
                 <div className="mt-3 max-h-[32vh] overflow-y-auto rounded-lg bg-white/75 p-3 text-sm leading-relaxed text-zinc-800 dark:bg-zinc-900/70 dark:text-zinc-200">
                   <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-300">
-                    Explicación · {AI_PROVIDER_LABELS[explanationProvider as AiProvider]}
+                    {t('translate.aiExplanation', language)} · {AI_PROVIDER_LABELS[explanationProvider as AiProvider]}
                   </div>
                   <div className="break-words select-text">
                     <MarkdownContent content={explanation} />
@@ -442,15 +418,15 @@ export const TranslationModal: React.FC<Props> = ({
           {/* Local dictionary */}
           <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/60 dark:bg-emerald-950/20 p-3 text-xs text-emerald-900 dark:text-emerald-200 space-y-3">
             <div className="text-[10px] font-bold uppercase tracking-[0.12em] mb-1.5 text-emerald-700 dark:text-emerald-300">
-              Diccionario JMDict local · español e inglés
+              {t('translate.localJmdict', language)}
             </div>
             <form onSubmit={handleDictionarySubmit} className="flex gap-2">
               <input
                 type="text"
                 value={dictionaryQuery}
                 onChange={(event) => setDictionaryQuery(event.target.value)}
-                placeholder="Escribe una palabra o variante japonesa"
-                aria-label="Palabra que se buscará en el diccionario"
+                placeholder={t('translate.inputPlaceholder', language)}
+                aria-label={t('translate.inputPlaceholder', language)}
                 className="min-w-0 flex-1 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-emerald-500 dark:border-emerald-900 dark:bg-zinc-900 dark:text-zinc-100"
               />
               <button
@@ -461,7 +437,7 @@ export const TranslationModal: React.FC<Props> = ({
                 {isDictionaryLoading
                   ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   : <Search className="h-3.5 w-3.5" />}
-                Buscar
+                {t('translate.searchBtn', language)}
               </button>
             </form>
             {dictionaryError && (
@@ -469,14 +445,14 @@ export const TranslationModal: React.FC<Props> = ({
             )}
             {isDictionaryLoading && (
               <div className="flex items-center gap-2 text-zinc-600 dark:text-zinc-400">
-                <Loader2 className="h-4 w-4 animate-spin" /> Buscando…
+                <Loader2 className="h-4 w-4 animate-spin" /> {t('common.loading', language)}
               </div>
             )}
           {dictionaryTerms && (
               <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full bg-emerald-200/80 dark:bg-emerald-900/70 px-2 py-1 font-semibold">
-                  Base: {dictionaryTerms.baseForm}
+                  {t('glossary.baseForm', language)}: {dictionaryTerms.baseForm}
                 </span>
                 {dictionaryTerms.searchTerms.filter((term) => term !== dictionaryTerms.baseForm).slice(0, 3).map((term) => (
                   <span key={term} className="rounded-full bg-white/70 dark:bg-zinc-900/70 px-2 py-1 text-[11px]">
@@ -491,7 +467,7 @@ export const TranslationModal: React.FC<Props> = ({
               )}
               {dictionaryTerms.entries.length === 0 ? (
                 <p className="text-zinc-600 dark:text-zinc-400">
-                  No se encontró una entrada local para esta forma.
+                  {t('translate.noEntries', language)}
                 </p>
               ) : (
                 <div className="space-y-2">
@@ -540,9 +516,7 @@ export const TranslationModal: React.FC<Props> = ({
                           className={`tap-area shrink-0 rounded-lg p-2 ${
                             isDefinitionSaved ? 'text-amber-500' : 'text-zinc-400 hover:text-amber-500'
                           }`}
-                          aria-label={isDefinitionSaved
-                            ? `Quitar definición de ${entry.kanji.join(' · ') || entry.kana.join(' · ')} de favoritos`
-                            : `Marcar definición de ${entry.kanji.join(' · ') || entry.kana.join(' · ')} como favorita`}
+                          aria-label={isDefinitionSaved ? 'Quitar de favoritos' : 'Marcar definición como favorita'}
                           title={isDefinitionSaved ? 'Quitar de favoritos' : 'Marcar definición como favorita'}
                           aria-pressed={isDefinitionSaved}
                         >
@@ -562,7 +536,7 @@ export const TranslationModal: React.FC<Props> = ({
                   rel="noreferrer"
                   className="underline"
                 >
-                  fuente
+                  {t('translate.source', language)}
                 </a>
                 {' · '}
                 <a
@@ -571,7 +545,7 @@ export const TranslationModal: React.FC<Props> = ({
                   rel="noreferrer"
                   className="underline"
                 >
-                  licencia CC BY-SA 4.0
+                  {t('translate.license', language)}
                 </a>
               </p>
             </div>
