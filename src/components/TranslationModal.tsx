@@ -313,7 +313,7 @@ export const TranslationModal: React.FC<Props> = ({
                 className="flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-50"
               >
                 <Volume2 className={`w-3.5 h-3.5 ${isSpeaking ? 'animate-pulse text-amber-500' : ''}`} />
-                <span>{isSpeaking ? (language === 'en' ? 'Playing...' : 'Reproduciendo...') : t('common.listen', language)}</span>
+                <span>{isSpeaking ? t('translate.playing', language) : t('common.listen', language)}</span>
               </button>
             </div>
             <div className="text-base font-serif text-zinc-800 dark:text-zinc-200 break-words leading-relaxed select-text">

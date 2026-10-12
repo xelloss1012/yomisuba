@@ -35,7 +35,7 @@ export const ReaderSettings: React.FC<Props> = ({
   const fonts: { id: FontFamily; label: string; sample: string; family: string }[] = [
     { id: 'mincho', label: 'Mincho (明朝体)', sample: '美しい日本語', family: '"Noto Serif JP", serif' },
     { id: 'gothic', label: 'Gothic (ゴシック体)', sample: '美しい日本語', family: '"Noto Sans JP", sans-serif' },
-    { id: 'serif', label: settings.language === 'en' ? 'Western Serif' : 'Serif Occidental', sample: 'Typography', family: 'Georgia, serif' },
+    { id: 'serif', label: t('settings.fontSerif', settings.language), sample: 'Typography', family: 'Georgia, serif' },
     { id: 'sans', label: 'Sans-serif', sample: 'Typography', family: 'system-ui, sans-serif' },
   ];
   const aiProviders: { id: AiProvider; label: string; hint: string }[] = [
@@ -344,9 +344,9 @@ export const ReaderSettings: React.FC<Props> = ({
             </div>
             <div className="grid grid-cols-3 gap-2">
               {[
-                { val: 1.5, label: settings.language === 'en' ? 'Compact' : 'Compacto' },
-                { val: 1.9, label: settings.language === 'en' ? 'Normal' : 'Normal' },
-                { val: 2.3, label: settings.language === 'en' ? 'Wide' : 'Amplio' },
+                { val: 1.5, label: t('settings.lineCompact', settings.language) },
+                { val: 1.9, label: t('settings.lineNormal', settings.language) },
+                { val: 2.3, label: t('settings.lineWide', settings.language) },
               ].map((lh) => (
                 <button
                   key={lh.val}
@@ -368,7 +368,7 @@ export const ReaderSettings: React.FC<Props> = ({
                 <span className="text-sm">✦</span> {t('settings.aiSection', settings.language)}
               </label>
               <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mb-3">
-                {settings.language === 'en' ? 'Keys are stored only in this browser and sent directly to the selected provider.' : 'Las claves se guardan solo en este navegador. Se envían directamente al proveedor elegido.'}
+                {t('settings.aiKeysNote', settings.language)}
               </p>
               <div className="space-y-2">
                 {aiProviders.map((provider) => (
@@ -411,7 +411,7 @@ export const ReaderSettings: React.FC<Props> = ({
                     {OPENROUTER_MODEL_PRESETS.map((model) => (
                       <option key={model.id} value={model.id}>{model.label}</option>
                     ))}
-                    <option value="custom">{settings.language === 'en' ? 'Custom model ID...' : 'ID de modelo personalizado…'}</option>
+                    <option value="custom">{t('settings.customModel', settings.language)}</option>
                   </select>
                   {settings.openRouterModel === '' || !OPENROUTER_MODEL_PRESETS.some((model) => model.id === settings.openRouterModel) ? (
                     <input
@@ -425,7 +425,7 @@ export const ReaderSettings: React.FC<Props> = ({
                     />
                   ) : null}
                   <span className="mt-1 block text-[10px] text-zinc-500 dark:text-zinc-400">
-                    {settings.language === 'en' ? `Default: ${DEFAULT_OPENROUTER_MODEL}.` : `Predeterminado: ${DEFAULT_OPENROUTER_MODEL}.`}
+                    {t('settings.defaultModel', settings.language).replace('{model}', DEFAULT_OPENROUTER_MODEL)}
                   </span>
                 </div>
               </div>

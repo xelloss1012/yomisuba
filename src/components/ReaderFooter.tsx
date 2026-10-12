@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, SkipBack, SkipForward } from 'lucide-react';
 import { ProgressionDirection } from '../types/epub';
 import { formatPageDisplay } from '../utils/paginationDisplay';
+import { t } from '../utils/i18n';
 
 interface Props {
   isVisible: boolean;
@@ -16,6 +17,7 @@ interface Props {
   displayChapterCount?: number;
   direction: ProgressionDirection;
   isVertical: boolean;
+  language?: 'es' | 'en';
   onPrevPage: () => void;
   onNextPage: () => void;
   onSeekPage: (page: number) => void;
@@ -40,6 +42,7 @@ export const ReaderFooter: React.FC<Props> = ({
   displayChapterCount = totalSpineCount,
   direction,
   isVertical,
+  language = 'es',
   onPrevPage,
   onNextPage,
   onSeekPage,
@@ -70,13 +73,11 @@ export const ReaderFooter: React.FC<Props> = ({
     onSeekPage(requestedPage);
   };
 
-  // In RTL (Japanese vertical), left advances to NEXT page, right goes back to PREVIOUS.
-  // In LTR (Western horizontal), left goes to PREVIOUS, right advances to NEXT.
   const handleLeftClick = isRtl ? onNextPage : onPrevPage;
   const handleRightClick = isRtl ? onPrevPage : onNextPage;
 
-  const leftLabel = isRtl ? 'Siguiente' : 'Anterior';
-  const rightLabel = isRtl ? 'Anterior' : 'Siguiente';
+  const leftLabel = isRtl ? t('footer.nextChapter', language) : t('footer.prevChapter', language);
+  const rightLabel = isRtl ? t('footer.prevChapter', language) : t('footer.nextChapter', language);
 
   const isLeftDisabled = isRtl
     ? currentChapterPage >= safeChapterPages - 1 && currentSpineIndex >= totalSpineCount - 1
@@ -111,8 +112,8 @@ export const ReaderFooter: React.FC<Props> = ({
             }}
             onBlur={commitSliderPage}
             disabled={safeTotalPages <= 1}
-            aria-label="Ir a una página del libro"
-            title={`Ir a la página ${isRtl ? sliderMax - pendingSliderPage + 1 : pendingSliderPage + 1} de ${safeTotalPages}`}
+            aria-label={t('footer.sliderTitle', language)}
+            title={`${t('footer.sliderTitle', language)} ${isRtl ? sliderMax - pendingSliderPage + 1 : pendingSliderPage + 1} / ${safeTotalPages}`}
             className="reader-progress w-full cursor-pointer disabled:cursor-default disabled:opacity-40"
           />
           <div className="pointer-events-none absolute inset-x-0 top-1/2 z-10 h-0">
@@ -130,8 +131,8 @@ export const ReaderFooter: React.FC<Props> = ({
                   style={{
                     left: `calc(9px + ${ratio * 100}% - ${ratio * 18}px)`,
                   }}
-                  title={`Ir al marcador, página ${clampedPage + 1}`}
-                  aria-label={`Ir al marcador, página ${clampedPage + 1}`}
+                  title={`Bookmark, ${t('common.page', language).toLowerCase()} ${clampedPage + 1}`}
+                  aria-label={`Bookmark, ${t('common.page', language).toLowerCase()} ${clampedPage + 1}`}
                 >
                   <span className="block h-2.5 w-2.5 rounded-full border-2 border-white bg-amber-500 shadow dark:border-zinc-900" />
                 </button>
@@ -145,7 +146,7 @@ export const ReaderFooter: React.FC<Props> = ({
           <button
             onClick={isRtl ? onNextChapter : onPrevChapter}
             disabled={isRtl ? currentSpineIndex >= totalSpineCount - 1 : currentSpineIndex === 0}
-            title={isRtl ? 'Capítulo siguiente' : 'Capítulo anterior'}
+            title={isRtl ? t('footer.nextChapter', language) : t('footer.prevChapter', language)}
             className="tap-area p-2 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-25 text-zinc-700 dark:text-zinc-300 transition-colors"
           >
             <SkipBack className="w-4 h-4" />
@@ -155,7 +156,7 @@ export const ReaderFooter: React.FC<Props> = ({
           <button
             onClick={handleLeftClick}
             disabled={isLeftDisabled}
-            title={`Página ${leftLabel.toLowerCase()}`}
+            title={`${t('common.page', language)} ${leftLabel.toLowerCase()}`}
             className={`tap-area py-2 px-3 rounded-xl transition-all flex items-center gap-1 text-xs font-semibold ${
               isRtl
                 ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm disabled:opacity-30'
@@ -170,15 +171,15 @@ export const ReaderFooter: React.FC<Props> = ({
           <button
             type="button"
             onClick={onTogglePaginationMode}
-            title="Cambiar modo de paginación (Dispositivo / Páginas impresas / Porcentaje)"
+            title="Change pagination mode (Device / Printed pages / Percentage)"
             className="flex-1 flex flex-col items-center justify-center px-1 text-center cursor-pointer hover:opacity-80 transition-opacity bg-transparent border-0"
           >
             <div className="text-xs font-bold text-zinc-800 dark:text-zinc-200">
               {formatPageDisplay(safeDisplayPage, safeTotalPages, paginationMode, printedPages)}
             </div>
             <div className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5 truncate max-w-[180px] sm:max-w-none">
-              Capítulo {displayChapter}/{displayChapterCount}
-              {paginationMode !== 'device' && ` • [${paginationMode === 'printed' ? 'Impresas' : 'Porcentaje'}]`}
+              {t('footer.chapter', language)} {displayChapter}/{displayChapterCount}
+              {paginationMode !== 'device' && ` • [${paginationMode === 'printed' ? t('footer.modePrinted', language) : t('footer.modePercent', language)}]`}
             </div>
           </button>
 
@@ -186,7 +187,7 @@ export const ReaderFooter: React.FC<Props> = ({
           <button
             onClick={handleRightClick}
             disabled={isRightDisabled}
-            title={`Página ${rightLabel.toLowerCase()}`}
+            title={`${t('common.page', language)} ${rightLabel.toLowerCase()}`}
             className={`tap-area py-2 px-3 rounded-xl transition-all flex items-center gap-1 text-xs font-semibold ${
               !isRtl
                 ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm disabled:opacity-30'
@@ -201,7 +202,7 @@ export const ReaderFooter: React.FC<Props> = ({
           <button
             onClick={isRtl ? onPrevChapter : onNextChapter}
             disabled={isRtl ? currentSpineIndex === 0 : currentSpineIndex >= totalSpineCount - 1}
-            title={isRtl ? 'Capítulo anterior' : 'Capítulo siguiente'}
+            title={isRtl ? t('footer.prevChapter', language) : t('footer.nextChapter', language)}
             className="tap-area p-2 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-25 text-zinc-700 dark:text-zinc-300 transition-colors"
           >
             <SkipForward className="w-4 h-4" />

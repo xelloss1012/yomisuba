@@ -54,6 +54,13 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'settings.aiProvider': 'Proveedor de IA',
     'settings.aiApiKey': 'Clave de API',
     'settings.aiModel': 'Modelo de OpenRouter',
+    'settings.fontSerif': 'Serif Occidental',
+    'settings.lineCompact': 'Compacto',
+    'settings.lineNormal': 'Normal',
+    'settings.lineWide': 'Amplio',
+    'settings.aiKeysNote': 'Las claves se guardan solo en este navegador. Se envían directamente al proveedor elegido.',
+    'settings.customModel': 'ID de modelo personalizado…',
+    'settings.defaultModel': 'Predeterminado: {model}.',
 
     // ReaderNavbar & ReaderFooter & Navigation
     'nav.open': 'Abrir',
@@ -79,6 +86,8 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'footer.nextChapter': 'Siguiente',
     'footer.prevChapter': 'Anterior',
     'footer.sliderTitle': 'Ir a una página del libro',
+    'footer.modePrinted': 'Impresas',
+    'footer.modePercent': 'Porcentaje',
     'reader.beginning': 'Principio del libro',
     'reader.selectWordError': 'No se ha podido seleccionar esa palabra en la página.',
     'reader.calculatingPage': 'Calculando página…',
@@ -121,6 +130,7 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'translate.localJmdict': 'Diccionario JMDict local · español e inglés',
     'translate.explaining': 'Explicando…',
     'translate.translating': 'Traduciendo...',
+    'translate.playing': 'Reproduciendo...',
     'translate.source': 'fuente',
     'translate.license': 'licencia CC BY-SA 4.0',
 
@@ -140,6 +150,10 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'search.results': 'Resultados',
     'search.recent': 'Búsquedas recientes',
     'search.clearRecents': 'Borrar recientes',
+    'search.preparing': 'Preparando el libro…',
+    'search.firstMatches': 'Primeras {count} coincidencias',
+    'search.match': 'coincidencia',
+    'search.matches': 'coincidencias',
 
     // GoogleDriveBackupPanel & SyncStatusBadge (Messages & Alerts)
     'drive.title': 'Copia de seguridad en Google Drive',
@@ -179,6 +193,20 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'drive.titleDrive': 'de Google Drive',
     'drive.alertNoConfigure': 'No se pudieron restaurar los ajustes de Google Drive',
 
+    // SyncStatusBadge popover & tooltips
+    'sync.notice': 'Aviso de Google Drive:',
+    'sync.syncing': 'Sincronizando con Google Drive...',
+    'sync.progressOnly': 'Progreso sincronizado (El archivo del libro no está en Drive)',
+    'sync.synchronized': 'Sincronizado con Google Drive',
+    'sync.title': 'Google Drive',
+    'sync.syncWarning': 'Aviso de sincronización:',
+    'sync.retry': 'Reintentar sincronización',
+    'sync.progressTitle': 'Progreso sincronizado',
+    'sync.progressDesc': 'Tus ajustes y puntos de lectura se guardan en Drive, pero el archivo EPUB de este libro aún no se ha subido a tu nube.',
+    'sync.uploadBookBtn': 'Subir EPUB a Google Drive',
+    'sync.syncedOk': 'Tus datos de lectura, ajustes y libro están sincronizados con tu cuenta.',
+    'sync.lastSync': 'Última sincronización: ',
+
     // PageGlossaryModal
     'glossary.title': 'Glosario de la página',
     'glossary.filter': 'Filtrar palabras...',
@@ -187,6 +215,9 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'glossary.noDefinition': 'Sin acepción encontrada.',
     'glossary.errorQuery': 'Error al consultar',
     'glossary.empty': 'No hay palabras que coincidan.',
+    'glossary.removeFav': 'Quitar de favoritos',
+    'glossary.addFav': 'Añadir a favoritos',
+    'glossary.markFav': 'Marcar definición como favorita',
 
     // TranslationHistoryModal
     'history.title': 'Historial y Favoritos',
@@ -195,6 +226,10 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'history.tabFrequent': 'Frecuentes',
     'history.clear': 'Borrar todo',
     'history.empty': 'No hay elementos guardados.',
+    'history.maxEntries': 'Máximo {count} entradas recientes',
+    'history.savedFavs': 'Favoritos guardados ({count}/{max})',
+    'history.frequentTerms': 'Términos consultados frecuentemente',
+    'history.queries': 'consultas',
 
     // Common
     'common.cancel': 'Cancelar',
@@ -267,6 +302,13 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'settings.aiProvider': 'AI Provider',
     'settings.aiApiKey': 'API Key',
     'settings.aiModel': 'OpenRouter Model',
+    'settings.fontSerif': 'Western Serif',
+    'settings.lineCompact': 'Compact',
+    'settings.lineNormal': 'Normal',
+    'settings.lineWide': 'Wide',
+    'settings.aiKeysNote': 'Keys are stored only in this browser and sent directly to the selected provider.',
+    'settings.customModel': 'Custom model ID...',
+    'settings.defaultModel': 'Default: {model}.',
 
     // ReaderNavbar & ReaderFooter & Navigation
     'nav.open': 'Open',
@@ -292,6 +334,8 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'footer.nextChapter': 'Next',
     'footer.prevChapter': 'Previous',
     'footer.sliderTitle': 'Go to a book page',
+    'footer.modePrinted': 'Printed',
+    'footer.modePercent': 'Percentage',
     'reader.beginning': 'Beginning of book',
     'reader.selectWordError': 'Could not select that word on the page.',
     'reader.calculatingPage': 'Calculating page...',
@@ -334,6 +378,7 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'translate.localJmdict': 'Local JMDict dictionary · Spanish & English',
     'translate.explaining': 'Explaining...',
     'translate.translating': 'Translating...',
+    'translate.playing': 'Playing...',
     'translate.source': 'source',
     'translate.license': 'CC BY-SA 4.0 license',
 
@@ -353,6 +398,10 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'search.results': 'Results',
     'search.recent': 'Recent searches',
     'search.clearRecents': 'Clear recents',
+    'search.preparing': 'Preparing book...',
+    'search.firstMatches': 'First {count} matches',
+    'search.match': 'match',
+    'search.matches': 'matches',
 
     // GoogleDriveBackupPanel & SyncStatusBadge (Messages & Alerts)
     'drive.title': 'Google Drive Backup',
@@ -392,6 +441,20 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'drive.titleDrive': 'from Google Drive',
     'drive.alertNoConfigure': 'Could not restore Google Drive settings',
 
+    // SyncStatusBadge popover & tooltips
+    'sync.notice': 'Google Drive Notice:',
+    'sync.syncing': 'Syncing with Google Drive...',
+    'sync.progressOnly': 'Progress synchronized (Book file is not in Drive)',
+    'sync.synchronized': 'Synchronized with Google Drive',
+    'sync.title': 'Google Drive',
+    'sync.syncWarning': 'Sync warning:',
+    'sync.retry': 'Retry synchronization',
+    'sync.progressTitle': 'Synchronized progress',
+    'sync.progressDesc': 'Your settings and reading bookmarks are saved to Drive, but this book\'s EPUB file has not been uploaded to your cloud yet.',
+    'sync.uploadBookBtn': 'Upload EPUB to Google Drive',
+    'sync.syncedOk': 'Your reading data, settings and book are synchronized with your account.',
+    'sync.lastSync': 'Last synchronized: ',
+
     // PageGlossaryModal
     'glossary.title': 'Page Glossary',
     'glossary.filter': 'Filter words...',
@@ -400,6 +463,9 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'glossary.noDefinition': 'No definition found.',
     'glossary.errorQuery': 'Error querying',
     'glossary.empty': 'No matching words found.',
+    'glossary.removeFav': 'Remove from favorites',
+    'glossary.addFav': 'Add to favorites',
+    'glossary.markFav': 'Mark definition as favorite',
 
     // TranslationHistoryModal
     'history.title': 'History & Favorites',
@@ -408,6 +474,10 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'history.tabFrequent': 'Frequent',
     'history.clear': 'Clear all',
     'history.empty': 'No saved items.',
+    'history.maxEntries': 'Max {count} recent entries',
+    'history.savedFavs': 'Saved favorites ({count}/{max})',
+    'history.frequentTerms': 'Frequently consulted terms',
+    'history.queries': 'queries',
 
     // Common
     'common.cancel': 'Cancel',

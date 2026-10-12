@@ -3810,6 +3810,7 @@ export const EpubReader: React.FC<Props> = ({
         lastSyncedDate={lastSyncedDate}
         isBookUploaded={isBookUploaded}
         onUploadBook={onUploadBook}
+        language={settings.language}
       />
 
       {selectionEdgeIndicator && (
@@ -4157,6 +4158,7 @@ export const EpubReader: React.FC<Props> = ({
         displayChapterCount={displayChapterCount}
         direction={settings.progressionDirection}
         isVertical={isVertical}
+        language={settings.language}
         onPrevPage={handlePrevPage}
         onNextPage={handleNextPage}
         onSeekPage={handleSeekPage}

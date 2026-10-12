@@ -44,13 +44,13 @@ interface DisplayItem {
 }
 
 const getKindLabel = (entry: { kind: TranslationFavoriteKind; provider?: string }, language: 'es' | 'en' = 'es') => {
-  if (entry.kind === 'dictionary') return language === 'en' ? 'Dictionary' : 'Diccionario';
-  if (entry.kind === 'glossary') return language === 'en' ? 'Glossary' : 'Glosario';
+  if (entry.kind === 'dictionary') return t('common.dictionary', language);
+  if (entry.kind === 'glossary') return t('nav.glossary', language);
   if (entry.kind === 'ai' && entry.provider) {
     const provider = entry.provider as keyof typeof AI_PROVIDER_LABELS;
     return `AI · ${AI_PROVIDER_LABELS[provider] || entry.provider}`;
   }
-  return language === 'en' ? 'Translation' : 'Traducción';
+  return t('common.translate', language);
 };
 
 export const TranslationHistoryModal: React.FC<Props> = ({
@@ -215,9 +215,9 @@ export const TranslationHistoryModal: React.FC<Props> = ({
 
         <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-2 dark:border-zinc-800/80">
           <span className="text-[11px] text-zinc-500 dark:text-zinc-400">
-            {activeTab === 'history' && (language === 'en' ? `Max ${MAX_TRANSLATION_HISTORY_ENTRIES} recent entries` : `Máximo ${MAX_TRANSLATION_HISTORY_ENTRIES} entradas recientes`)}
-            {activeTab === 'favorites' && (language === 'en' ? `Saved favorites (${favorites.length}/${MAX_TRANSLATION_FAVORITES})` : `Favoritos guardados (${favorites.length}/${MAX_TRANSLATION_FAVORITES})`)}
-            {activeTab === 'frequent' && (language === 'en' ? 'Frequently consulted terms' : 'Términos consultados frecuentemente')}
+            {activeTab === 'history' && t('history.maxEntries', language).replace('{count}', String(MAX_TRANSLATION_HISTORY_ENTRIES))}
+            {activeTab === 'favorites' && t('history.savedFavs', language).replace('{count}', String(favorites.length)).replace('{max}', String(MAX_TRANSLATION_FAVORITES))}
+            {activeTab === 'frequent' && t('history.frequentTerms', language)}
           </span>
           {displayItems.length > 0 && (
             <button
@@ -262,7 +262,7 @@ export const TranslationHistoryModal: React.FC<Props> = ({
                           )}
                           {item.count !== undefined && (
                             <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-                              {item.count} {language === 'en' ? 'queries' : 'consultas'}
+                              {item.count} {t('history.queries', language)}
                             </span>
                           )}
                         </div>
@@ -280,8 +280,8 @@ export const TranslationHistoryModal: React.FC<Props> = ({
                                 ? 'text-amber-500 hover:text-amber-600 dark:text-amber-400'
                                 : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200'
                             }`}
-                            title={isFavorite ? (language === 'en' ? 'Remove from favorites' : 'Quitar de favoritos') : (language === 'en' ? 'Add to favorites' : 'Añadir a favoritos')}
-                            aria-label={isFavorite ? (language === 'en' ? 'Remove from favorites' : 'Quitar de favoritos') : (language === 'en' ? 'Add to favorites' : 'Añadir a favoritos')}
+                            title={isFavorite ? t('glossary.removeFav', language) : t('glossary.addFav', language)}
+                            aria-label={isFavorite ? t('glossary.removeFav', language) : t('glossary.addFav', language)}
                           >
                             <Star className={`h-4 w-4 ${isFavorite ? 'fill-current' : ''}`} />
                           </button>

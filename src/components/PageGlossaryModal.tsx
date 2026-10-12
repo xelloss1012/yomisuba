@@ -269,8 +269,8 @@ export const PageGlossaryModal: React.FC<Props> = ({
                     className={`tap-area mt-1 shrink-0 rounded-lg p-2 ${
                       favorite ? 'text-amber-500' : 'text-zinc-400 hover:text-amber-500'
                     }`}
-                    aria-label={favorite ? (language === 'en' ? 'Remove from favorites' : 'Quitar de favoritos') : (language === 'en' ? 'Add to favorites' : 'Añadir a favoritos')}
-                    title={favorite ? (language === 'en' ? 'Remove from favorites' : 'Quitar de favoritos') : (language === 'en' ? 'Mark definition as favorite' : 'Marcar definición como favorita')}
+                    aria-label={favorite ? t('glossary.removeFav', language) : t('glossary.addFav', language)}
+                    title={favorite ? t('glossary.removeFav', language) : t('glossary.markFav', language)}
                     aria-pressed={favorite}
                   >
                     <Star className={`h-4 w-4 ${favorite ? 'fill-current' : ''}`} />

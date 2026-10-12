@@ -45,6 +45,7 @@ interface Props {
   lastSyncedDate?: string | null;
   isBookUploaded?: boolean;
   onUploadBook?: () => void;
+  language?: 'es' | 'en';
 }
 
 export const ReaderNavbar: React.FC<Props> = ({

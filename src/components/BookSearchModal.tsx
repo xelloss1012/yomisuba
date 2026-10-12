@@ -260,15 +260,15 @@ export const BookSearchModal: React.FC<Props> = ({
             {isIndexing && (
               <>
                 <Loader2 className="h-3 w-3 animate-spin" />
-                <span>{language === 'en' ? 'Preparing book...' : 'Preparando el libro…'} {indexedCount}/{spineCount}</span>
+                <span>{t('search.preparing', language)} {indexedCount}/{spineCount}</span>
               </>
             )}
             {!isIndexing && normalizedQuery && (
               <span>
                 {hits.length
                   ? truncated
-                    ? (language === 'en' ? `First ${MAX_SEARCH_HITS} matches` : `Primeras ${MAX_SEARCH_HITS} coincidencias`)
-                    : `${hits.length} ${hits.length === 1 ? (language === 'en' ? 'match' : 'coincidencia') : (language === 'en' ? 'matches' : 'coincidencias')}`
+                    ? t('search.firstMatches', language).replace('{count}', String(MAX_SEARCH_HITS))
+                    : `${hits.length} ${hits.length === 1 ? t('search.match', language) : t('search.matches', language)}`
                   : t('search.noResults', language)}
               </span>
             )}
