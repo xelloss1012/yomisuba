@@ -2,6 +2,7 @@ import React from 'react';
 import { TocItem } from '../types/epub';
 import { X, BookOpen, ChevronRight, Home } from 'lucide-react';
 import { formatPageDisplay } from '../utils/paginationDisplay';
+import { t, UiLanguage } from '../utils/i18n';
 
 interface Props {
   isOpen: boolean;
@@ -17,6 +18,7 @@ interface Props {
   paginationMode: 'device' | 'printed' | 'percent';
   printedPages?: number;
   isBookPaginationReady: boolean;
+  language?: UiLanguage;
 }
 
 export const ReaderToc: React.FC<Props> = ({
@@ -33,6 +35,7 @@ export const ReaderToc: React.FC<Props> = ({
   paginationMode,
   printedPages,
   isBookPaginationReady,
+  language = 'es',
 }) => {
   if (!isOpen) return null;
 
@@ -47,7 +50,7 @@ export const ReaderToc: React.FC<Props> = ({
           const spineIndex = resolveSpineIndex(item.href);
           const globalPage = spineIndex >= 0 ? getGlobalPage(spineIndex, 0) : 0;
           const pageLabel = isBookPaginationReady && spineIndex >= 0
-            ? formatPageDisplay(globalPage, bookTotalPages, paginationMode, printedPages)
+            ? formatPageDisplay(globalPage, bookTotalPages, paginationMode, printedPages, language)
             : '';
 
           return (
@@ -95,13 +98,13 @@ export const ReaderToc: React.FC<Props> = ({
           <div className="flex items-center gap-2 overflow-hidden">
             <BookOpen className="w-5 h-5 text-indigo-600 dark:text-indigo-400 shrink-0" />
             <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 truncate">
-              {bookTitle || 'Índice de Contenidos'}
+              {bookTitle || t('toc.defaultTitle', language)}
             </h2>
           </div>
           <button
             onClick={onClose}
             className="p-1 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 transition-colors shrink-0"
-            aria-label="Cerrar índice"
+            aria-label={t('nav.close', language)}
           >
             <X className="w-5 h-5" />
           </button>
@@ -110,7 +113,7 @@ export const ReaderToc: React.FC<Props> = ({
         {/* TOC List */}
         <div className="flex-1 overflow-y-auto p-4">
           <div className="text-xs font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-3">
-            Capítulos ({toc.length})
+            {t('toc.chapters', language)} ({toc.length})
           </div>
 
           {spineHrefs.length > 0 && (
@@ -130,11 +133,11 @@ export const ReaderToc: React.FC<Props> = ({
                 <div className="flex items-center justify-between min-w-0 flex-1 pr-2">
                   <span className="truncate flex items-center gap-2">
                     <Home className="w-4 h-4 text-indigo-500 shrink-0" />
-                    Principio del libro
+                    {t('reader.beginning', language)}
                   </span>
                   {isBookPaginationReady && (
                     <span className="text-xs text-zinc-400 dark:text-zinc-500 tabular-nums shrink-0 ml-2">
-                      {formatPageDisplay(0, bookTotalPages, paginationMode, printedPages)}
+                      {formatPageDisplay(0, bookTotalPages, paginationMode, printedPages, language)}
                     </span>
                   )}
                 </div>
@@ -146,7 +149,7 @@ export const ReaderToc: React.FC<Props> = ({
             renderTocList(toc)
           ) : (
             <div className="text-center py-10 text-zinc-500 text-sm">
-              No se encontraron capítulos en el índice.
+              {t('toc.empty', language)}
             </div>
           )}
         </div>

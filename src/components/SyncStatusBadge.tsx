@@ -1,18 +1,18 @@
 import React, { useState } from 'react';
 import { Cloud, Check, Loader2, AlertTriangle, RefreshCw, UploadCloud } from 'lucide-react';
 import { GoogleDriveSession } from '../utils/googleDriveBackup';
-import { t } from '../utils/i18n';
+import { t, formatSyncError, SyncErrorState, UiLanguage } from '../utils/i18n';
 
 interface Props {
   googleDriveSession?: GoogleDriveSession | null;
   isDriveBusy?: boolean;
-  syncError?: string | null;
+  syncError?: SyncErrorState;
   onRetry?: () => void;
   lastSyncedDate?: string | null;
   isBookUploaded?: boolean;
   onUploadBook?: () => void;
   align?: 'left' | 'right';
-  language?: 'es' | 'en';
+  language?: UiLanguage;
 }
 
 export const SyncStatusBadge: React.FC<Props> = ({
@@ -30,11 +30,13 @@ export const SyncStatusBadge: React.FC<Props> = ({
 
   if (!googleDriveSession) return null;
 
+  const displayError = syncError ? formatSyncError(syncError, language) : null;
+
   const getStatusIcon = () => {
     if (isDriveBusy) {
       return <Loader2 className="w-4 h-4 animate-spin text-indigo-500" />;
     }
-    if (syncError) {
+    if (displayError) {
       return <AlertTriangle className="w-4 h-4 text-amber-500 animate-pulse" />;
     }
     if (!isBookUploaded) {
@@ -44,7 +46,7 @@ export const SyncStatusBadge: React.FC<Props> = ({
   };
 
   const getStatusBg = () => {
-    if (syncError) return 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800/80';
+    if (displayError) return 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800/80';
     if (isDriveBusy) return 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800/80';
     if (!isBookUploaded) return 'bg-indigo-50/60 dark:bg-indigo-950/30 border-indigo-200 dark:border-indigo-800/60';
     return 'bg-white/90 dark:bg-zinc-900/90 border-zinc-200/80 dark:border-zinc-800/80';
@@ -65,15 +67,15 @@ export const SyncStatusBadge: React.FC<Props> = ({
       <button
         onClick={handleToggle}
         title={
-          syncError
-            ? `${t('sync.notice', language)} ${syncError}`
+          displayError
+            ? `${t('sync.notice', language)} ${displayError}`
             : isDriveBusy
               ? t('sync.syncing', language)
               : !isBookUploaded
                 ? t('sync.progressOnly', language)
                 : t('sync.synchronized', language)
         }
-        aria-label="Google Drive sync status"
+        aria-label={t('sync.statusAria', language)}
         className={`tap-area flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-xs shadow-sm backdrop-blur-sm transition-all ${getStatusBg()} text-zinc-700 dark:text-zinc-200 hover:scale-105`}
       >
         <Cloud className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
@@ -121,11 +123,11 @@ export const SyncStatusBadge: React.FC<Props> = ({
               </button>
             </div>
 
-            {syncError ? (
+            {displayError ? (
               <div className="space-y-3">
                 <div className="rounded-xl bg-amber-50 dark:bg-amber-950/50 p-2.5 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-900">
                   <p className="font-medium mb-1">{t('sync.syncWarning', language)}</p>
-                  <p className="text-[11px] opacity-90 break-words">{syncError}</p>
+                  <p className="text-[11px] opacity-90 break-words">{displayError}</p>
                 </div>
                 {onRetry && (
                   <button

@@ -1,8 +1,11 @@
+import { t, UiLanguage } from './i18n';
+
 export function formatPageDisplay(
   globalPage: number,
   bookTotalPages: number,
   paginationMode: 'device' | 'printed' | 'percent',
-  printedPages?: number
+  printedPages?: number,
+  language: UiLanguage = 'es'
 ): string {
   const safeTotal = Math.max(1, bookTotalPages);
   const safeGlobal = Math.min(Math.max(0, globalPage), safeTotal - 1);
@@ -12,12 +15,12 @@ export function formatPageDisplay(
     const pPages = Math.max(1, printedPages);
     const progress = safeTotal <= 1 ? 0 : safeGlobal / (safeTotal - 1);
     const pPage = Math.max(1, Math.min(pPages, Math.round(progress * (pPages - 1)) + 1));
-    return `Pág. ${pPage} de ${pPages} (${percent}%)`;
+    return `${t('pagination.pageShort', language)} ${pPage} ${t('pagination.of', language)} ${pPages} (${percent}%)`;
   }
   if (paginationMode === 'percent') {
     return `${percent}%`;
   }
-  return `Página ${safeGlobal + 1} de ${safeTotal} (${percent}%)`;
+  return `${t('pagination.page', language)} ${safeGlobal + 1} ${t('pagination.of', language)} ${safeTotal} (${percent}%)`;
 }
 
 export function formatChapterPageDisplay(
@@ -25,7 +28,8 @@ export function formatChapterPageDisplay(
   chapterTotalPages: number,
   paginationMode: 'device' | 'printed' | 'percent',
   printedPages?: number,
-  bookTotalPages?: number
+  bookTotalPages?: number,
+  language: UiLanguage = 'es'
 ): string {
   const cTotal = Math.max(1, chapterTotalPages);
   const cPage = Math.min(Math.max(0, chapterPage), cTotal - 1);
@@ -36,10 +40,10 @@ export function formatChapterPageDisplay(
     const pTotal = printedPages && printedPages > 0 ? printedPages : cTotal;
     const approxChapPrintedTotal = Math.max(1, Math.round((cTotal / bTotal) * pTotal));
     const approxChapPrintedPage = Math.max(1, Math.min(approxChapPrintedTotal, Math.round((cPage / Math.max(1, cTotal - 1)) * (approxChapPrintedTotal - 1)) + 1));
-    return `Pág. ${approxChapPrintedPage} de ${approxChapPrintedTotal} del capítulo`;
+    return `${t('pagination.pageShort', language)} ${approxChapPrintedPage} ${t('pagination.of', language)} ${approxChapPrintedTotal} ${t('pagination.ofChapter', language)}`;
   }
   if (paginationMode === 'percent') {
-    return `${percent}% del capítulo`;
+    return `${percent}% ${t('pagination.ofChapter', language)}`;
   }
-  return `Página ${cPage + 1} de ${cTotal} del capítulo`;
+  return `${t('pagination.page', language)} ${cPage + 1} ${t('pagination.of', language)} ${cTotal} ${t('pagination.ofChapter', language)}`;
 }

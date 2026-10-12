@@ -6,7 +6,7 @@ import {
   normalizeSearchQuery,
   SearchHit,
 } from '../utils/bookSearch';
-import { t } from '../utils/i18n';
+import { t, UiLanguage } from '../utils/i18n';
 
 interface Props {
   isOpen: boolean;
@@ -21,7 +21,7 @@ interface Props {
   getPageLabel: (spineIndex: number, page: number) => string;
   getChapterLabel: (spineIndex: number) => string;
   recentSearches: string[];
-  language?: 'es' | 'en';
+  language?: UiLanguage;
   onRememberSearch: (query: string) => void;
   onRemoveRecent: (query: string) => void;
   onClearRecents: () => void;
@@ -306,7 +306,7 @@ export const BookSearchModal: React.FC<Props> = ({
                         type="button"
                         onClick={() => onRemoveRecent(recent)}
                         className="tap-area rounded-lg p-2 text-zinc-400 hover:text-red-600 dark:hover:text-red-300"
-                        aria-label={`Quitar "${recent}"`}
+                        aria-label={`${t('common.delete', language)} "${recent}"`}
                         title={t('common.delete', language)}
                       >
                         <Trash2 className="h-4 w-4" />
@@ -354,7 +354,7 @@ export const BookSearchModal: React.FC<Props> = ({
                         >
                           {(() => {
                             const page = hitPagesRef.current.get(`${hit.spineIndex}:${hit.start}:${hit.length}`);
-                            return page === undefined ? 'p. …' : getPageLabel(hit.spineIndex, page);
+                            return page === undefined ? `${t('pagination.pageShort', language)} …` : getPageLabel(hit.spineIndex, page);
                           })()}
                         </span>
                       </button>

@@ -4,7 +4,7 @@ import { AiProvider } from '../types/epub';
 import { AI_PROVIDER_LABELS } from '../utils/aiTranslation';
 import { DictionaryLookup } from '../utils/dictionary';
 import { speakJapanese } from '../utils/japaneseSpeech';
-import { t } from '../utils/i18n';
+import { t, UiLanguage } from '../utils/i18n';
 
 export interface SelectionPosition {
   x: number;
@@ -17,7 +17,7 @@ interface Props {
   selectedText: string;
   position: SelectionPosition | null;
   isAdjusting?: boolean;
-  language?: 'es' | 'en';
+  language?: UiLanguage;
   onClose: () => void;
   onOpenTranslate: () => void;
   onOpenDictionary: () => void;
@@ -86,7 +86,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
     try {
       await speakJapanese(selectedText);
     } catch (error) {
-      setSpeechError(error instanceof Error ? error.message : 'No se pudo reproducir la pronunciación.');
+      setSpeechError(error instanceof Error ? error.message : t('menu.ttsError', language));
     } finally {
       setIsSpeaking(false);
     }
@@ -138,7 +138,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
               onOpenDictionary();
             }}
             className="w-full rounded-xl border border-emerald-400/20 bg-emerald-950/35 px-3 py-2 text-left transition-colors hover:bg-emerald-950/60"
-            title="Abrir la consulta completa del diccionario"
+            title={t('menu.openDictDetails', language)}
           >
             <span className="flex items-baseline gap-2">
               <span className="text-sm font-semibold text-emerald-200">
@@ -177,7 +177,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
             <button
               onClick={onClose}
               className="tap-area p-1 rounded-full text-zinc-400 hover:text-white"
-              title="Cerrar menú"
+              title={t('menu.close', language)}
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -190,7 +190,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
                   onOpenAiTranslate(provider);
                 }}
                 className="tap-area flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl hover:bg-zinc-800 active:scale-95 text-xs font-medium transition-all text-amber-300 hover:text-white"
-                title={`Traducir con ${AI_PROVIDER_LABELS[provider]}`}
+                title={`${t('common.translate', language)} (${AI_PROVIDER_LABELS[provider]})`}
               >
                 <span>IA {AI_PROVIDER_LABELS[provider]}</span>
               </button>
@@ -220,8 +220,8 @@ export const TextSelectionMenu: React.FC<Props> = ({
           <button
             onClick={handleCopy}
             className="tap-area flex-1 flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl hover:bg-zinc-800 active:scale-95 text-xs font-medium transition-all"
-            title="Copiar texto"
-            aria-label="Copiar texto"
+            title={t('menu.copy', language)}
+            aria-label={t('menu.copy', language)}
           >
             {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
             {!isMobile && <span>{copied ? t('menu.copied', language) : t('menu.copy', language)}</span>}
@@ -247,7 +247,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
               onOpenTranslate();
             }}
             className="tap-area flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl hover:bg-zinc-800 active:scale-95 text-xs font-medium transition-all text-emerald-300 hover:text-white"
-            title="Consultar diccionario JMDict local"
+            title={t('menu.dictLocal', language)}
           >
             <BookOpen className="w-3.5 h-3.5" />
             <span>{t('menu.dict', language)}</span>
@@ -258,7 +258,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
             onClick={handleSpeak}
             disabled={isSpeaking}
             className="tap-area p-2 rounded-xl hover:bg-zinc-800 active:scale-95 text-xs transition-all text-amber-300 hover:text-white disabled:opacity-50"
-            title="Pronunciación en japonés"
+            title={t('menu.tts', language)}
           >
             <Volume2 className={`w-4 h-4 ${isSpeaking ? 'animate-pulse text-amber-400' : ''}`} />
           </button>
@@ -270,8 +270,8 @@ export const TextSelectionMenu: React.FC<Props> = ({
               onSearchInBook();
             }}
             className="tap-area p-2 rounded-xl hover:bg-zinc-800 active:scale-95 text-xs transition-all text-sky-300 hover:text-white"
-            title="Buscar en el libro"
-            aria-label="Buscar en el libro"
+            title={t('menu.searchInBook', language)}
+            aria-label={t('menu.searchInBook', language)}
           >
             <TextSearch className="w-4 h-4" />
           </button>
@@ -280,7 +280,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
           <button
             onClick={handleSearchGoogle}
             className="tap-area p-2 rounded-xl hover:bg-zinc-800 active:scale-95 text-xs transition-all text-zinc-300 hover:text-white"
-            title="Buscar en Google"
+            title={t('menu.googleSearch', language)}
           >
             <Search className="w-4 h-4" />
           </button>
@@ -291,7 +291,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
               <button
                 onClick={onClose}
                 className="tap-area p-1.5 rounded-xl hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors"
-                title="Cerrar"
+                title={t('menu.close', language)}
               >
                 <X className="w-3.5 h-3.5" />
               </button>

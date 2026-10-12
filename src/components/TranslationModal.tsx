@@ -21,7 +21,7 @@ import {
   TranslationFavorite,
   TranslationFavoriteCandidate,
 } from '../utils/translationFavorites';
-import { t } from '../utils/i18n';
+import { t, UiLanguage } from '../utils/i18n';
 
 interface Props {
   isOpen: boolean;
@@ -34,7 +34,7 @@ interface Props {
   aiApiKeys: Partial<Record<AiProvider, string>>;
   favorites: TranslationFavorite[];
   frequentSearchToken: number;
-  language?: 'es' | 'en';
+  language?: UiLanguage;
   onSaveHistory: (kind: TranslationHistoryKind, query: string, response: string, provider?: AiProvider) => void;
   onRecordFrequentQuery: (query: string, searchToken: string | number) => void;
   onToggleFavorite: (candidate: TranslationFavoriteCandidate) => void;
@@ -325,7 +325,7 @@ export const TranslationModal: React.FC<Props> = ({
           {/* Translation */}
           <div className="bg-indigo-50/40 dark:bg-indigo-950/20 rounded-xl p-3.5 border border-indigo-100 dark:border-indigo-900/40">
             <div className="text-[11px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 mb-1.5">
-              {aiProvider ? `Traducción con ${AI_PROVIDER_LABELS[aiProvider]}` : t('translate.targetTranslation', language)}
+              {aiProvider ? `${t('common.translate', language)} (${AI_PROVIDER_LABELS[aiProvider]})` : t('translate.targetTranslation', language)}
             </div>
             {isLoading ? (
               <div className="flex items-center gap-2 py-2 text-xs text-zinc-500">

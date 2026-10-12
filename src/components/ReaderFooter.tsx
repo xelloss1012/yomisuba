@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, SkipBack, SkipForward } from 'lucide-react';
 import { ProgressionDirection } from '../types/epub';
 import { formatPageDisplay } from '../utils/paginationDisplay';
-import { t } from '../utils/i18n';
+import { t, UiLanguage } from '../utils/i18n';
 
 interface Props {
   isVisible: boolean;
@@ -17,7 +17,7 @@ interface Props {
   displayChapterCount?: number;
   direction: ProgressionDirection;
   isVertical: boolean;
-  language?: 'es' | 'en';
+  language?: UiLanguage;
   onPrevPage: () => void;
   onNextPage: () => void;
   onSeekPage: (page: number) => void;
@@ -131,8 +131,8 @@ export const ReaderFooter: React.FC<Props> = ({
                   style={{
                     left: `calc(9px + ${ratio * 100}% - ${ratio * 18}px)`,
                   }}
-                  title={`Bookmark, ${t('common.page', language).toLowerCase()} ${clampedPage + 1}`}
-                  aria-label={`Bookmark, ${t('common.page', language).toLowerCase()} ${clampedPage + 1}`}
+                  title={`${t('bookmarks.tabBookmarks', language)}, ${t('common.page', language).toLowerCase()} ${clampedPage + 1}`}
+                  aria-label={`${t('bookmarks.tabBookmarks', language)}, ${t('common.page', language).toLowerCase()} ${clampedPage + 1}`}
                 >
                   <span className="block h-2.5 w-2.5 rounded-full border-2 border-white bg-amber-500 shadow dark:border-zinc-900" />
                 </button>
@@ -171,11 +171,11 @@ export const ReaderFooter: React.FC<Props> = ({
           <button
             type="button"
             onClick={onTogglePaginationMode}
-            title="Change pagination mode (Device / Printed pages / Percentage)"
+            title={t('footer.changePaginationMode', language)}
             className="flex-1 flex flex-col items-center justify-center px-1 text-center cursor-pointer hover:opacity-80 transition-opacity bg-transparent border-0"
           >
             <div className="text-xs font-bold text-zinc-800 dark:text-zinc-200">
-              {formatPageDisplay(safeDisplayPage, safeTotalPages, paginationMode, printedPages)}
+              {formatPageDisplay(safeDisplayPage, safeTotalPages, paginationMode, printedPages, language)}
             </div>
             <div className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5 truncate max-w-[180px] sm:max-w-none">
               {t('footer.chapter', language)} {displayChapter}/{displayChapterCount}

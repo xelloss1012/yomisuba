@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Bookmark, Highlighter, Trash2, X } from 'lucide-react';
 import { TextAnnotation } from '../utils/textAnnotations';
-import { t } from '../utils/i18n';
+import { t, UiLanguage } from '../utils/i18n';
 
 export interface ReaderBookmark {
   spineIndex: number;
@@ -27,7 +27,7 @@ interface Props {
   isOpen: boolean;
   bookmarks: BookmarkItem[];
   annotations: AnnotationItem[];
-  language?: 'es' | 'en';
+  language?: UiLanguage;
   onClose: () => void;
   onSelect: (bookmark: ReaderBookmark) => void;
   onRemove: (bookmark: ReaderBookmark) => void;
@@ -136,7 +136,7 @@ export const BookmarksModal: React.FC<Props> = ({
                     type="button"
                     onClick={() => onRemove(bookmark)}
                     className="tap-area rounded-lg p-2 text-zinc-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-300"
-                    aria-label={`Eliminar marcador`}
+                    aria-label={t('bookmarks.removeBookmark', language)}
                     title={t('common.delete', language)}
                   >
                     <Trash2 className="h-4 w-4" />

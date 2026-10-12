@@ -1,5 +1,22 @@
 export type UiLanguage = 'es' | 'en';
 
+export interface AvailableLanguage {
+  code: UiLanguage;
+  label: string;
+}
+
+export const AVAILABLE_LANGUAGES: AvailableLanguage[] = [
+  { code: 'es', label: 'Español' },
+  { code: 'en', label: 'English' },
+];
+
+export interface SyncErrorInfo {
+  key: string;
+  details?: string;
+}
+
+export type SyncErrorState = SyncErrorInfo | string | null;
+
 const translations: Record<UiLanguage, Record<string, string>> = {
   es: {
     // FileDropZone / Main Page
@@ -79,6 +96,11 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'nav.exitFullscreen': 'Salir de pantalla completa',
     'nav.analyzerOn': 'Desactivar el analizador automático en todas las páginas',
     'nav.analyzerOff': 'Activar el analizador automático en todas las páginas',
+    'nav.analyzerPageOff': 'Desactivar el analizador en esta página',
+    'nav.showFurigana': 'Mostrar furigana',
+    'nav.hideFurigana': 'Ocultar furigana',
+    'nav.switchToHorizontal': 'Cambiar a lectura horizontal',
+    'nav.switchToVertical': 'Cambiar a lectura vertical japonesa',
     'footer.page': 'Página',
     'footer.of': 'de',
     'footer.percent': '%',
@@ -88,6 +110,7 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'footer.sliderTitle': 'Ir a una página del libro',
     'footer.modePrinted': 'Impresas',
     'footer.modePercent': 'Porcentaje',
+    'footer.changePaginationMode': 'Cambiar modo de paginación (Dispositivo / Páginas impresas / Porcentaje)',
     'reader.beginning': 'Principio del libro',
     'reader.selectWordError': 'No se ha podido seleccionar esa palabra en la página.',
     'reader.calculatingPage': 'Calculando página…',
@@ -97,6 +120,29 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'reader.noVisibleText': 'No se ha encontrado texto visible para analizar en esta página.',
     'reader.analysisError': 'No se pudo analizar la página: {message}',
     'reader.analysisGenericError': 'No se pudo analizar la página con Kuromoji.',
+    'reader.locatePageError': 'No localizada en este libro',
+    'reader.tocNotAvailable': 'Ese apartado no está disponible en este libro.',
+    'reader.noSelectableWords': 'Kuromoji no ha encontrado palabras seleccionables en esta página.',
+    'reader.fullscreenError': 'No se pudo activar la pantalla completa.',
+    'reader.exitFullscreenError': 'No se pudo salir de pantalla completa.',
+    'reader.removeBookmark': 'Quitar marcador de esta página',
+    'reader.addBookmark': 'Marcar esta página',
+    'reader.zoomImageAlt': 'Imagen ampliada',
+    'reader.zoomOut': 'Reducir zoom',
+    'reader.zoomIn': 'Aumentar zoom',
+    'reader.zoomReset': 'Restablecer imagen',
+    'reader.zoomClose': 'Cerrar imagen',
+
+    // ReaderToc
+    'toc.defaultTitle': 'Índice de Contenidos',
+    'toc.chapters': 'Capítulos',
+    'toc.empty': 'No se encontraron capítulos en el índice.',
+
+    // Pagination
+    'pagination.page': 'Página',
+    'pagination.pageShort': 'Pág.',
+    'pagination.of': 'de',
+    'pagination.ofChapter': 'del capítulo',
 
     // TextSelectionMenu
     'menu.translate': 'Traducir',
@@ -110,6 +156,9 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'menu.underline': 'Subrayar',
     'menu.removeUnderline': 'Quitar subrayado',
     'menu.close': 'Cerrar',
+    'menu.openDictDetails': 'Abrir la consulta completa del diccionario',
+    'menu.dictLocal': 'Consultar diccionario JMDict local',
+    'menu.ttsError': 'No se pudo reproducir la pronunciación.',
 
     // TranslationModal
     'translate.title': 'Traducción y Diccionario',
@@ -141,6 +190,7 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'bookmarks.empty': 'No hay elementos guardados en este libro.',
     'bookmarks.page': 'Página',
     'bookmarks.chapter': 'Capítulo',
+    'bookmarks.removeBookmark': 'Eliminar marcador',
 
     // BookSearchModal
     'search.title': 'Buscar en el libro',
@@ -192,8 +242,17 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'drive.ariaDelete': 'Eliminar la copia de',
     'drive.titleDrive': 'de Google Drive',
     'drive.alertNoConfigure': 'No se pudieron restaurar los ajustes de Google Drive',
+    'drive.confirmDeleteCloudAndRecent': '«{title}» tiene una copia en Google Drive. ¿Quitarla también de Drive junto con sus datos de lectura?\n\nAceptar: borrar de Drive y de recientes.\nCancelar: conservar Drive y quitar solo de recientes.',
+    'drive.confirmRemoveRecent': '¿Quitar «{title}» de los libros recientes de este dispositivo?',
+    'drive.confirmRemoveRecentNoSession': '¿Quitar «{title}» de los libros recientes? No hay una sesión de Google, así que no se puede comprobar ni borrar una copia de Drive.',
+    'drive.confirmRestoreSettings': '¿Reemplazar los ajustes locales por los ajustes guardados en tu Google Drive?',
+    'drive.confirmDeleteBook': '¿Eliminar «{title}» y sus datos de lectura de Google Drive? Esta acción no se puede deshacer.',
+    'drive.confirmDownloadBook': '¿Descargar «{title}» y restaurar sus datos de lectura locales?',
+    'drive.alertNoLocalBook': 'No se encuentra el archivo local de este libro para subirlo.',
+    'drive.alertReadEpubError': 'No se pudo leer el archivo EPUB. Comprueba que sea un archivo válido.',
 
     // SyncStatusBadge popover & tooltips
+    'sync.statusAria': 'Estado de sincronización de Google Drive',
     'sync.notice': 'Aviso de Google Drive:',
     'sync.syncing': 'Sincronizando con Google Drive...',
     'sync.progressOnly': 'Progreso sincronizado (El archivo del libro no está en Drive)',
@@ -206,6 +265,15 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'sync.uploadBookBtn': 'Subir EPUB a Google Drive',
     'sync.syncedOk': 'Tus datos de lectura, ajustes y libro están sincronizados con tu cuenta.',
     'sync.lastSync': 'Última sincronización: ',
+    'sync.errorSaveSettings': 'No se pudieron guardar los ajustes en Google Drive',
+    'sync.offline': 'Sin conexión a Internet (modo offline)',
+    'sync.errorRestoreSettings': 'No se pudieron restaurar los ajustes de Google Drive',
+    'sync.errorNotAvailable': 'Google Drive no está disponible',
+    'sync.errorConnect': 'No se pudo conectar con Google Drive',
+    'sync.pendingSync': 'Pendiente de sincronizar con Drive',
+    'sync.errorRenewSession': 'No se pudo renovar la sesión de Google',
+    'sync.errorUpdateReading': 'No se pudo actualizar la lectura desde Drive',
+    'sync.errorSaveProgress': 'No se pudo guardar el progreso en Google Drive',
 
     // PageGlossaryModal
     'glossary.title': 'Glosario de la página',
@@ -238,6 +306,8 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'common.loading': 'Cargando...',
     'common.page': 'Página',
     'common.chapter': 'Capítulo',
+    'common.section': 'Sección',
+    'common.bookmarks': 'Marcadores',
     'common.previous': 'Anterior',
     'common.next': 'Siguiente',
     'common.dictionary': 'Diccionario',
@@ -327,6 +397,11 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'nav.exitFullscreen': 'Exit fullscreen',
     'nav.analyzerOn': 'Disable automatic page analyzer on all pages',
     'nav.analyzerOff': 'Enable automatic page analyzer on all pages',
+    'nav.analyzerPageOff': 'Disable analyzer on this page',
+    'nav.showFurigana': 'Show furigana',
+    'nav.hideFurigana': 'Hide furigana',
+    'nav.switchToHorizontal': 'Switch to horizontal reading',
+    'nav.switchToVertical': 'Switch to vertical Japanese reading',
     'footer.page': 'Page',
     'footer.of': 'of',
     'footer.percent': '%',
@@ -336,6 +411,7 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'footer.sliderTitle': 'Go to a book page',
     'footer.modePrinted': 'Printed',
     'footer.modePercent': 'Percentage',
+    'footer.changePaginationMode': 'Change pagination mode (Device / Printed pages / Percentage)',
     'reader.beginning': 'Beginning of book',
     'reader.selectWordError': 'Could not select that word on the page.',
     'reader.calculatingPage': 'Calculating page...',
@@ -345,6 +421,29 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'reader.noVisibleText': 'No visible text found to analyze on this page.',
     'reader.analysisError': 'Could not analyze page: {message}',
     'reader.analysisGenericError': 'Could not analyze page with Kuromoji.',
+    'reader.locatePageError': 'Not found in this book',
+    'reader.tocNotAvailable': 'That section is not available in this book.',
+    'reader.noSelectableWords': 'Kuromoji found no selectable words on this page.',
+    'reader.fullscreenError': 'Could not activate fullscreen.',
+    'reader.exitFullscreenError': 'Could not exit fullscreen.',
+    'reader.removeBookmark': 'Remove bookmark from this page',
+    'reader.addBookmark': 'Bookmark this page',
+    'reader.zoomImageAlt': 'Expanded image',
+    'reader.zoomOut': 'Zoom out',
+    'reader.zoomIn': 'Zoom in',
+    'reader.zoomReset': 'Reset image',
+    'reader.zoomClose': 'Close image',
+
+    // ReaderToc
+    'toc.defaultTitle': 'Table of Contents',
+    'toc.chapters': 'Chapters',
+    'toc.empty': 'No chapters found in table of contents.',
+
+    // Pagination
+    'pagination.page': 'Page',
+    'pagination.pageShort': 'p.',
+    'pagination.of': 'of',
+    'pagination.ofChapter': 'of chapter',
 
     // TextSelectionMenu
     'menu.translate': 'Translate',
@@ -358,6 +457,9 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'menu.underline': 'Underline',
     'menu.removeUnderline': 'Remove underline',
     'menu.close': 'Close',
+    'menu.openDictDetails': 'Open full dictionary details',
+    'menu.dictLocal': 'Query local JMDict dictionary',
+    'menu.ttsError': 'Could not play pronunciation.',
 
     // TranslationModal
     'translate.title': 'Translation & Dictionary',
@@ -389,6 +491,7 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'bookmarks.empty': 'No items saved in this book.',
     'bookmarks.page': 'Page',
     'bookmarks.chapter': 'Chapter',
+    'bookmarks.removeBookmark': 'Remove bookmark',
 
     // BookSearchModal
     'search.title': 'Search in book',
@@ -440,8 +543,17 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'drive.ariaDelete': 'Delete copy of',
     'drive.titleDrive': 'from Google Drive',
     'drive.alertNoConfigure': 'Could not restore Google Drive settings',
+    'drive.confirmDeleteCloudAndRecent': '"{title}" has a copy in Google Drive. Remove it from Drive along with its reading data as well?\n\nOK: delete from Drive and recents.\nCancel: keep Drive copy and only remove from recents.',
+    'drive.confirmRemoveRecent': 'Remove "{title}" from recent books on this device?',
+    'drive.confirmRemoveRecentNoSession': 'Remove "{title}" from recent books? There is no active Google session, so a Drive copy cannot be checked or deleted.',
+    'drive.confirmRestoreSettings': 'Replace local settings with the settings saved in your Google Drive?',
+    'drive.confirmDeleteBook': 'Delete "{title}" and its reading data from Google Drive? This action cannot be undone.',
+    'drive.confirmDownloadBook': 'Download "{title}" and restore its local reading data?',
+    'drive.alertNoLocalBook': 'Could not find the local file for this book to upload.',
+    'drive.alertReadEpubError': 'Could not read EPUB file. Please ensure it is a valid file.',
 
     // SyncStatusBadge popover & tooltips
+    'sync.statusAria': 'Google Drive sync status',
     'sync.notice': 'Google Drive Notice:',
     'sync.syncing': 'Syncing with Google Drive...',
     'sync.progressOnly': 'Progress synchronized (Book file is not in Drive)',
@@ -454,6 +566,15 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'sync.uploadBookBtn': 'Upload EPUB to Google Drive',
     'sync.syncedOk': 'Your reading data, settings and book are synchronized with your account.',
     'sync.lastSync': 'Last synchronized: ',
+    'sync.errorSaveSettings': 'Could not save settings to Google Drive',
+    'sync.offline': 'No internet connection (offline mode)',
+    'sync.errorRestoreSettings': 'Could not restore settings from Google Drive',
+    'sync.errorNotAvailable': 'Google Drive is unavailable',
+    'sync.errorConnect': 'Could not connect to Google Drive',
+    'sync.pendingSync': 'Pending sync with Google Drive',
+    'sync.errorRenewSession': 'Could not refresh Google session',
+    'sync.errorUpdateReading': 'Could not update reading progress from Drive',
+    'sync.errorSaveProgress': 'Could not save reading progress to Google Drive',
 
     // PageGlossaryModal
     'glossary.title': 'Page Glossary',
@@ -486,6 +607,8 @@ const translations: Record<UiLanguage, Record<string, string>> = {
     'common.loading': 'Loading...',
     'common.page': 'Page',
     'common.chapter': 'Chapter',
+    'common.section': 'Section',
+    'common.bookmarks': 'Bookmarks',
     'common.previous': 'Previous',
     'common.next': 'Next',
     'common.dictionary': 'Dictionary',
@@ -499,6 +622,25 @@ const translations: Record<UiLanguage, Record<string, string>> = {
   },
 };
 
-export function t(key: string, lang: UiLanguage = 'es'): string {
-  return translations[lang]?.[key] || translations.es[key] || key;
+export function t(
+  key: string,
+  lang: UiLanguage = 'es',
+  params?: Record<string, string | number>
+): string {
+  let text = translations[lang]?.[key] || translations.es[key] || key;
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      text = text.replace(new RegExp(`\\{${k}\\}`, 'g'), String(v));
+    }
+  }
+  return text;
+}
+
+export function formatSyncError(error: SyncErrorState, lang: UiLanguage = 'es'): string | null {
+  if (!error) return null;
+  if (typeof error === 'string') {
+    return error;
+  }
+  const message = t(error.key, lang);
+  return error.details ? `${message}: ${error.details}` : message;
 }
