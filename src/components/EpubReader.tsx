@@ -3255,7 +3255,7 @@ export const EpubReader: React.FC<Props> = ({
       // a "Cover" pointing at a file the spine never includes). Silently doing
       // nothing looks like a broken menu, so say what happened.
       logDebugRef.current(`toc unresolved ${href}`);
-      setTocError('Ese apartado no está disponible en este libro.');
+      setTocError(t('reader.tocNotAvailable', settings.language));
       window.setTimeout(() => setTocError(null), 3000);
       return;
     }
@@ -3867,10 +3867,10 @@ export const EpubReader: React.FC<Props> = ({
         aria-live="polite"
       >
         {isBookPaginationReady && isReaderPositioned
-          ? `${formatPageDisplay(globalPage, bookTotalPages, settings.paginationMode, printedPages)} · C${displayChapter}/${displayChapterCount}`
+          ? `${formatPageDisplay(globalPage, bookTotalPages, settings.paginationMode, printedPages, settings.language)} · ${t('footer.chapter', settings.language)}${displayChapter}/${displayChapterCount}`
           : isReaderPositioned
-            ? 'Calculando paginación…'
-            : 'Abriendo libro…'}
+            ? t('reader.calculatingPage', settings.language)
+            : t('common.loading', settings.language)}
       </div>
 
       {/* Menu toggle & Sync badge in bottom-left when UI is hidden (!showUi), hidden when UI appears */}
@@ -3890,8 +3890,8 @@ export const EpubReader: React.FC<Props> = ({
             setDebugEnabled((enabled) => !enabled);
           }}
           className="tap-area-free p-2 rounded-full backdrop-blur-md shadow-md transition-colors bg-zinc-900/40 text-white/80"
-          title="Mostrar menú"
-          aria-label="Mostrar menú"
+          title={t('nav.open', settings.language)}
+          aria-label={t('nav.open', settings.language)}
         >
           <Menu className="w-4 h-4" />
         </button>
@@ -3906,6 +3906,7 @@ export const EpubReader: React.FC<Props> = ({
             isBookUploaded={isBookUploaded}
             onUploadBook={onUploadBook}
             align="left"
+            language={settings.language}
           />
         )}
       </div>
@@ -3915,8 +3916,8 @@ export const EpubReader: React.FC<Props> = ({
         <button
           onClick={() => setShowUi(false)}
           className="tap-area-free fixed z-[55] p-2 rounded-full backdrop-blur-md shadow-md transition-colors right-3 bottom-[118px] bg-white/90 text-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-200"
-          title="Ocultar menú"
-          aria-label="Ocultar menú"
+          title={t('nav.close', settings.language)}
+          aria-label={t('nav.close', settings.language)}
         >
           <X className="w-4 h-4" />
         </button>
@@ -3934,8 +3935,8 @@ export const EpubReader: React.FC<Props> = ({
           bottom: 'max(env(safe-area-inset-bottom, 4px), 4px)',
           right: 'max(calc(env(safe-area-inset-right, 4px) + 48px), 48px)',
         }}
-        title={isReaderFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
-        aria-label={isReaderFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
+        title={isReaderFullscreen ? t('nav.exitFullscreen', settings.language) : t('nav.fullscreen', settings.language)}
+        aria-label={isReaderFullscreen ? t('nav.exitFullscreen', settings.language) : t('nav.fullscreen', settings.language)}
         aria-pressed={isReaderFullscreen}
       >
         {isReaderFullscreen
@@ -3956,8 +3957,8 @@ export const EpubReader: React.FC<Props> = ({
             bottom: 'max(env(safe-area-inset-bottom, 4px), 4px)',
             right: 'max(env(safe-area-inset-right, 4px), 4px)',
           }}
-          title={isCurrentBookmarked ? 'Quitar marcador de esta página' : 'Marcar esta página'}
-          aria-label={isCurrentBookmarked ? 'Quitar marcador de esta página' : 'Marcar esta página'}
+          title={isCurrentBookmarked ? t('reader.removeBookmark', settings.language) : t('reader.addBookmark', settings.language)}
+          aria-label={isCurrentBookmarked ? t('reader.removeBookmark', settings.language) : t('reader.addBookmark', settings.language)}
           aria-pressed={isCurrentBookmarked}
         >
           {isCurrentBookmarked
@@ -3995,7 +3996,7 @@ export const EpubReader: React.FC<Props> = ({
             <div className="absolute inset-0 flex items-center justify-center bg-black/10 backdrop-blur-[2px] pointer-events-none">
               <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/90 dark:bg-zinc-800/90 shadow-lg text-xs font-medium text-zinc-700 dark:text-zinc-200">
                 <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
-                <span>Cargando...</span>
+                <span>{t('common.loading', settings.language)}</span>
               </div>
             </div>
           )}
