@@ -33,6 +33,7 @@ interface Props {
   aiApiKeys: Partial<Record<AiProvider, string>>;
   favorites: TranslationFavorite[];
   frequentSearchToken: number;
+  language?: 'es' | 'en';
   onSaveHistory: (kind: TranslationHistoryKind, query: string, response: string, provider?: AiProvider) => void;
   onRecordFrequentQuery: (query: string, searchToken: string | number) => void;
   onToggleFavorite: (candidate: TranslationFavoriteCandidate) => void;
@@ -54,6 +55,7 @@ export const TranslationModal: React.FC<Props> = ({
   aiApiKeys,
   favorites,
   frequentSearchToken,
+  language = 'es',
   onSaveHistory,
   onRecordFrequentQuery,
   onToggleFavorite,
@@ -129,15 +131,15 @@ export const TranslationModal: React.FC<Props> = ({
 
         let result: string;
         if (aiProvider && aiApiKey) {
-          result = await translateWithAi(aiProvider, aiApiKey, selectedText, model || openRouterModel);
+          result = await translateWithAi(aiProvider, aiApiKey, selectedText, model || openRouterModel, language);
         } else {
-          const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=es&dt=t&q=${encodeURIComponent(selectedText)}`;
+          const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${language}&dt=t&q=${encodeURIComponent(selectedText)}`;
           const res = await fetch(url);
           const data = await res.json();
           if (data && data[0]) {
             result = data[0].map((item: [string]) => item[0]).join('');
           } else {
-            result = 'No se pudo traducir el texto.';
+            result = language === 'en' ? 'Could not translate text.' : 'No se pudo traducir el texto.';
           }
         }
         if (cancelled) return;
@@ -193,7 +195,7 @@ export const TranslationModal: React.FC<Props> = ({
     setDictionaryError('');
     setIsDictionaryLoading(true);
     try {
-      const lookup = await getDictionarySearchTerms(trimmedQuery);
+      const lookup = await getDictionarySearchTerms(trimmedQuery, language);
       if (dictionaryRequestRef.current !== requestId) return;
       const terms = {
         query: trimmedQuery,
@@ -265,7 +267,7 @@ export const TranslationModal: React.FC<Props> = ({
       const model = explanationProvider === 'openrouter'
         ? await resolveOpenRouterModel(openRouterModel.trim() || DEFAULT_OPENROUTER_MODEL)
         : openRouterModel;
-      const result = await explainWithAi(explanationProvider, key, selectedText, model);
+      const result = await explainWithAi(explanationProvider, key, selectedText, model, language);
       if (explanationRequestRef.current === requestId) setExplanation(result);
     } catch (error) {
       if (explanationRequestRef.current === requestId) {

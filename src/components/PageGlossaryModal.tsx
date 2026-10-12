@@ -24,6 +24,7 @@ interface Props {
   isOpen: boolean;
   tokens: PageWordToken[];
   favorites: TranslationFavorite[];
+  language?: 'es' | 'en';
   onClose: () => void;
   onSelectWord: (token: PageWordToken) => void;
   onToggleFavorite: (candidate: TranslationFavoriteCandidate) => void;
@@ -58,6 +59,7 @@ export const PageGlossaryModal: React.FC<Props> = ({
   isOpen,
   tokens,
   favorites,
+  language = 'es',
   onClose,
   onSelectWord,
   onToggleFavorite,
@@ -98,7 +100,8 @@ export const PageGlossaryModal: React.FC<Props> = ({
               item.token.basic_form &&
               item.token.basic_form !== '*'
                 ? item.token.basic_form
-                : item.token.surface_form
+                : item.token.surface_form,
+              language
             );
           } catch (error) {
             results[item.key] = error instanceof Error

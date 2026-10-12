@@ -832,7 +832,8 @@ function isReaderSettings(value: unknown): value is ReaderSettingsState {
     && Object.entries(settings.aiApiKeys || {}).every(([provider, key]) =>
       ['gemini', 'openai', 'deepseek', 'openrouter'].includes(provider) && typeof key === 'string'
     )
-    && typeof settings.openRouterModel === 'string';
+    && typeof settings.openRouterModel === 'string'
+    && (settings.language === 'es' || settings.language === 'en' || settings.language === undefined);
 }
 
 function isReadingPosition(value: unknown): value is ReaderBookBackup['position'] {

@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { UploadCloud, BookOpen, Sparkles, FileText, CheckCircle2, Clock3, Trash2 } from 'lucide-react';
+import { UploadCloud, BookOpen, Sparkles, FileText, Clock3, Trash2, Languages } from 'lucide-react';
 import { createSampleJapaneseEpub } from '../utils/sampleBook';
 import { RecentBook } from '../utils/recentBooks';
 import { GoogleDriveBook, GoogleDriveSession } from '../utils/googleDriveBackup';
 import { GoogleDriveBackupPanel } from './GoogleDriveBackupPanel';
 import { BookCoverThumbnail } from './BookCoverThumbnail';
+import { t } from '../utils/i18n';
+import { ReaderSettingsState } from '../types/epub';
 
 interface Props {
   onFileLoaded: (file: File | Blob) => void;
@@ -24,6 +26,8 @@ interface Props {
   onDownloadDriveBook: (book: GoogleDriveBook) => void;
   onDeleteDriveBook: (book: GoogleDriveBook) => void;
   onRefreshDriveBooks: () => void;
+  language: 'es' | 'en';
+  onUpdateSettings: (newSettings: Partial<ReaderSettingsState>) => void;
 }
 
 export const FileDropZone: React.FC<Props> = ({
@@ -44,6 +48,8 @@ export const FileDropZone: React.FC<Props> = ({
   onDownloadDriveBook,
   onDeleteDriveBook,
   onRefreshDriveBooks,
+  language = 'es',
+  onUpdateSettings,
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
 
@@ -55,7 +61,7 @@ export const FileDropZone: React.FC<Props> = ({
       if (file.name.endsWith('.epub') || file.type.includes('epub') || file.type.includes('zip')) {
         onFileLoaded(file);
       } else {
-        alert('Por favor, selecciona un archivo con extensión .epub');
+        alert(language === 'en' ? 'Please select a file with .epub extension' : 'Por favor, selecciona un archivo con extensión .epub');
       }
     }
   };
@@ -74,17 +80,49 @@ export const FileDropZone: React.FC<Props> = ({
   return (
     <div className="h-full overflow-y-auto overscroll-y-contain bg-gradient-to-br from-stone-50 via-zinc-100 to-stone-200 dark:from-zinc-950 dark:via-zinc-900 dark:to-stone-950 flex flex-col items-center justify-start p-4 pb-8 sm:p-6 text-zinc-800 dark:text-zinc-200">
       <div className="w-full max-w-xl shrink-0 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-zinc-200/80 dark:border-zinc-800/80 p-6 sm:p-10 text-center">
+        {/* Language Selector on Main Page */}
+        <div className="flex items-center justify-between mb-6 bg-indigo-50/70 dark:bg-indigo-950/40 p-3 rounded-2xl border border-indigo-100 dark:border-indigo-800/80">
+          <div className="flex items-center gap-2 text-xs font-semibold text-indigo-700 dark:text-indigo-300">
+            <Languages className="w-4 h-4" />
+            <span>{t('language.label', language)}</span>
+          </div>
+          <div className="flex gap-1">
+            <button
+              type="button"
+              onClick={() => onUpdateSettings({ language: 'es' })}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                language === 'es'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'bg-transparent text-zinc-700 dark:text-zinc-300 hover:bg-indigo-100/60 dark:hover:bg-indigo-900/50'
+              }`}
+            >
+              Español
+            </button>
+            <button
+              type="button"
+              onClick={() => onUpdateSettings({ language: 'en' })}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                language === 'en'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'bg-transparent text-zinc-700 dark:text-zinc-300 hover:bg-indigo-100/60 dark:hover:bg-indigo-900/50'
+              }`}
+            >
+              English
+            </button>
+          </div>
+        </div>
+
         {/* Brand & Badge */}
         <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-100 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 text-xs font-semibold mb-6">
           <BookOpen className="w-3.5 h-3.5" />
-          <span>Lector EPUB • 縦書き (Japonés Vertical)</span>
+          <span>{t('app.subtitle', language)}</span>
         </div>
 
         <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-mincho mb-3">
-          Lector de Libros EPUB
+          {t('app.title', language)}
         </h1>
         <p className="text-sm sm:text-base text-zinc-600 dark:text-zinc-400 mb-8 max-w-md mx-auto">
-          Compatible con libros digitales estándar y lectura en vertical tradicional japonesa (<ruby>縦書き<rt>たてがき</rt></ruby>) con soporte de furigana y paginación.
+          {t('app.description', language)}
         </p>
 
         <GoogleDriveBackupPanel
@@ -131,10 +169,10 @@ export const FileDropZone: React.FC<Props> = ({
           </div>
 
           <div className="text-base font-semibold text-zinc-800 dark:text-zinc-200 mb-1">
-            Arrastra tu archivo <span className="text-indigo-600 dark:text-indigo-400">.epub</span> aquí
+            {language === 'en' ? 'Drag your ' : 'Arrastra tu archivo '} <span className="text-indigo-600 dark:text-indigo-400">.epub</span> {language === 'en' ? 'here' : 'aquí'}
           </div>
           <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
-            o haz clic para buscarlo en tu equipo
+            {t('dropzone.browse', language)}
           </div>
 
           <button
@@ -142,7 +180,7 @@ export const FileDropZone: React.FC<Props> = ({
             className="flex min-h-11 w-full max-w-xs items-center justify-center gap-2 rounded-xl bg-indigo-600 px-3 py-2.5 text-center text-xs font-semibold text-white shadow-md transition-all hover:bg-indigo-700 active:scale-95"
           >
             <FileText className="h-4 w-4 shrink-0" />
-            <span className="min-w-0">Seleccionar archivo EPUB</span>
+            <span className="min-w-0">{t('dropzone.selectBtn', language)}</span>
           </button>
         </div>
 
@@ -150,10 +188,10 @@ export const FileDropZone: React.FC<Props> = ({
         <div className="mt-6 pt-6 border-t border-zinc-200 dark:border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="text-left">
             <div className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-              ¿No tienes un libro a mano?
+              {t('sample.title', language)}
             </div>
             <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
-              Prueba con «走れメロス» (Dazai Osamu) en vertical con furigana
+              {t('sample.subtitle', language)}
             </div>
           </div>
 
@@ -164,7 +202,7 @@ export const FileDropZone: React.FC<Props> = ({
             className="flex min-h-11 w-full min-w-0 items-center justify-center gap-2 rounded-xl border border-zinc-300 bg-stone-100 px-3 py-2.5 text-center text-xs font-semibold text-zinc-800 shadow-sm transition-all hover:bg-stone-200 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700 sm:w-auto sm:max-w-full"
           >
             <Sparkles className="w-4 h-4 text-amber-500" />
-            <span className="min-w-0">Cargar libro de prueba japonés</span>
+            <span className="min-w-0">{t('sample.btn', language)}</span>
           </button>
         </div>
 
@@ -172,7 +210,7 @@ export const FileDropZone: React.FC<Props> = ({
           <div className="mt-8 pt-6 border-t border-zinc-200 dark:border-zinc-800 text-left">
             <div className="flex items-center gap-2 mb-3">
               <Clock3 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-              <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">Libros recientes</h2>
+              <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">{t('recent.title', language)}</h2>
             </div>
             <div className="space-y-2">
               {recentBooks.map((book) => (
@@ -198,45 +236,16 @@ export const FileDropZone: React.FC<Props> = ({
                     type="button"
                     onClick={() => onRemoveRecentBook(book)}
                     disabled={isLoading || isDriveBusy}
-                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-red-950/40 dark:hover:text-red-300"
-                    aria-label={`Quitar ${book.title} de libros recientes`}
-                    title="Quitar de libros recientes"
+                    title={language === 'en' ? 'Remove recent book' : 'Quitar de recientes'}
+                    className="p-2 text-zinc-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
               ))}
             </div>
           </div>
         )}
-
-        {/* Features Checklist */}
-        <div className="mt-8 grid grid-cols-2 sm:grid-cols-3 gap-3 text-left text-xs text-zinc-600 dark:text-zinc-400">
-          <div className="flex items-center gap-1.5">
-            <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-            <span>Texto vertical (縦書き)</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-            <span>Furigana / Ruby tags</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-            <span>Imágenes & Estilos</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-            <span>Paginación fluida</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-            <span>Temas blanco / sepia / noche</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-            <span>100% Local y privado</span>
-          </div>
-        </div>
       </div>
     </div>
   );

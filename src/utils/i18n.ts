@@ -1,0 +1,286 @@
+export type UiLanguage = 'es' | 'en';
+
+const translations: Record<UiLanguage, Record<string, string>> = {
+  es: {
+    // FileDropZone / Main Page
+    'app.title': 'Lector de Libros EPUB',
+    'app.subtitle': 'Lector EPUB • 縦書き (Japonés Vertical)',
+    'app.description': 'Compatible con libros digitales estándar y lectura en vertical tradicional japonesa con soporte de furigana y paginación.',
+    'dropzone.drag': 'Arrastra tu archivo',
+    'dropzone.here': 'aquí',
+    'dropzone.browse': 'o haz clic para buscarlo en tu equipo',
+    'dropzone.selectBtn': 'Seleccionar archivo EPUB',
+    'sample.title': '¿No tienes un libro a mano?',
+    'sample.subtitle': 'Prueba con «走れメロス» (Dazai Osamu) en vertical con furigana',
+    'sample.btn': 'Cargar libro de prueba japonés',
+    'recent.title': 'Libros recientes',
+    'language.label': 'Idioma de la interfaz',
+
+    // ReaderSettings
+    'settings.title': 'Ajustes de Lectura',
+    'settings.orientation': 'Orientación del Texto',
+    'settings.vertical': '縦書き (Vertical)',
+    'settings.verticalHint': 'Japonés Tradicional (RTL)',
+    'settings.horizontal': '横書き (Horizontal)',
+    'settings.horizontalHint': 'Estándar / Occidental',
+    'settings.pagination': 'Paginación por Defecto',
+    'settings.paginationDevice': 'Dispositivo',
+    'settings.paginationPrinted': 'Impresas',
+    'settings.paginationPercent': 'Porcentaje',
+    'settings.printedPages': 'Páginas impresas del libro',
+    'settings.optional': 'Opcional',
+    'settings.clear': 'Borrar',
+    'settings.printedHint': 'Número de páginas de la edición impresa para calcular la equivalencia aproximada.',
+    'settings.autoRotate': 'Permitir giro automático',
+    'settings.autoRotateHint': 'Permite cambiar entre vertical y horizontal al girar el móvil. Desactivado, la aplicación permanece en vertical.',
+    'settings.furigana': 'Mostrar furigana',
+    'settings.furiganaHint': 'Muestra u oculta la lectura sobre los kanji.',
+    'settings.autoAnalyze': 'Análisis automático de página',
+    'settings.autoAnalyzeHint': 'Analiza y lista automáticamente el vocabulario de la página al pasar.',
+    'settings.nightMode': 'Modo noche automático',
+    'settings.nightModeHint': 'Cambia automáticamente a tema oscuro a partir de las 20:00.',
+    'settings.fontSize': 'Tamaño de letra',
+    'settings.lineHeight': 'Interlineado',
+    'settings.letterSpacing': 'Espaciado entre letras',
+    'settings.theme': 'Tema de color',
+    'settings.themeLight': 'Blanco',
+    'settings.themePaper': 'Papel',
+    'settings.themeSepia': 'Sepia',
+    'settings.themeDark': 'Noche',
+    'settings.fontFamily': 'Tipografía',
+    'settings.aiSection': 'Inteligencia Artificial y Traducción',
+    'settings.aiProvider': 'Proveedor de IA',
+    'settings.aiApiKey': 'Clave de API',
+    'settings.aiModel': 'Modelo de OpenRouter',
+
+    // ReaderNavbar
+    'nav.toc': 'Índice',
+    'nav.bookmarks': 'Marcadores',
+    'nav.search': 'Buscar',
+    'nav.glossary': 'Glosario de página',
+    'nav.translate': 'Traducir / Buscar',
+    'nav.history': 'Historial',
+    'nav.settings': 'Ajustes',
+    'nav.close': 'Cerrar libro',
+    'nav.fullscreen': 'Pantalla completa',
+    'nav.exitFullscreen': 'Salir de pantalla completa',
+
+    // ReaderFooter
+    'footer.page': 'Pág.',
+    'footer.of': 'de',
+    'footer.percent': '%',
+    'footer.chapter': 'Capítulo',
+
+    // TextSelectionMenu
+    'menu.translate': 'Traducir',
+    'menu.explain': 'Explicar IA',
+    'menu.copy': 'Copiar',
+    'menu.underline': 'Subrayar',
+    'menu.removeUnderline': 'Quitar subrayado',
+    'menu.bookmark': 'Marcar',
+
+    // TranslationModal
+    'translate.title': 'Diccionario y Traducción',
+    'translate.inputPlaceholder': 'Buscar palabra o texto...',
+    'translate.searchBtn': 'Buscar',
+    'translate.dictionary': 'Diccionario',
+    'translate.aiTranslation': 'Traducción IA',
+    'translate.aiExplanation': 'Explicación IA',
+    'translate.noEntries': 'No se encontraron entradas en el diccionario.',
+    'translate.noTranslation': 'Sin traducción disponible.',
+    'translate.explainBtn': 'Explicar con IA',
+    'translate.explainPrompt': 'Selecciona un proveedor y configure una clave de API para obtener explicaciones gramaticales detalladas.',
+
+    // BookmarksModal
+    'bookmarks.title': 'Marcadores',
+    'bookmarks.empty': 'No hay marcadores guardados en este libro.',
+    'bookmarks.page': 'Página',
+    'bookmarks.chapter': 'Capítulo',
+
+    // BookSearchModal
+    'search.title': 'Buscar en el libro',
+    'search.placeholder': 'Escribe una palabra o frase...',
+    'search.empty': 'Introduce un término para buscar en el texto.',
+    'search.noResults': 'No se encontraron resultados.',
+    'search.results': 'Resultados',
+
+    // GoogleDriveBackupPanel & SyncStatusBadge
+    'drive.title': 'Copia de seguridad en Google Drive',
+    'drive.signIn': 'Conectar con Google Drive',
+    'drive.signOut': 'Desconectar cuenta',
+    'drive.syncStatus': 'Sincronizado',
+    'drive.syncing': 'Sincronizando...',
+    'drive.error': 'Error de sincronización',
+    'drive.restore': 'Restaurar ajustes',
+    'drive.books': 'Libros en la nube',
+    'drive.upload': 'Subir a Drive',
+    'drive.download': 'Descargar',
+    'drive.delete': 'Eliminar de Drive',
+
+    // PageGlossaryModal
+    'glossary.title': 'Glosario de la página',
+    'glossary.filter': 'Filtrar palabras...',
+    'glossary.instruction': 'Toca una palabra para seleccionarla en la página.',
+    'glossary.baseForm': 'Forma base',
+    'glossary.noDefinition': 'Sin acepción encontrada.',
+    'glossary.errorQuery': 'Error al consultar',
+    'glossary.empty': 'No hay palabras que coincidan.',
+
+    // TranslationHistoryModal
+    'history.title': 'Historial y Favoritos',
+    'history.tabHistory': 'Historial',
+    'history.tabFavorites': 'Favoritos',
+    'history.tabFrequent': 'Frecuentes',
+    'history.clear': 'Borrar todo',
+    'history.empty': 'No hay elementos guardados.',
+
+    // Common
+    'common.cancel': 'Cancelar',
+    'common.confirm': 'Aceptar',
+    'common.delete': 'Eliminar',
+    'common.loading': 'Cargando...',
+  },
+  en: {
+    // FileDropZone / Main Page
+    'app.title': 'EPUB Book Reader',
+    'app.subtitle': 'EPUB Reader • 縦書き (Vertical Japanese)',
+    'app.description': 'Compatible with standard digital books and traditional vertical Japanese reading with furigana support and pagination.',
+    'dropzone.drag': 'Drag your',
+    'dropzone.here': 'file here',
+    'dropzone.browse': 'or click to browse from your device',
+    'dropzone.selectBtn': 'Select EPUB file',
+    'sample.title': "Don't have a book handy?",
+    'sample.subtitle': 'Try «走れメロス» (Dazai Osamu) in vertical with furigana',
+    'sample.btn': 'Load Japanese sample book',
+    'recent.title': 'Recent books',
+    'language.label': 'Interface Language',
+
+    // ReaderSettings
+    'settings.title': 'Reading Settings',
+    'settings.orientation': 'Text Orientation',
+    'settings.vertical': '縦書き (Vertical)',
+    'settings.verticalHint': 'Traditional Japanese (RTL)',
+    'settings.horizontal': '横書き (Horizontal)',
+    'settings.horizontalHint': 'Standard / Western',
+    'settings.pagination': 'Default Pagination',
+    'settings.paginationDevice': 'Device',
+    'settings.paginationPrinted': 'Printed',
+    'settings.paginationPercent': 'Percentage',
+    'settings.printedPages': 'Printed book pages',
+    'settings.optional': 'Optional',
+    'settings.clear': 'Clear',
+    'settings.printedHint': 'Number of pages in the printed edition to calculate approximate equivalence.',
+    'settings.autoRotate': 'Allow auto-rotate',
+    'settings.autoRotateHint': 'Allows switching between vertical and horizontal when rotating the phone. When disabled, app remains vertical.',
+    'settings.furigana': 'Show furigana',
+    'settings.furiganaHint': 'Shows or hides reading aids over kanji.',
+    'settings.autoAnalyze': 'Auto page analysis',
+    'settings.autoAnalyzeHint': 'Automatically analyzes and lists page vocabulary when turning pages.',
+    'settings.nightMode': 'Auto night mode',
+    'settings.nightModeHint': 'Automatically switches to dark theme starting at 8:00 PM.',
+    'settings.fontSize': 'Font size',
+    'settings.lineHeight': 'Line height',
+    'settings.letterSpacing': 'Letter spacing',
+    'settings.theme': 'Color theme',
+    'settings.themeLight': 'Light',
+    'settings.themePaper': 'Paper',
+    'settings.themeSepia': 'Sepia',
+    'settings.themeDark': 'Dark',
+    'settings.fontFamily': 'Font Family',
+    'settings.aiSection': 'Artificial Intelligence & Translation',
+    'settings.aiProvider': 'AI Provider',
+    'settings.aiApiKey': 'API Key',
+    'settings.aiModel': 'OpenRouter Model',
+
+    // ReaderNavbar
+    'nav.toc': 'Table of Contents',
+    'nav.bookmarks': 'Bookmarks',
+    'nav.search': 'Search',
+    'nav.glossary': 'Page Glossary',
+    'nav.translate': 'Translate / Search',
+    'nav.history': 'History',
+    'nav.settings': 'Settings',
+    'nav.close': 'Close book',
+    'nav.fullscreen': 'Fullscreen',
+    'nav.exitFullscreen': 'Exit fullscreen',
+
+    // ReaderFooter
+    'footer.page': 'Page',
+    'footer.of': 'of',
+    'footer.percent': '%',
+    'footer.chapter': 'Chapter',
+
+    // TextSelectionMenu
+    'menu.translate': 'Translate',
+    'menu.explain': 'AI Explain',
+    'menu.copy': 'Copy',
+    'menu.underline': 'Underline',
+    'menu.removeUnderline': 'Remove underline',
+    'menu.bookmark': 'Bookmark',
+
+    // TranslationModal
+    'translate.title': 'Dictionary & Translation',
+    'translate.inputPlaceholder': 'Search word or text...',
+    'translate.searchBtn': 'Search',
+    'translate.dictionary': 'Dictionary',
+    'translate.aiTranslation': 'AI Translation',
+    'translate.aiExplanation': 'AI Explanation',
+    'translate.noEntries': 'No dictionary entries found.',
+    'translate.noTranslation': 'No translation available.',
+    'translate.explainBtn': 'Explain with AI',
+    'translate.explainPrompt': 'Select an AI provider and configure an API key to get detailed grammatical explanations.',
+
+    // BookmarksModal
+    'bookmarks.title': 'Bookmarks',
+    'bookmarks.empty': 'No bookmarks saved in this book.',
+    'bookmarks.page': 'Page',
+    'bookmarks.chapter': 'Chapter',
+
+    // BookSearchModal
+    'search.title': 'Search in book',
+    'search.placeholder': 'Type a word or phrase...',
+    'search.empty': 'Enter a search term to find in the text.',
+    'search.noResults': 'No results found.',
+    'search.results': 'Results',
+
+    // GoogleDriveBackupPanel & SyncStatusBadge
+    'drive.title': 'Google Drive Backup',
+    'drive.signIn': 'Connect to Google Drive',
+    'drive.signOut': 'Disconnect account',
+    'drive.syncStatus': 'Synchronized',
+    'drive.syncing': 'Syncing...',
+    'drive.error': 'Sync error',
+    'drive.restore': 'Restore settings',
+    'drive.books': 'Cloud books',
+    'drive.upload': 'Upload to Drive',
+    'drive.download': 'Download',
+    'drive.delete': 'Delete from Drive',
+
+    // PageGlossaryModal
+    'glossary.title': 'Page Glossary',
+    'glossary.filter': 'Filter words...',
+    'glossary.instruction': 'Tap a word to select it on the page.',
+    'glossary.baseForm': 'Base form',
+    'glossary.noDefinition': 'No definition found.',
+    'glossary.errorQuery': 'Error querying',
+    'glossary.empty': 'No matching words found.',
+
+    // TranslationHistoryModal
+    'history.title': 'History & Favorites',
+    'history.tabHistory': 'History',
+    'history.tabFavorites': 'Favorites',
+    'history.tabFrequent': 'Frequent',
+    'history.clear': 'Clear all',
+    'history.empty': 'No saved items.',
+
+    // Common
+    'common.cancel': 'Cancel',
+    'common.confirm': 'Confirm',
+    'common.delete': 'Delete',
+    'common.loading': 'Loading...',
+  },
+};
+
+export function t(key: string, lang: UiLanguage = 'es'): string {
+  return translations[lang]?.[key] || translations.es[key] || key;
+}

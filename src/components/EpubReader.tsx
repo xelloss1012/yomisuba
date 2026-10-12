@@ -2598,7 +2598,7 @@ export const EpubReader: React.FC<Props> = ({
 
     let cancelled = false;
     const timer = window.setTimeout(() => {
-      void getDictionarySearchTerms(query)
+      void getDictionarySearchTerms(query, settings.language)
         .then((lookup) => {
           if (cancelled) return;
           const hasEntries = lookup.entries.length > 0;
@@ -4083,6 +4083,7 @@ export const EpubReader: React.FC<Props> = ({
         aiApiKeys={settings.aiApiKeys}
         favorites={translationFavorites}
         frequentSearchToken={frequentSearchToken}
+        language={settings.language}
         onSaveHistory={handleSaveTranslationHistory}
         onRecordFrequentQuery={handleRecordFrequentQuery}
         onToggleFavorite={handleToggleTranslationFavorite}
@@ -4105,6 +4106,7 @@ export const EpubReader: React.FC<Props> = ({
         isOpen={isPageGlossaryOpen}
         tokens={pageWords}
         favorites={translationFavorites}
+        language={settings.language}
         onClose={() => setIsPageGlossaryOpen(false)}
         onSelectWord={selectPageWord}
         onToggleFavorite={handleToggleTranslationFavorite}

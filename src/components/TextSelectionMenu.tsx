@@ -4,6 +4,7 @@ import { AiProvider } from '../types/epub';
 import { AI_PROVIDER_LABELS } from '../utils/aiTranslation';
 import { DictionaryLookup } from '../utils/dictionary';
 import { speakJapanese } from '../utils/japaneseSpeech';
+import { t } from '../utils/i18n';
 
 export interface SelectionPosition {
   x: number;
@@ -15,14 +16,8 @@ export interface SelectionPosition {
 interface Props {
   selectedText: string;
   position: SelectionPosition | null;
-  /**
-   * True while the selection is still being dragged. On mobile the menu is
-   * docked across the full width near the bottom, which is exactly where a
-   * vertical-rl page ends (bottom-left): keeping it interactive there would
-   * swallow the touches meant for the text and block the selection handles
-   * from reaching the edge of the page.
-   */
   isAdjusting?: boolean;
+  language?: 'es' | 'en';
   onClose: () => void;
   onOpenTranslate: () => void;
   onOpenDictionary: () => void;
@@ -38,6 +33,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
   selectedText,
   position,
   isAdjusting = false,
+  language = 'es',
   onClose,
   onOpenTranslate,
   onOpenDictionary,
@@ -103,8 +99,6 @@ export const TextSelectionMenu: React.FC<Props> = ({
 
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
 
-  // On desktop: float near selection.
-  // On mobile: dock safely above the mobile browser's bottom navigation/search bar
   let style: React.CSSProperties = {};
   if (!isMobile && position) {
     const menuWidth = 340;
@@ -118,7 +112,6 @@ export const TextSelectionMenu: React.FC<Props> = ({
     top = Math.max(12, Math.min(window.innerHeight - menuHeight - 12, top));
     style = { left: `${left}px`, top: `${top}px`, position: 'fixed' };
   } else if (isMobile) {
-    // Dock above mobile browser bottom bar (safari/chrome bottom address bar is ~60-75px)
     style = {
       bottom: 'max(calc(env(safe-area-inset-bottom, 0px) + 85px), 92px)',
       position: 'fixed',
@@ -131,13 +124,6 @@ export const TextSelectionMenu: React.FC<Props> = ({
     <div
       data-selection-menu
       style={style}
-      // Opacity is driven by classes alone, with no CSS animation involved.
-      // animate-fade-in ends in `forwards`, and an animation outranks normal
-      // declarations in the cascade: with it applied, `opacity-0` never took
-      // effect and the menu stopped responding to touch while staying visible
-      // over the text — the very thing it is meant to get out of the way of.
-      // Mixing the two states (animation on one branch, class on the other)
-      // is just as unreliable, so the fade now comes from the transition.
       className={`z-[60] select-none transition-opacity ${
         isAdjusting ? 'duration-0 opacity-0 pointer-events-none' : 'duration-200 opacity-100 pointer-events-auto'
       } ${isMobile ? 'max-w-md mx-auto shadow-2xl' : 'shadow-2xl'}`}
@@ -213,7 +199,6 @@ export const TextSelectionMenu: React.FC<Props> = ({
         )}
 
         {/* Action Buttons */}
-        {/* Wraps as a safety net: on a phone the seven actions do not fit one row. */}
         <div className={`flex items-center justify-between gap-1 ${isMobile ? 'flex-wrap' : ''}`}>
           <button
             onClick={(event) => {
@@ -223,12 +208,12 @@ export const TextSelectionMenu: React.FC<Props> = ({
             className={`tap-area flex flex-1 items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-xs font-medium transition-all hover:bg-zinc-800 active:scale-95 ${
               isUnderlined ? 'text-amber-300' : 'text-zinc-100'
             }`}
-            title={isUnderlined ? 'Quitar subrayado' : 'Subrayar texto'}
-            aria-label={isUnderlined ? 'Quitar subrayado' : 'Subrayar texto'}
+            title={isUnderlined ? t('menu.removeUnderline', language) : t('menu.underline', language)}
+            aria-label={isUnderlined ? t('menu.removeUnderline', language) : t('menu.underline', language)}
             aria-pressed={isUnderlined}
           >
             <Underline className="h-3.5 w-3.5" />
-            {!isMobile && <span>{isUnderlined ? 'Quitar subrayado' : 'Subrayar'}</span>}
+            {!isMobile && <span>{isUnderlined ? t('menu.removeUnderline', language) : t('menu.underline', language)}</span>}
           </button>
 
           {/* Copiar */}
@@ -239,7 +224,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
             aria-label="Copiar texto"
           >
             {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-            {!isMobile && <span>{copied ? 'Copiado' : 'Copiar'}</span>}
+            {!isMobile && <span>{copied ? (language === 'en' ? 'Copied' : 'Copiado') : t('menu.copy', language)}</span>}
           </button>
 
           {/* Traducir */}
@@ -249,10 +234,10 @@ export const TextSelectionMenu: React.FC<Props> = ({
               onOpenDictionary();
             }}
             className="tap-area flex-1 flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl hover:bg-zinc-800 active:scale-95 text-xs font-medium transition-all text-indigo-300 hover:text-white"
-            title="Traducir texto al español"
+            title={t('menu.translate', language)}
           >
             <Languages className="w-3.5 h-3.5" />
-            <span>Traducir</span>
+            <span>{t('menu.translate', language)}</span>
           </button>
 
           {/* Diccionario local */}
@@ -265,7 +250,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
             title="Consultar diccionario JMDict local"
           >
             <BookOpen className="w-3.5 h-3.5" />
-            <span>Diccionario</span>
+            <span>{language === 'en' ? 'Dictionary' : 'Diccionario'}</span>
           </button>
 
           {/* Pronunciación TTS */}

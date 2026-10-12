@@ -465,7 +465,7 @@ const findRawEntries = (
   return [...ranked.values()].sort((left, right) => left.score - right.score);
 };
 
-export const getDictionarySearchTerms = async (value: string): Promise<DictionaryLookup> => {
+export const getDictionarySearchTerms = async (value: string, language: 'es' | 'en' = 'es'): Promise<DictionaryLookup> => {
   const originalText = normalizeSelection(value) || value.trim();
   if (!originalText) {
     return { originalText: '', baseForm: '', searchTerms: [], entries: [], hasCompleteMatch: false };
@@ -524,22 +524,18 @@ export const getDictionarySearchTerms = async (value: string): Promise<Dictionar
       : 'No se pudo cargar el complemento inglés de JMdict.';
   }
 
-  // 4-tier hybrid ranking:
-  // priority 0: Spanish complete match (score === 0)
-  // priority 1: English complete match (score === 0)
-  // priority 2: Spanish partial match (score > 0)
-  // priority 3: English partial match (score > 0)
+  const isEnglish = language === 'en';
   const combined = [
     ...spanishResults.map((m) => ({
       entry: toEntry(m.entry, 'es'),
       score: m.score,
-      priority: m.score === 0 ? 0 : 2,
+      priority: m.score === 0 ? (isEnglish ? 1 : 0) : (isEnglish ? 3 : 2),
     })),
     ...englishResults
       .map((m) => ({
         entry: toEntry(m.entry, 'en'),
         score: m.score,
-        priority: m.score === 0 ? 1 : 3,
+        priority: m.score === 0 ? (isEnglish ? 0 : 1) : (isEnglish ? 2 : 3),
       })),
   ].sort((left, right) => {
     if (left.priority !== right.priority) {
@@ -549,8 +545,8 @@ export const getDictionarySearchTerms = async (value: string): Promise<Dictionar
   });
 
   const topEntries = [
-    ...combined.filter((item) => item.entry.language === 'es').slice(0, 20),
-    ...combined.filter((item) => item.entry.language === 'en').slice(0, 20),
+    ...combined.filter((item) => item.entry.language === language).slice(0, 20),
+    ...combined.filter((item) => item.entry.language !== language).slice(0, 20),
   ].sort((left, right) => {
     if (left.priority !== right.priority) {
       return left.priority - right.priority;

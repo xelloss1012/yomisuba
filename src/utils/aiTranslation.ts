@@ -83,7 +83,15 @@ export async function resolveOpenRouterModel(selection: string): Promise<string>
   return latestModel;
 }
 
-function translationPrompt(text: string): string {
+function translationPrompt(text: string, targetLanguage: 'es' | 'en' = 'es'): string {
+  if (targetLanguage === 'en') {
+    return [
+      'Translate the following Japanese text to English.',
+      'Return only the translation, without explanations, notes, or markdown.',
+      '',
+      text,
+    ].join('\n');
+  }
   return [
     'Traduce del japonés al español el texto siguiente.',
     'Devuelve únicamente la traducción, sin explicaciones, notas ni markdown.',
@@ -92,7 +100,20 @@ function translationPrompt(text: string): string {
   ].join('\n');
 }
 
-function explanationPrompt(text: string): string {
+function explanationPrompt(text: string, targetLanguage: 'es' | 'en' = 'es'): string {
+  if (targetLanguage === 'en') {
+    return [
+      'Translate the Japanese text to English first, and then explain the translation you generated.',
+      'Include the translation at the beginning of the response and then explain the general meaning, grammatical structures, important conjugations, and relevant vocabulary.',
+      'Clarify nuances, register, or cultural context only when useful.',
+      'Do not use romaji or transliterate Japanese into the Latin alphabet in grammar or vocabulary explanations.',
+      'When indicating the reading or pronunciation of a Japanese word, write it in hiragana or katakana as appropriate.',
+      'Structure the response with "Translation" and "Explanation" headings, plus brief bullet points. Do not invent information if something is ambiguous.',
+      '',
+      'Japanese text:',
+      text,
+    ].join('\n');
+  }
   return [
     'Traduce primero el texto japonés al español y, a continuación, explica esa traducción que tú mismo has generado.',
     'Incluye la traducción al principio de la respuesta y después explica el sentido general, las construcciones gramaticales, las conjugaciones importantes y el vocabulario relevante.',
@@ -287,12 +308,16 @@ export async function translateWithAi(
   apiKey: string,
   text: string,
   openRouterModel?: string,
+  targetLanguage: 'es' | 'en' = 'es',
 ): Promise<string> {
+  const systemMessage = targetLanguage === 'en'
+    ? 'You are a precise Japanese to English translator.'
+    : 'Eres un traductor preciso de japonés a español.';
   return generateWithAi(
     provider,
     apiKey,
-    translationPrompt(text),
-    'Eres un traductor preciso de japonés a español.',
+    translationPrompt(text, targetLanguage),
+    systemMessage,
     1024,
     openRouterModel,
   );
@@ -303,12 +328,16 @@ export async function explainWithAi(
   apiKey: string,
   text: string,
   openRouterModel?: string,
+  targetLanguage: 'es' | 'en' = 'es',
 ): Promise<string> {
+  const systemMessage = targetLanguage === 'en'
+    ? 'You are an expert Japanese teacher who explains clearly and accurately in English.'
+    : 'Eres un profesor experto de japonés que explica en español de forma clara y precisa.';
   return generateWithAi(
     provider,
     apiKey,
-    explanationPrompt(text),
-    'Eres un profesor experto de japonés que explica en español de forma clara y precisa.',
+    explanationPrompt(text, targetLanguage),
+    systemMessage,
     2048,
     openRouterModel,
   );

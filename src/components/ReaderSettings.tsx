@@ -1,7 +1,8 @@
 import React from 'react';
 import { AiProvider, FontFamily, ReaderSettingsState, ReaderTheme } from '../types/epub';
-import { X, Type, AlignLeft, Sun, BookOpen, Compass } from 'lucide-react';
+import { X, Type, AlignLeft, Sun, BookOpen, Compass, Languages } from 'lucide-react';
 import { DEFAULT_OPENROUTER_MODEL, OPENROUTER_MODEL_PRESETS } from '../utils/aiTranslation';
+import { t } from '../utils/i18n';
 
 interface Props {
   isOpen: boolean;
@@ -54,7 +55,7 @@ export const ReaderSettings: React.FC<Props> = ({
         <div className="flex items-center justify-between pb-4 border-b border-zinc-200 dark:border-zinc-800">
           <div className="flex items-center gap-2">
             <Type className="w-5 h-5 text-zinc-700 dark:text-zinc-300" />
-            <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Ajustes de Lectura</h2>
+            <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">{t('settings.title', settings.language)}</h2>
           </div>
           <button
             onClick={onClose}
@@ -65,6 +66,37 @@ export const ReaderSettings: React.FC<Props> = ({
         </div>
 
         <div className="space-y-6 pt-4 max-h-[75vh] overflow-y-auto">
+          {/* Idioma de la interfaz */}
+          <div>
+            <label className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2 flex items-center gap-1.5">
+              <Languages className="w-4 h-4" /> {t('language.label', settings.language)}
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => onUpdateSettings({ language: 'es' })}
+                className={`py-2.5 px-4 rounded-xl border text-xs font-semibold transition-all ${
+                  (settings.language || 'es') === 'es'
+                    ? 'border-indigo-600 bg-indigo-50/70 text-indigo-700 dark:bg-indigo-950/40 dark:border-indigo-500 dark:text-indigo-300 shadow-sm'
+                    : 'border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300'
+                }`}
+              >
+                Español
+              </button>
+              <button
+                type="button"
+                onClick={() => onUpdateSettings({ language: 'en' })}
+                className={`py-2.5 px-4 rounded-xl border text-xs font-semibold transition-all ${
+                  settings.language === 'en'
+                    ? 'border-indigo-600 bg-indigo-50/70 text-indigo-700 dark:bg-indigo-950/40 dark:border-indigo-500 dark:text-indigo-300 shadow-sm'
+                    : 'border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300'
+                }`}
+              >
+                English
+              </button>
+            </div>
+          </div>
+
           {/* Dirección y Modo de Escritura (Japonés vertical vs horizontal) */}
           <div>
             <label className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2 flex items-center gap-1.5">

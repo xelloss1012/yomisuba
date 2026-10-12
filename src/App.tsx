@@ -50,6 +50,7 @@ const DEFAULT_SETTINGS: ReaderSettingsState = {
   aiApiKeys: {},
   openRouterModel: 'openrouter/free',
   paginationMode: 'device',
+  language: 'es',
 };
 
 const isNightTime = () => {
@@ -744,6 +745,8 @@ export const App: React.FC = () => {
           onDownloadDriveBook={handleDownloadDriveBook}
           onDeleteDriveBook={handleDeleteDriveBook}
           onRefreshDriveBooks={handleRefreshDriveBooks}
+          language={settings.language}
+          onUpdateSettings={handleUpdateSettings}
         />
       )}
     </div>

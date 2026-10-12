@@ -64,4 +64,5 @@ export interface ReaderSettingsState {
   aiApiKeys: Partial<Record<AiProvider, string>>;
   openRouterModel: string;
   paginationMode: PaginationMode;
+  language: 'es' | 'en';
 }
