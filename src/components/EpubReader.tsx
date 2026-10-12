@@ -3923,26 +3923,28 @@ export const EpubReader: React.FC<Props> = ({
         </button>
       )}
 
-      <button
-        type="button"
-        onClick={() => void handleToggleReaderFullscreen()}
-        className={`tap-area fixed z-[55] flex h-8 w-8 items-center justify-center rounded-full backdrop-blur-sm transition-colors ${
-          isReaderFullscreen
-            ? 'bg-indigo-500/70 text-white'
-            : 'bg-black/25 text-white/65 hover:bg-black/45 hover:text-white/90'
-        }`}
-        style={{
-          bottom: 'max(env(safe-area-inset-bottom, 4px), 4px)',
-          right: 'max(calc(env(safe-area-inset-right, 4px) + 48px), 48px)',
-        }}
-        title={isReaderFullscreen ? t('nav.exitFullscreen', settings.language) : t('nav.fullscreen', settings.language)}
-        aria-label={isReaderFullscreen ? t('nav.exitFullscreen', settings.language) : t('nav.fullscreen', settings.language)}
-        aria-pressed={isReaderFullscreen}
-      >
-        {isReaderFullscreen
-          ? <Minimize2 className="h-4 w-4" />
-          : <Maximize2 className="h-4 w-4" />}
-      </button>
+      {!showUi && (
+        <button
+          type="button"
+          onClick={() => void handleToggleReaderFullscreen()}
+          className={`tap-area fixed z-[55] flex h-8 w-8 items-center justify-center rounded-full backdrop-blur-sm transition-colors ${
+            isReaderFullscreen
+              ? 'bg-indigo-500/70 text-white'
+              : 'bg-black/25 text-white/65 hover:bg-black/45 hover:text-white/90'
+          }`}
+          style={{
+            bottom: 'max(env(safe-area-inset-bottom, 4px), 4px)',
+            right: 'max(calc(env(safe-area-inset-right, 4px) + 48px), 48px)',
+          }}
+          title={isReaderFullscreen ? t('nav.exitFullscreen', settings.language) : t('nav.fullscreen', settings.language)}
+          aria-label={isReaderFullscreen ? t('nav.exitFullscreen', settings.language) : t('nav.fullscreen', settings.language)}
+          aria-pressed={isReaderFullscreen}
+        >
+          {isReaderFullscreen
+            ? <Minimize2 className="h-4 w-4" />
+            : <Maximize2 className="h-4 w-4" />}
+        </button>
+      )}
 
       {!showUi && (
         <button
