@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Bookmark, Highlighter, Trash2, X } from 'lucide-react';
 import { TextAnnotation } from '../utils/textAnnotations';
+import { t } from '../utils/i18n';
 
 export interface ReaderBookmark {
   spineIndex: number;
@@ -26,6 +27,7 @@ interface Props {
   isOpen: boolean;
   bookmarks: BookmarkItem[];
   annotations: AnnotationItem[];
+  language?: 'es' | 'en';
   onClose: () => void;
   onSelect: (bookmark: ReaderBookmark) => void;
   onRemove: (bookmark: ReaderBookmark) => void;
@@ -37,6 +39,7 @@ export const BookmarksModal: React.FC<Props> = ({
   isOpen,
   bookmarks,
   annotations,
+  language = 'es',
   onClose,
   onSelect,
   onRemove,
@@ -63,20 +66,20 @@ export const BookmarksModal: React.FC<Props> = ({
         <header className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
           <div className="flex items-center gap-2">
             <h2 id="saved-items-title" className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
-              Guardados
+              {t('bookmarks.title', language)}
             </h2>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="tap-area rounded-full p-2 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-            aria-label="Cerrar marcadores"
+            aria-label={t('nav.close', language)}
           >
             <X className="h-5 w-5" />
           </button>
         </header>
 
-        <div role="tablist" aria-label="Elementos guardados" className="grid grid-cols-2 gap-1 border-b border-zinc-200 p-2 dark:border-zinc-800">
+        <div role="tablist" aria-label={t('bookmarks.title', language)} className="grid grid-cols-2 gap-1 border-b border-zinc-200 p-2 dark:border-zinc-800">
           <button
             type="button"
             role="tab"
@@ -89,7 +92,7 @@ export const BookmarksModal: React.FC<Props> = ({
             }`}
           >
             <Bookmark className="h-4 w-4" />
-            Marcadores
+            {t('bookmarks.tabBookmarks', language)}
             <span className="text-xs opacity-70">{bookmarks.length}</span>
           </button>
           <button
@@ -104,7 +107,7 @@ export const BookmarksModal: React.FC<Props> = ({
             }`}
           >
             <Highlighter className="h-4 w-4" />
-            Subrayados
+            {t('bookmarks.tabAnnotations', language)}
             <span className="text-xs opacity-70">{annotations.length}</span>
           </button>
         </div>
@@ -126,15 +129,15 @@ export const BookmarksModal: React.FC<Props> = ({
                       {bookmark.chapterLabel}
                     </span>
                     <span className="mt-0.5 block text-xs text-zinc-500 dark:text-zinc-400">
-                      {bookmark.chapterPageDisplay || `Página ${bookmark.page + 1} del capítulo`} · {bookmark.pageDisplay || `Página ${bookmark.bookPage} del libro`}
+                      {bookmark.chapterPageDisplay || `${t('bookmarks.page', language)} ${bookmark.page + 1}`} · {bookmark.pageDisplay || `${t('bookmarks.page', language)} ${bookmark.bookPage}`}
                     </span>
                   </button>
                   <button
                     type="button"
                     onClick={() => onRemove(bookmark)}
                     className="tap-area rounded-lg p-2 text-zinc-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-300"
-                    aria-label={`Eliminar marcador de página ${bookmark.bookPage}`}
-                    title="Eliminar marcador"
+                    aria-label={`Eliminar marcador`}
+                    title={t('common.delete', language)}
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
@@ -143,55 +146,43 @@ export const BookmarksModal: React.FC<Props> = ({
             </ul>
           ) : (
             <p role="tabpanel" className="px-5 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
-              Todavía no hay marcadores. Usa el botón de marcador para guardar la página actual.
+              {t('bookmarks.empty', language)}
             </p>
           )
         ) : annotations.length ? (
           <ul role="tabpanel" className="space-y-2 overflow-y-auto p-3">
-            {annotations.map((annotation) => {
-              const excerpt = annotation.quote.trim().replace(/\s+/g, ' ');
-              return (
-                <li
-                  key={annotation.id}
-                  className="flex items-start gap-2 rounded-xl border border-indigo-200 bg-indigo-50/50 p-2 dark:border-indigo-900 dark:bg-indigo-950/20"
+            {annotations.map((annotation) => (
+              <li
+                key={annotation.id}
+                className="flex items-center gap-2 rounded-xl border border-zinc-200 p-2 dark:border-zinc-800"
+              >
+                <button
+                  type="button"
+                  onClick={() => onSelectAnnotation(annotation)}
+                  className="min-w-0 flex-1 rounded-lg px-2 py-2 text-left hover:bg-zinc-50 dark:hover:bg-zinc-800/70"
                 >
-                  <button
-                    type="button"
-                    onClick={() => onSelectAnnotation(annotation)}
-                    className="min-w-0 flex-1 rounded-lg px-2 py-2 text-left hover:bg-indigo-100/70 dark:hover:bg-indigo-900/40"
-                  >
-                    <span className="flex items-center gap-1.5 text-xs font-medium text-indigo-700 dark:text-indigo-300">
-                      <Highlighter className="h-3.5 w-3.5 shrink-0" />
-                      <span className="truncate">{annotation.chapterLabel}</span>
-                    </span>
-                    <span className="mt-1 block text-sm leading-relaxed text-zinc-800 dark:text-zinc-100">
-                      <span className="rounded bg-indigo-200/80 px-0.5 dark:bg-indigo-800/70">
-                        {excerpt.slice(0, 180)}
-                        {excerpt.length > 180 ? '…' : ''}
-                      </span>
-                    </span>
-                    {annotation.pageLabel && (
-                      <span className="mt-1.5 block text-xs text-zinc-500 dark:text-zinc-400">
-                        {annotation.pageLabel}
-                      </span>
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onRemoveAnnotation(annotation)}
-                    className="tap-area rounded-lg p-2 text-zinc-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-300"
-                    aria-label={`Eliminar subrayado: ${annotation.quote.slice(0, 40)}`}
-                    title="Eliminar subrayado"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </li>
-              );
-            })}
+                  <span className="block truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">
+                    "{annotation.quote}"
+                  </span>
+                  <span className="mt-0.5 block text-xs text-zinc-500 dark:text-zinc-400">
+                    {annotation.chapterLabel} {annotation.pageLabel ? `· ${annotation.pageLabel}` : ''}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onRemoveAnnotation(annotation)}
+                  className="tap-area rounded-lg p-2 text-zinc-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-300"
+                  aria-label={t('common.delete', language)}
+                  title={t('common.delete', language)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </li>
+            ))}
           </ul>
         ) : (
           <p role="tabpanel" className="px-5 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
-            Todavía no hay frases subrayadas. Selecciona un texto y pulsa «Subrayar».
+            {t('bookmarks.empty', language)}
           </p>
         )}
       </section>

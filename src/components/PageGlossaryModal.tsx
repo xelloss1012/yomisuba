@@ -11,6 +11,7 @@ import {
   TranslationFavorite,
   TranslationFavoriteCandidate,
 } from '../utils/translationFavorites';
+import { t } from '../utils/i18n';
 
 export interface PageWordToken extends JapaneseMorphologicalToken {
   range: Range;
@@ -106,7 +107,7 @@ export const PageGlossaryModal: React.FC<Props> = ({
           } catch (error) {
             results[item.key] = error instanceof Error
               ? error.message
-              : 'No se pudo consultar el diccionario.';
+              : t('glossary.errorQuery', language);
           }
           if (!cancelled) setCompleted((count) => count + 1);
         }
@@ -122,35 +123,37 @@ export const PageGlossaryModal: React.FC<Props> = ({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, words]);
+  }, [words, isOpen, language]);
+
+  const visibleWords = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return words;
+    return words.filter(({ token }) =>
+      token.surface_form.toLowerCase().includes(term) ||
+      (token.reading && token.reading.toLowerCase().includes(term)) ||
+      (token.basic_form && token.basic_form.toLowerCase().includes(term))
+    );
+  }, [search, words]);
 
   if (!isOpen) return null;
 
-  const normalizedSearch = search.trim().toLocaleLowerCase();
-  const visibleWords = words.filter(({ token }) =>
-    !normalizedSearch ||
-    [token.surface_form, token.basic_form, token.reading, token.pos]
-      .filter(Boolean)
-      .some((value) => value!.toLocaleLowerCase().includes(normalizedSearch))
-  );
-
   return (
     <div
-      className="fixed inset-0 z-[85] flex items-end justify-center bg-black/45 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+      className="fixed inset-0 z-[75] flex items-end justify-center bg-black/45 backdrop-blur-sm sm:items-center"
       onClick={onClose}
     >
       <section
         role="dialog"
         aria-modal="true"
         aria-labelledby="page-glossary-title"
-        className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-900 sm:rounded-2xl"
+        className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-900 sm:rounded-2xl"
         onClick={(event) => event.stopPropagation()}
       >
         <header className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
           <div className="flex min-w-0 items-center gap-2">
             <BookOpen className="h-5 w-5 shrink-0 text-indigo-600 dark:text-indigo-400" />
             <h2 id="page-glossary-title" className="truncate text-base font-semibold text-zinc-900 dark:text-zinc-100">
-              Glosario de la página
+              {t('glossary.title', language)}
             </h2>
             <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
               {words.length}
@@ -160,7 +163,7 @@ export const PageGlossaryModal: React.FC<Props> = ({
             type="button"
             onClick={onClose}
             className="tap-area rounded-full p-2 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-            aria-label="Cerrar glosario"
+            aria-label={t('nav.close', language)}
           >
             <X className="h-5 w-5" />
           </button>
@@ -171,17 +174,17 @@ export const PageGlossaryModal: React.FC<Props> = ({
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Filtrar palabras..."
+            placeholder={t('glossary.filter', language)}
             className="w-full rounded-xl border border-zinc-200 bg-zinc-50 py-2 pl-9 pr-3 text-sm text-zinc-900 outline-none focus:border-indigo-400 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
           />
         </label>
 
         <div className="flex items-center justify-between px-4 py-2 text-[11px] text-zinc-500 dark:text-zinc-400">
-          <span>Toca una palabra para seleccionarla en la página.</span>
+          <span>{t('glossary.instruction', language)}</span>
           {completed < words.length && (
             <span className="flex shrink-0 items-center gap-1">
               <Loader2 className="h-3 w-3 animate-spin" />
-              Diccionario {completed}/{words.length}
+              {t('translate.dictionary', language)} {completed}/{words.length}
             </span>
           )}
         </div>
@@ -230,7 +233,7 @@ export const PageGlossaryModal: React.FC<Props> = ({
                   </span>
                   {token.basic_form && token.basic_form !== '*' && token.basic_form !== token.surface_form && (
                     <span className="mt-0.5 block text-[11px] text-zinc-500 dark:text-zinc-400">
-                      Forma base: {token.basic_form}
+                      {t('glossary.baseForm', language)}: {token.basic_form}
                     </span>
                   )}
                   {entry && firstSense && (
@@ -246,11 +249,11 @@ export const PageGlossaryModal: React.FC<Props> = ({
                     </span>
                   )}
                   {lookup && typeof lookup !== 'string' && !entry && (
-                    <span className="mt-1 block text-xs text-zinc-400">Sin acepción encontrada.</span>
+                    <span className="mt-1 block text-xs text-zinc-400">{t('glossary.noDefinition', language)}</span>
                   )}
                   {typeof lookup === 'string' && (
                     <span className="mt-1 block text-xs text-rose-600 dark:text-rose-300">
-                      Error al consultar: {lookup}
+                      {t('glossary.errorQuery', language)}: {lookup}
                     </span>
                   )}
                   {entry && lookup && typeof lookup !== 'string' && lookup.englishFallbackError && (
@@ -266,10 +269,8 @@ export const PageGlossaryModal: React.FC<Props> = ({
                     className={`tap-area mt-1 shrink-0 rounded-lg p-2 ${
                       favorite ? 'text-amber-500' : 'text-zinc-400 hover:text-amber-500'
                     }`}
-                    aria-label={favorite
-                      ? `Quitar ${token.surface_form} del glosario de favoritos`
-                      : `Añadir ${token.surface_form} a favoritos`}
-                    title={favorite ? 'Quitar de favoritos' : 'Marcar definición como favorita'}
+                    aria-label={favorite ? (language === 'en' ? 'Remove from favorites' : 'Quitar de favoritos') : (language === 'en' ? 'Add to favorites' : 'Añadir a favoritos')}
+                    title={favorite ? (language === 'en' ? 'Remove from favorites' : 'Quitar de favoritos') : (language === 'en' ? 'Mark definition as favorite' : 'Marcar definición como favorita')}
                     aria-pressed={favorite}
                   >
                     <Star className={`h-4 w-4 ${favorite ? 'fill-current' : ''}`} />
@@ -280,7 +281,7 @@ export const PageGlossaryModal: React.FC<Props> = ({
           })}
           {visibleWords.length === 0 && (
             <li className="py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
-              No hay palabras que coincidan.
+              {t('glossary.empty', language)}
             </li>
           )}
         </ul>

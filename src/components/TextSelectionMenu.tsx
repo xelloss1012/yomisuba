@@ -224,7 +224,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
             aria-label="Copiar texto"
           >
             {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-            {!isMobile && <span>{copied ? (language === 'en' ? 'Copied' : 'Copiado') : t('menu.copy', language)}</span>}
+            {!isMobile && <span>{copied ? t('menu.copied', language) : t('menu.copy', language)}</span>}
           </button>
 
           {/* Traducir */}
@@ -250,7 +250,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
             title="Consultar diccionario JMDict local"
           >
             <BookOpen className="w-3.5 h-3.5" />
-            <span>{language === 'en' ? 'Dictionary' : 'Diccionario'}</span>
+            <span>{t('menu.dict', language)}</span>
           </button>
 
           {/* Pronunciación TTS */}

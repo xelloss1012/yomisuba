@@ -21,6 +21,7 @@ import {
   TranslationFavorite,
   TranslationFavoriteCandidate,
 } from '../utils/translationFavorites';
+import { t } from '../utils/i18n';
 
 interface Props {
   isOpen: boolean;
@@ -139,7 +140,7 @@ export const TranslationModal: React.FC<Props> = ({
           if (data && data[0]) {
             result = data[0].map((item: [string]) => item[0]).join('');
           } else {
-            result = language === 'en' ? 'Could not translate text.' : 'No se pudo traducir el texto.';
+            result = t('translate.errorTranslate', language);
           }
         }
         if (cancelled) return;

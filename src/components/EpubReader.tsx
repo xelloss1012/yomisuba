@@ -4094,6 +4094,7 @@ export const EpubReader: React.FC<Props> = ({
         entries={translationHistory}
         favorites={translationFavorites}
         frequentQueries={frequentQueries}
+        language={settings.language}
         onClose={() => setIsTranslationHistoryOpen(false)}
         onRemove={handleRemoveTranslationHistoryEntry}
         onClear={handleClearTranslationHistory}
@@ -4122,6 +4123,7 @@ export const EpubReader: React.FC<Props> = ({
         getPageLabel={getSearchPageLabel}
         getChapterLabel={(spineIndex) => spineLabels[spineIndex] || `Sección ${spineIndex + 1}`}
         recentSearches={recentSearches}
+        language={settings.language}
         onRememberSearch={handleRememberSearch}
         onRemoveRecent={handleRemoveRecentSearch}
         onClearRecents={handleClearRecentSearches}
@@ -4133,6 +4135,7 @@ export const EpubReader: React.FC<Props> = ({
         isOpen={isBookmarksOpen}
         bookmarks={bookmarkItems}
         annotations={annotationItems}
+        language={settings.language}
         onClose={() => setIsBookmarksOpen(false)}
         onSelect={handleSelectBookmark}
         onRemove={handleRemoveBookmark}

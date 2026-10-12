@@ -61,7 +61,7 @@ export const FileDropZone: React.FC<Props> = ({
       if (file.name.endsWith('.epub') || file.type.includes('epub') || file.type.includes('zip')) {
         onFileLoaded(file);
       } else {
-        alert(language === 'en' ? 'Please select a file with .epub extension' : 'Por favor, selecciona un archivo con extensión .epub');
+        alert(t('dropzone.alert', language));
       }
     }
   };
@@ -139,6 +139,7 @@ export const FileDropZone: React.FC<Props> = ({
           onDownloadBook={onDownloadDriveBook}
           onDeleteBook={onDeleteDriveBook}
           onRefreshBooks={onRefreshDriveBooks}
+          language={language}
         />
 
         {/* Drop Zone */}
@@ -169,7 +170,7 @@ export const FileDropZone: React.FC<Props> = ({
           </div>
 
           <div className="text-base font-semibold text-zinc-800 dark:text-zinc-200 mb-1">
-            {language === 'en' ? 'Drag your ' : 'Arrastra tu archivo '} <span className="text-indigo-600 dark:text-indigo-400">.epub</span> {language === 'en' ? 'here' : 'aquí'}
+            {t('dropzone.dragPrefix', language)}<span className="text-indigo-600 dark:text-indigo-400">.epub</span>{t('dropzone.dragSuffix', language)}
           </div>
           <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
             {t('dropzone.browse', language)}
@@ -236,7 +237,7 @@ export const FileDropZone: React.FC<Props> = ({
                     type="button"
                     onClick={() => onRemoveRecentBook(book)}
                     disabled={isLoading || isDriveBusy}
-                    title={language === 'en' ? 'Remove recent book' : 'Quitar de recientes'}
+                    title={t('dropzone.removeRecent', language)}
                     className="p-2 text-zinc-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
                   >
                     <Trash2 className="w-4 h-4" />

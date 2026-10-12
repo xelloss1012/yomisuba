@@ -6,6 +6,7 @@ import {
   normalizeSearchQuery,
   SearchHit,
 } from '../utils/bookSearch';
+import { t } from '../utils/i18n';
 
 interface Props {
   isOpen: boolean;
@@ -20,6 +21,7 @@ interface Props {
   getPageLabel: (spineIndex: number, page: number) => string;
   getChapterLabel: (spineIndex: number) => string;
   recentSearches: string[];
+  language?: 'es' | 'en';
   onRememberSearch: (query: string) => void;
   onRemoveRecent: (query: string) => void;
   onClearRecents: () => void;
@@ -39,6 +41,7 @@ export const BookSearchModal: React.FC<Props> = ({
   getPageLabel,
   getChapterLabel,
   recentSearches,
+  language = 'es',
   onRememberSearch,
   onRemoveRecent,
   onClearRecents,
@@ -108,50 +111,57 @@ export const BookSearchModal: React.FC<Props> = ({
   const isIndexing = indexedCount < spineCount;
 
   const { hits, truncated } = useMemo(() => {
-    if (!normalizedQuery) return { hits: [] as SearchHit[], truncated: false };
-    const found: SearchHit[] = [];
-    for (let spine = 0; spine < texts.length; spine += 1) {
-      const text = texts[spine];
+    if (!normalizedQuery) return { hits: [], truncated: false };
+    const allHits: SearchHit[] = [];
+    for (let spineIndex = 0; spineIndex < texts.length; spineIndex += 1) {
+      const text = texts[spineIndex];
       if (!text) continue;
-      const room = MAX_SEARCH_HITS + 1 - found.length;
-      found.push(...findHits(text, normalizedQuery, spine, room));
-      if (found.length > MAX_SEARCH_HITS) break;
+      const chapterHits = findHits(text, normalizedQuery, spineIndex, MAX_SEARCH_HITS - allHits.length);
+      for (const hit of chapterHits) {
+        allHits.push({ ...hit, spineIndex });
+      }
+      if (allHits.length >= MAX_SEARCH_HITS) break;
     }
-    return {
-      hits: found.slice(0, MAX_SEARCH_HITS),
-      truncated: found.length > MAX_SEARCH_HITS,
-    };
+    return { hits: allHits, truncated: allHits.length >= MAX_SEARCH_HITS };
   }, [normalizedQuery, texts]);
 
-  // Place the hits on their pages, one chapter per layout pass, so each result
-  // can show where it is. Results stay usable meanwhile; a new query abandons
-  // the pass between chapters.
+  // Request chapter page numbers for hits as they appear.
   useEffect(() => {
-    if (!isOpen || !hits.length) return;
+    if (!isOpen || hits.length === 0) return;
     let cancelled = false;
-    const pending = new Map<number, SearchHit[]>();
-    for (const hit of hits) {
-      if (hitPagesRef.current.has(`${hit.spineIndex}:${hit.start}:${hit.length}`)) continue;
-      const group = pending.get(hit.spineIndex);
-      if (group) group.push(hit);
-      else pending.set(hit.spineIndex, [hit]);
-    }
-    const place = async () => {
-      for (const [spineIndex, group] of pending) {
+    const computePages = async () => {
+      const byChapter = new Map<number, Array<{ start: number; length: number }>>();
+      for (const hit of hits) {
+        const key = `${hit.spineIndex}:${hit.start}:${hit.length}`;
+        if (hitPagesRef.current.has(key)) continue;
+        let list = byChapter.get(hit.spineIndex);
+        if (!list) {
+          list = [];
+          byChapter.set(hit.spineIndex, list);
+        }
+        list.push({ start: hit.start, length: hit.length });
+      }
+      if (byChapter.size === 0) return;
+
+      for (const [spineIndex, chapterHits] of byChapter.entries()) {
         if (cancelled) return;
         try {
-          const pages = await getHitPages(spineIndex, group);
+          const pages = await getHitPages(spineIndex, chapterHits);
           if (cancelled) return;
-          group.forEach((hit, position) => {
-            hitPagesRef.current.set(`${hit.spineIndex}:${hit.start}:${hit.length}`, pages[position] ?? 0);
-          });
-          setPagesVersion((version) => version + 1);
+          for (let i = 0; i < chapterHits.length; i += 1) {
+            const hit = chapterHits[i];
+            const page = pages[i];
+            if (page !== undefined) {
+              hitPagesRef.current.set(`${spineIndex}:${hit.start}:${hit.length}`, page);
+            }
+          }
+          setPagesVersion((v) => v + 1);
         } catch {
-          // A chapter that cannot be laid out simply shows no page number.
+          // Individual chapter page resolution failure shouldn't break search.
         }
       }
     };
-    void place();
+    void computePages();
     return () => {
       cancelled = true;
     };
@@ -160,14 +170,16 @@ export const BookSearchModal: React.FC<Props> = ({
   if (!isOpen) return null;
 
   const submit = () => {
-    setQuery(input);
-    if (input.trim()) onRememberSearch(input);
+    if (hits.length > 0) {
+      onRememberSearch(query);
+      onSelectHit(hits[0]);
+    }
   };
 
-  const pickRecent = (value: string) => {
-    setInput(value);
-    setQuery(value);
-    onRememberSearch(value);
+  const pickRecent = (recent: string) => {
+    setInput(recent);
+    setQuery(recent);
+    inputRef.current?.focus();
   };
 
   let lastChapter = -1;
@@ -181,21 +193,21 @@ export const BookSearchModal: React.FC<Props> = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby="book-search-title"
-        className="flex h-[82vh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-900 sm:rounded-2xl"
+        className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-900 sm:rounded-2xl"
         onClick={(event) => event.stopPropagation()}
       >
         <header className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
           <div className="flex items-center gap-2">
-            <Search className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+            <Search className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
             <h2 id="book-search-title" className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
-              Buscar en el libro
+              {t('search.title', language)}
             </h2>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="tap-area rounded-full p-2 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-            aria-label="Cerrar búsqueda"
+            aria-label={t('nav.close', language)}
           >
             <X className="h-5 w-5" />
           </button>
@@ -221,13 +233,13 @@ export const BookSearchModal: React.FC<Props> = ({
                 setComposing(false);
                 setInput(event.currentTarget.value);
               }}
-              placeholder="Palabra o frase…"
+              placeholder={t('search.placeholder', language)}
               enterKeyHint="search"
               autoComplete="off"
               autoCorrect="off"
               spellCheck={false}
               className="min-w-0 flex-1 bg-transparent py-3 text-base text-zinc-900 outline-none placeholder:text-zinc-400 dark:text-zinc-100"
-              aria-label="Texto a buscar"
+              aria-label={t('search.placeholder', language)}
             />
             {input && (
               <button
@@ -238,7 +250,7 @@ export const BookSearchModal: React.FC<Props> = ({
                   inputRef.current?.focus();
                 }}
                 className="tap-area rounded-full p-1.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
-                aria-label="Borrar texto"
+                aria-label={t('common.cancel', language)}
               >
                 <X className="h-4 w-4" />
               </button>
@@ -248,16 +260,16 @@ export const BookSearchModal: React.FC<Props> = ({
             {isIndexing && (
               <>
                 <Loader2 className="h-3 w-3 animate-spin" />
-                <span>Preparando el libro… {indexedCount}/{spineCount}</span>
+                <span>{language === 'en' ? 'Preparing book...' : 'Preparando el libro…'} {indexedCount}/{spineCount}</span>
               </>
             )}
             {!isIndexing && normalizedQuery && (
               <span>
                 {hits.length
                   ? truncated
-                    ? `Primeras ${MAX_SEARCH_HITS} coincidencias`
-                    : `${hits.length} ${hits.length === 1 ? 'coincidencia' : 'coincidencias'}`
-                  : 'Sin coincidencias'}
+                    ? (language === 'en' ? `First ${MAX_SEARCH_HITS} matches` : `Primeras ${MAX_SEARCH_HITS} coincidencias`)
+                    : `${hits.length} ${hits.length === 1 ? (language === 'en' ? 'match' : 'coincidencia') : (language === 'en' ? 'matches' : 'coincidencias')}`
+                  : t('search.noResults', language)}
               </span>
             )}
           </div>
@@ -270,14 +282,14 @@ export const BookSearchModal: React.FC<Props> = ({
                 <div className="mb-2 flex items-center justify-between px-1">
                   <span className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
                     <History className="h-3.5 w-3.5" />
-                    Búsquedas recientes
+                    {t('search.recent', language)}
                   </span>
                   <button
                     type="button"
                     onClick={onClearRecents}
                     className="tap-area rounded-lg px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
                   >
-                    Borrar todo
+                    {t('search.clearRecents', language)}
                   </button>
                 </div>
                 <ul className="space-y-1">
@@ -294,8 +306,8 @@ export const BookSearchModal: React.FC<Props> = ({
                         type="button"
                         onClick={() => onRemoveRecent(recent)}
                         className="tap-area rounded-lg p-2 text-zinc-400 hover:text-red-600 dark:hover:text-red-300"
-                        aria-label={`Quitar "${recent}" de las búsquedas recientes`}
-                        title="Quitar"
+                        aria-label={`Quitar "${recent}"`}
+                        title={t('common.delete', language)}
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -305,7 +317,7 @@ export const BookSearchModal: React.FC<Props> = ({
               </div>
             ) : (
               <p className="px-5 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
-                Escribe una palabra o frase, o selecciona texto en el libro y elige «Buscar en el libro».
+                {t('search.empty', language)}
               </p>
             )
           ) : (
