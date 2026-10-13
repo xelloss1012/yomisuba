@@ -435,9 +435,12 @@ export const App: React.FC = () => {
       const parsed = await parseEpub(buffer);
       const driveSession = googleDriveSession;
       if (driveSession && navigator.onLine) {
-        const bookKey = `ereader_book_${encodeURIComponent(`${parsed.metadata.title}|${parsed.metadata.creator}`)}`;
         try {
-          const readerData = await restoreGoogleDriveReaderData(driveSession.accessToken, bookKey);
+          const readerData = await restoreGoogleDriveReaderData(driveSession.accessToken, {
+            bookKey: `ereader_book_${encodeURIComponent(`${parsed.metadata.title}|${parsed.metadata.creator}`)}`,
+            title: parsed.metadata.title,
+            creator: parsed.metadata.creator,
+          });
           if (readerData) applyGoogleDriveReaderData(readerData);
         } catch (error) {
           if (navigator.onLine) {

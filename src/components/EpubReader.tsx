@@ -58,7 +58,7 @@ import {
   FrequentQuery,
   writeFrequentQueries,
 } from '../utils/frequentQueries';
-import { ReaderBookBackup } from '../utils/googleDriveBackup';
+import { ReaderBookBackup, ReaderDataGroup } from '../utils/googleDriveBackup';
 import {
   DictionaryLookup,
   getDictionarySearchTerms,
@@ -435,6 +435,7 @@ export const EpubReader: React.FC<Props> = ({
   }, []);
   const backupDirtyRef = useRef(false);
   const pendingReaderBackupRef = useRef<ReaderBookBackup | null>(null);
+  const lastUploadedBackupRef = useRef<ReaderBookBackup | null>(null);
   const onBookDataChangeRef = useRef(onBookDataChange);
   onBookDataChangeRef.current = onBookDataChange;
   const selectionRangeRef = useRef<Range | null>(null);
@@ -464,6 +465,11 @@ export const EpubReader: React.FC<Props> = ({
   const isVertical = settings.writingMode === 'vertical-rl';
   const isRtl = isVertical || settings.progressionDirection === 'rtl';
   const isNativeAndroid = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
+
+  const markReaderDataChanged = useCallback(() => {
+    backupDirtyRef.current = true;
+  }, []);
+
   const [printedPages, setPrintedPages] = useState<number | undefined>(() => {
     try {
       const stored = localStorage.getItem(`${bookStorageKey}_printed_pages`);
@@ -485,7 +491,8 @@ export const EpubReader: React.FC<Props> = ({
     } catch {
       // ignore
     }
-  }, [bookStorageKey]);
+    markReaderDataChanged();
+  }, [bookStorageKey, markReaderDataChanged]);
 
   const handleTogglePaginationMode = useCallback(() => {
     const nextMode: PaginationMode =
@@ -596,10 +603,6 @@ export const EpubReader: React.FC<Props> = ({
       // Persistence is optional when storage is unavailable.
     }
   }, [bookStorageKey]);
-
-  const markReaderDataChanged = useCallback(() => {
-    backupDirtyRef.current = true;
-  }, []);
 
   const handleRecordFrequentQuery = useCallback((query: string, searchToken: string | number) => {
     const token = String(searchToken);
@@ -2655,6 +2658,8 @@ export const EpubReader: React.FC<Props> = ({
       bookKey: bookStorageKey,
       title: epub.metadata.title,
       creator: epub.metadata.creator,
+      printedPages,
+      chapterPageCounts: chapterPageCountsRef.current.slice(),
       position: {
         spineIndex: currentSpineIndex,
         page: currentPage,
@@ -2671,9 +2676,31 @@ export const EpubReader: React.FC<Props> = ({
       frequentQueries,
       frequentQueriesVersion: FREQUENT_QUERIES_VERSION,
     };
+    // Determine which data groups actually changed since the last upload so only
+    // those files are written to Drive instead of the whole book snapshot.
+    const previous = lastUploadedBackupRef.current;
+    const dirty: ReaderDataGroup[] = [];
+    const readingChanged = !previous
+      || JSON.stringify(previous.position) !== JSON.stringify(backup.position)
+      || previous.printedPages !== backup.printedPages
+      || JSON.stringify(previous.chapterPageCounts) !== JSON.stringify(backup.chapterPageCounts);
+    if (readingChanged) dirty.push('reading');
+    if (!previous || JSON.stringify(previous.bookmarks) !== JSON.stringify(backup.bookmarks)) dirty.push('bookmarks');
+    if (!previous || JSON.stringify(previous.annotations) !== JSON.stringify(backup.annotations)) dirty.push('annotations');
+    const historyChanged = !previous
+      || JSON.stringify(previous.translationHistory) !== JSON.stringify(backup.translationHistory)
+      || JSON.stringify(previous.frequentQueries) !== JSON.stringify(backup.frequentQueries);
+    if (historyChanged) dirty.push('history');
+    if (!previous || JSON.stringify(previous.favorites) !== JSON.stringify(backup.favorites)) dirty.push('favorites');
+    if (!dirty.length) {
+      backupDirtyRef.current = false;
+      return;
+    }
+    backup.dirtyGroups = dirty;
     pendingReaderBackupRef.current = backup;
     const timer = window.setTimeout(() => {
       onBookDataChange(backup);
+      lastUploadedBackupRef.current = backup;
       pendingReaderBackupRef.current = null;
       backupDirtyRef.current = false;
     }, 900);
@@ -2690,6 +2717,7 @@ export const EpubReader: React.FC<Props> = ({
     isLoadingChapter,
     isReaderPositioned,
     onBookDataChange,
+    printedPages,
     textAnnotations,
     translationFavorites,
     translationHistory,

@@ -13,10 +13,8 @@ const DRIVE_SESSION_SCOPE_VERSION_KEY = 'ereader_google_drive_scope_version';
 const DRIVE_SESSION_SCOPE_VERSION = 'drive.file.v1';
 const PENDING_READER_DATA_KEY = 'ereader_pending_drive_reader_data_v1';
 const DRIVE_FOLDER_NAME = '.ereader';
-const READER_FOLDER_NAME = DRIVE_FOLDER_NAME;
-const BOOKS_FOLDER_NAME = 'books';
 const DRIVE_FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
-const SETTINGS_FILE_NAME = 'EReader settings.json';
+const SETTINGS_FILE_NAME = 'settings.json';
 const SETTINGS_FILE_TYPE = 'application/json';
 const BOOK_STATE_PREFIX = 'EReader reading data - ';
 const MAX_BOOK_SIZE = 100 * 1024 * 1024;
@@ -27,6 +25,26 @@ const DRIVE_REQUEST_TIMEOUT_MS = 12_000;
 const GOOGLE_AUTH_TIMEOUT_MS = 12_000;
 const GOOGLE_LOGIN_TIMEOUT_MS = 60_000;
 const READER_RESTORE_TIMEOUT_MS = 4_000;
+
+// ─── Segmented per-book storage ───────────────────────────────────────────────
+// Each book lives in its own folder (named after the real book title) and each
+// kind of reader data is stored in a separate file so that saving one piece only
+// touches that piece's file instead of rewriting everything at once.
+const READING_FILE_NAME = 'reading.json';
+const BOOKMARKS_FILE_NAME = 'bookmarks.json';
+const ANNOTATIONS_FILE_NAME = 'annotations.json';
+const HISTORY_FILE_NAME = 'history.json';
+const FAVORITES_FILE_NAME = 'favorites.json';
+const BOOK_SETTINGS_FILE_NAME = 'settings.json';
+
+export type ReaderDataGroup = 'reading' | 'bookmarks' | 'annotations' | 'history' | 'favorites';
+
+/** Stable identity of a book, used to derive its Drive folder and validate files. */
+export interface BookDriveIdentity {
+  bookKey: string;
+  title: string;
+  creator: string;
+}
 
 interface DriveFile {
   id: string;
@@ -59,7 +77,8 @@ export interface ReaderBookBackup {
   title: string;
   creator: string;
   printedPages?: number;
-  position: { spineIndex: number; page: number; pageCount?: number; textOffset?: number };
+  chapterPageCounts?: number[];
+  position?: { spineIndex: number; page: number; pageCount?: number; textOffset?: number };
   bookmarks: Array<{ spineIndex: number; page: number; pageCount?: number; textOffset?: number }>;
   annotations: Array<{ id: string; spineIndex: number; quote: string; prefix: string; suffix: string }>;
   translationHistory: Array<{
@@ -74,6 +93,8 @@ export interface ReaderBookBackup {
   favorites: TranslationFavorite[];
   frequentQueries?: FrequentQuery[];
   frequentQueriesVersion?: number;
+  /** Which groups changed since the last upload, so only those files are written. */
+  dirtyGroups?: ReaderDataGroup[];
 }
 
 let initializePromise: Promise<void> | null = null;
@@ -308,13 +329,43 @@ async function getDriveFolderId(accessToken: string): Promise<string> {
   return getOrCreateDriveFolder(accessToken, DRIVE_FOLDER_NAME);
 }
 
-async function getReaderBooksFolderId(accessToken: string): Promise<string> {
-  const readerFolderId = await getOrCreateDriveFolder(accessToken, READER_FOLDER_NAME);
-  return getOrCreateDriveFolder(accessToken, BOOKS_FOLDER_NAME, readerFolderId);
+/**
+ * Google Drive forbids some characters in file/folder names and treats leading/
+ * trailing dots specially. Produce a safe, human-readable folder name from the
+ * real book title (falling back to the creator and finally to a generic name).
+ */
+function sanitizeDriveFolderName(raw: string): string {
+  const cleaned = raw
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^\.+/, '')
+    .replace(/\.+$/, '')
+    .slice(0, 120)
+    .trim();
+  return cleaned;
 }
 
-async function findFile(accessToken: string, name: string): Promise<DriveFile | null> {
-  const folderId = await getDriveFolderId(accessToken);
+export function bookFolderName(identity: BookDriveIdentity): string {
+  const title = sanitizeDriveFolderName(identity.title);
+  if (title) return title;
+  const creator = sanitizeDriveFolderName(identity.creator);
+  if (creator) return creator;
+  return 'Libro sin título';
+}
+
+async function getBookFolderId(accessToken: string, identity: BookDriveIdentity): Promise<string> {
+  const readerFolderId = await getDriveFolderId(accessToken);
+  return getOrCreateDriveFolder(accessToken, bookFolderName(identity), readerFolderId);
+}
+
+async function findFile(
+  accessToken: string,
+  name: string,
+  folderIdOverride?: string,
+): Promise<DriveFile | null> {
+  const folderId = folderIdOverride || await getDriveFolderId(accessToken);
   const query = new URLSearchParams({
     q: `name = '${name.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}' and '${folderId}' in parents and trashed = false`,
     spaces: 'drive',
@@ -328,9 +379,11 @@ async function findFile(accessToken: string, name: string): Promise<DriveFile | 
 }
 
 async function listBookFiles(accessToken: string): Promise<DriveFile[]> {
-  const folderId = await getReaderBooksFolderId(accessToken);
+  // Under the `drive.file` scope the app only ever sees files it created, so we
+  // can locate managed EPUBs by name regardless of the folder they live in
+  // (books are now stored inside their own per-book folder).
   const query = new URLSearchParams({
-    q: `'${folderId}' in parents and trashed = false`,
+    q: `name contains '.epub' and mimeType != '${DRIVE_FOLDER_MIME_TYPE}' and trashed = false`,
     spaces: 'drive',
     pageSize: '1000',
     fields: 'nextPageToken,files(id,name,description,size,modifiedTime,mimeType)',
@@ -581,11 +634,45 @@ export async function deleteGoogleDriveBook(
 
   await deleteDriveFile(accessToken, file.id);
   if (typeof metadata.title === 'string' && typeof metadata.creator === 'string') {
-    const bookKey = `ereader_book_${encodeURIComponent(`${metadata.title}|${metadata.creator}`)}`;
-    removePendingGoogleDriveReaderData(bookKey);
-    const stateId = await hashText(bookKey);
-    const stateFile = await findFile(accessToken, `${BOOK_STATE_PREFIX}${stateId}.json`);
-    if (stateFile) await deleteDriveFile(accessToken, stateFile.id);
+    const identity: BookDriveIdentity = {
+      bookKey: `ereader_book_${encodeURIComponent(`${metadata.title}|${metadata.creator}`)}`,
+      title: metadata.title,
+      creator: metadata.creator,
+    };
+    removePendingGoogleDriveReaderData(identity.bookKey);
+    await deleteAllBookData(accessToken, identity);
+  }
+}
+
+/**
+ * Removes every segmented data file of a book (and, best effort, the legacy
+ * monolithic file from older versions) so no orphan data is left behind.
+ */
+async function deleteAllBookData(accessToken: string, identity: BookDriveIdentity): Promise<void> {
+  let folderId: string;
+  try {
+    folderId = await getBookFolderId(accessToken, identity);
+  } catch {
+    return;
+  }
+  const fileNames = [
+    READING_FILE_NAME,
+    BOOKMARKS_FILE_NAME,
+    ANNOTATIONS_FILE_NAME,
+    HISTORY_FILE_NAME,
+    FAVORITES_FILE_NAME,
+    BOOK_SETTINGS_FILE_NAME,
+  ];
+  for (const name of fileNames) {
+    const existing = await findFile(accessToken, name, folderId);
+    if (existing) await deleteDriveFile(accessToken, existing.id);
+  }
+  // Best effort cleanup of the previous single-file layout.
+  try {
+    const legacy = await findFile(accessToken, `${BOOK_STATE_PREFIX}${await hashText(identity.bookKey)}.json`);
+    if (legacy) await deleteDriveFile(accessToken, legacy.id);
+  } catch {
+    // Legacy cleanup is optional.
   }
 }
 
@@ -612,7 +699,7 @@ export async function uploadGoogleDriveBook(accessToken: string, book: RecentBoo
     book.blob,
     existing,
     description,
-    await getReaderBooksFolderId(accessToken),
+    await getBookFolderId(accessToken, { bookKey: '', title: book.title, creator: book.creator }),
   );
 }
 
@@ -689,20 +776,79 @@ export async function saveGoogleDriveReaderData(
   accessToken: string,
   data: ReaderBookBackup,
 ): Promise<void> {
-  const id = await hashText(data.bookKey);
-  const name = `${BOOK_STATE_PREFIX}${id}.json`;
-  const previous = readerBackupQueues.get(name) || Promise.resolve();
+  const identity: BookDriveIdentity = { bookKey: data.bookKey, title: data.title, creator: data.creator };
+  const folderId = await getBookFolderId(accessToken, identity);
+  // Only the groups flagged as dirty are written. When no flag is present (e.g.
+  // the initial full sync from the offline queue) every group is written.
+  const groups: ReaderDataGroup[] = data.dirtyGroups && data.dirtyGroups.length
+    ? data.dirtyGroups
+    : ['reading', 'bookmarks', 'annotations', 'history', 'favorites'];
+
+  await Promise.all(groups.map((group) => saveReaderGroup(accessToken, folderId, identity.bookKey, group, data)));
+  clearPendingGoogleDriveReaderData(data);
+}
+
+/** Serializes one data group to its own JSON file inside the book folder. */
+async function saveReaderGroup(
+  accessToken: string,
+  folderId: string,
+  bookKey: string,
+  group: ReaderDataGroup,
+  data: ReaderBookBackup,
+): Promise<void> {
+  const fileName = groupFileName(group);
+  let payload: unknown;
+  switch (group) {
+    case 'reading':
+      payload = {
+        formatVersion: 1,
+        bookKey,
+        ...(data.position ? { position: data.position } : {}),
+        ...(data.printedPages ? { printedPages: data.printedPages } : {}),
+        ...(data.chapterPageCounts && data.chapterPageCounts.length ? { chapterPageCounts: data.chapterPageCounts } : {}),
+      };
+      break;
+    case 'bookmarks':
+      payload = { formatVersion: 1, bookKey, items: data.bookmarks };
+      break;
+    case 'annotations':
+      payload = { formatVersion: 1, bookKey, items: data.annotations };
+      break;
+    case 'history':
+      payload = {
+        formatVersion: 1,
+        bookKey,
+        translationHistory: data.translationHistory,
+        ...(data.frequentQueries ? { frequentQueries: data.frequentQueries } : {}),
+        ...(data.frequentQueriesVersion ? { frequentQueriesVersion: data.frequentQueriesVersion } : {}),
+      };
+      break;
+    case 'favorites':
+      payload = { formatVersion: 1, bookKey, items: data.favorites };
+      break;
+  }
+  const queueKey = `${folderId}:${fileName}`;
+  const previous = readerBackupQueues.get(queueKey) || Promise.resolve();
   const save = previous.catch(() => undefined).then(async () => {
-    const existing = await findFile(accessToken, name);
-    const json = JSON.stringify({ formatVersion: 1, ...data });
-    await uploadFile(accessToken, name, SETTINGS_FILE_TYPE, new Blob([json], { type: SETTINGS_FILE_TYPE }), existing);
+    const existing = await findFile(accessToken, fileName, folderId);
+    const json = JSON.stringify(payload);
+    await uploadFile(accessToken, fileName, SETTINGS_FILE_TYPE, new Blob([json], { type: SETTINGS_FILE_TYPE }), existing, undefined, folderId);
   });
-  readerBackupQueues.set(name, save);
+  readerBackupQueues.set(queueKey, save);
   try {
     await save;
-    clearPendingGoogleDriveReaderData(data);
   } finally {
-    if (readerBackupQueues.get(name) === save) readerBackupQueues.delete(name);
+    if (readerBackupQueues.get(queueKey) === save) readerBackupQueues.delete(queueKey);
+  }
+}
+
+function groupFileName(group: ReaderDataGroup): string {
+  switch (group) {
+    case 'reading': return READING_FILE_NAME;
+    case 'bookmarks': return BOOKMARKS_FILE_NAME;
+    case 'annotations': return ANNOTATIONS_FILE_NAME;
+    case 'history': return HISTORY_FILE_NAME;
+    case 'favorites': return FAVORITES_FILE_NAME;
   }
 }
 
@@ -715,7 +861,10 @@ export async function syncPendingGoogleDriveReaderData(accessToken: string): Pro
 export function queueGoogleDriveReaderData(data: ReaderBookBackup): void {
   try {
     const pending = getPendingGoogleDriveReaderData();
-    pending[data.bookKey] = { ...data, formatVersion: 1 };
+    // Store the snapshot without the transient `dirtyGroups` hint so the offline
+    // queue performs a full write of every group when connectivity returns.
+    const { dirtyGroups: _ignored, ...snapshot } = data;
+    pending[data.bookKey] = { ...snapshot, formatVersion: 1 };
     localStorage.setItem(PENDING_READER_DATA_KEY, JSON.stringify(pending));
   } catch (error) {
     console.warn('No se pudo guardar localmente la cola de sincronización de Drive:', error);
@@ -739,7 +888,8 @@ export function getPendingGoogleDriveReaderData(): Record<string, ReaderBookBack
 function clearPendingGoogleDriveReaderData(data: ReaderBookBackup): void {
   try {
     const pending = getPendingGoogleDriveReaderData();
-    if (JSON.stringify(pending[data.bookKey]) !== JSON.stringify({ ...data, formatVersion: 1 })) return;
+    const { dirtyGroups: _ignored, ...snapshot } = data;
+    if (JSON.stringify(pending[data.bookKey]) !== JSON.stringify({ ...snapshot, formatVersion: 1 })) return;
     delete pending[data.bookKey];
     if (Object.keys(pending).length) {
       localStorage.setItem(PENDING_READER_DATA_KEY, JSON.stringify(pending));
@@ -768,48 +918,107 @@ function removePendingGoogleDriveReaderData(bookKey: string): void {
 
 export async function restoreGoogleDriveReaderData(
   accessToken: string,
-  bookKey: string,
+  identity: BookDriveIdentity,
 ): Promise<ReaderBookBackup | null> {
   return withTimeout((async () => {
-    const id = await hashText(bookKey);
-    const file = await findFile(accessToken, `${BOOK_STATE_PREFIX}${id}.json`);
-    if (!file) return null;
-    const data: unknown = JSON.parse(await (await downloadFile(accessToken, file)).text());
-    if (!isReaderBookBackup(data) || data.bookKey !== bookKey) {
-      throw new Error('Los datos de lectura de Google Drive no son válidos para este libro.');
-    }
-    data.favorites ||= [];
-    return data;
+    const folderId = await getBookFolderId(accessToken, identity);
+    const bookKey = identity.bookKey;
+    const present: ReaderDataGroup[] = [];
+    const backup: ReaderBookBackup = {
+      formatVersion: 1,
+      bookKey,
+      title: identity.title,
+      creator: identity.creator,
+      bookmarks: [],
+      annotations: [],
+      translationHistory: [],
+      favorites: [],
+    };
+
+    const loadGroup = async (
+      group: ReaderDataGroup,
+      fileName: string,
+      validate: (value: unknown, key: string) => boolean,
+      apply: (data: Record<string, unknown>) => void,
+    ) => {
+      const file = await findFile(accessToken, fileName, folderId);
+      if (!file) return;
+      const data: unknown = JSON.parse(await (await downloadFile(accessToken, file)).text());
+      if (!validate(data, bookKey)) return;
+      present.push(group);
+      apply(data as Record<string, unknown>);
+    };
+
+    await loadGroup('reading', READING_FILE_NAME, isReadingFile, (data) => {
+      const position = data.position as ReaderBookBackup['position'];
+      if (position) backup.position = position;
+      const printedPages = data.printedPages as number | undefined;
+      if (printedPages) backup.printedPages = printedPages;
+      const chapterPageCounts = data.chapterPageCounts as number[] | undefined;
+      if (chapterPageCounts) backup.chapterPageCounts = chapterPageCounts;
+    });
+    await loadGroup('bookmarks', BOOKMARKS_FILE_NAME, isPositionsFile, (data) => {
+      backup.bookmarks = data.items as ReaderBookBackup['bookmarks'];
+    });
+    await loadGroup('annotations', ANNOTATIONS_FILE_NAME, isAnnotationsFile, (data) => {
+      backup.annotations = data.items as ReaderBookBackup['annotations'];
+    });
+    await loadGroup('history', HISTORY_FILE_NAME, isHistoryFile, (data) => {
+      backup.translationHistory = data.translationHistory as ReaderBookBackup['translationHistory'];
+      if (data.frequentQueries) backup.frequentQueries = data.frequentQueries as FrequentQuery[];
+      if (data.frequentQueriesVersion) backup.frequentQueriesVersion = data.frequentQueriesVersion as number;
+    });
+    await loadGroup('favorites', FAVORITES_FILE_NAME, isFavoritesFile, (data) => {
+      backup.favorites = data.items as TranslationFavorite[];
+    });
+
+    if (!present.length) return null;
+    // Signal which groups exist remotely so `applyGoogleDriveReaderData` only
+    // touches those and never wipes local data for a group with no remote file.
+    backup.dirtyGroups = present;
+    return backup;
   })(), READER_RESTORE_TIMEOUT_MS, 'La restauración desde Drive tardó demasiado.');
 }
 
 export function applyGoogleDriveReaderData(data: ReaderBookBackup): void {
   const prefix = `ereader_book_${encodeURIComponent(`${data.title}|${data.creator}`)}`;
-  localStorage.setItem(`${prefix}_position`, JSON.stringify(data.position));
-  if (data.bookmarks.length) localStorage.setItem(`${prefix}_bookmark`, JSON.stringify(data.bookmarks));
-  else localStorage.removeItem(`${prefix}_bookmark`);
-  if (data.annotations.length) localStorage.setItem(`${prefix}_annotations`, JSON.stringify(data.annotations));
-  else localStorage.removeItem(`${prefix}_annotations`);
-  if (data.translationHistory.length) {
-    localStorage.setItem(`${prefix}_translation_history`, JSON.stringify(data.translationHistory));
-  } else {
-    localStorage.removeItem(`${prefix}_translation_history`);
+  // Only apply the groups that were actually restored from Drive so a missing
+  // remote file never destroys local data.
+  const restored = new Set<ReaderDataGroup>(data.dirtyGroups);
+
+  if (restored.has('reading') && data.position) {
+    localStorage.setItem(`${prefix}_position`, JSON.stringify(data.position));
+    if (data.printedPages) localStorage.setItem(`${prefix}_printed_pages`, String(data.printedPages));
   }
-  if (data.favorites.length) {
-    localStorage.setItem(`${prefix}_translation_favorites`, JSON.stringify(data.favorites));
-  } else {
-    localStorage.removeItem(`${prefix}_translation_favorites`);
+  if (restored.has('bookmarks')) {
+    if (data.bookmarks.length) localStorage.setItem(`${prefix}_bookmark`, JSON.stringify(data.bookmarks));
+    else localStorage.removeItem(`${prefix}_bookmark`);
   }
-  if (data.frequentQueriesVersion === FREQUENT_QUERIES_VERSION && data.frequentQueries !== undefined) {
-    if (data.frequentQueries.length) {
-      localStorage.setItem(`${prefix}_frequent_queries`, JSON.stringify(data.frequentQueries));
+  if (restored.has('annotations')) {
+    if (data.annotations.length) localStorage.setItem(`${prefix}_annotations`, JSON.stringify(data.annotations));
+    else localStorage.removeItem(`${prefix}_annotations`);
+  }
+  if (restored.has('history')) {
+    if (data.translationHistory.length) {
+      localStorage.setItem(`${prefix}_translation_history`, JSON.stringify(data.translationHistory));
     } else {
-      localStorage.removeItem(`${prefix}_frequent_queries`);
+      localStorage.removeItem(`${prefix}_translation_history`);
     }
-    localStorage.setItem(`${prefix}_frequent_queries_version`, String(FREQUENT_QUERIES_VERSION));
-  } else {
-    localStorage.removeItem(`${prefix}_frequent_queries`);
-    localStorage.setItem(`${prefix}_frequent_queries_version`, String(FREQUENT_QUERIES_VERSION));
+    if (data.frequentQueriesVersion === FREQUENT_QUERIES_VERSION && data.frequentQueries !== undefined) {
+      if (data.frequentQueries.length) {
+        localStorage.setItem(`${prefix}_frequent_queries`, JSON.stringify(data.frequentQueries));
+      } else {
+        localStorage.removeItem(`${prefix}_frequent_queries`);
+      }
+      localStorage.setItem(`${prefix}_frequent_queries_version`, String(FREQUENT_QUERIES_VERSION));
+    }
+  }
+  if (restored.has('favorites')) {
+    if (data.favorites.length) {
+      localStorage.setItem(`${prefix}_translation_favorites`, JSON.stringify(data.favorites));
+    } else {
+      localStorage.removeItem(`${prefix}_translation_favorites`);
+    }
   }
 }
 
@@ -862,6 +1071,55 @@ const isDictionaryHistoryData = (value: unknown): value is DictionaryHistoryData
     Array.isArray(data.entries);
 };
 
+function isAnnotation(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const annotation = value as Record<string, unknown>;
+  return typeof annotation.id === 'string'
+    && Number.isInteger(annotation.spineIndex)
+    && Number(annotation.spineIndex) >= 0
+    && typeof annotation.quote === 'string'
+    && typeof annotation.prefix === 'string'
+    && typeof annotation.suffix === 'string';
+}
+
+function isHistoryEntry(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const entry = value as Record<string, unknown>;
+  return typeof entry.id === 'string'
+    && typeof entry.queriedAt === 'number'
+    && Number.isFinite(entry.queriedAt)
+    && typeof entry.query === 'string'
+    && (entry.kind === 'dictionary' || entry.kind === 'translation' || entry.kind === 'ai')
+    && (entry.provider === undefined || ['gemini', 'openai', 'deepseek', 'openrouter'].includes(String(entry.provider)))
+    && typeof entry.response === 'string'
+    && (entry.data === undefined || isDictionaryHistoryData(entry.data));
+}
+
+function isFavorite(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const favorite = value as Record<string, unknown>;
+  return typeof favorite.id === 'string'
+    && typeof favorite.savedAt === 'number'
+    && Number.isFinite(favorite.savedAt)
+    && typeof favorite.query === 'string'
+    && (favorite.kind === 'dictionary' || favorite.kind === 'translation' || favorite.kind === 'ai' || favorite.kind === 'glossary')
+    && (favorite.provider === undefined || ['gemini', 'openai', 'deepseek', 'openrouter'].includes(String(favorite.provider)))
+    && typeof favorite.response === 'string'
+    && (favorite.data === undefined || isDictionaryHistoryData(favorite.data));
+}
+
+function isFrequentQuery(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const query = value as Record<string, unknown>;
+  return typeof query.key === 'string'
+    && typeof query.query === 'string'
+    && typeof query.count === 'number'
+    && Number.isInteger(query.count)
+    && query.count > 0
+    && typeof query.updatedAt === 'number'
+    && Number.isFinite(query.updatedAt);
+}
+
 function isReaderBookBackup(value: unknown): value is ReaderBookBackup {
   if (!value || typeof value !== 'object') return false;
   const data = value as Record<string, unknown>;
@@ -870,61 +1128,70 @@ function isReaderBookBackup(value: unknown): value is ReaderBookBackup {
     && typeof data.title === 'string'
     && typeof data.creator === 'string'
     && (data.printedPages === undefined || (Number.isInteger(data.printedPages) && Number(data.printedPages) > 0))
-    && isReadingPosition(data.position)
+    && (data.chapterPageCounts === undefined || (Array.isArray(data.chapterPageCounts)
+      && data.chapterPageCounts.every((count) => Number.isInteger(count) && Number(count) > 0)))
+    && (data.position === undefined || isReadingPosition(data.position))
     && Array.isArray(data.bookmarks)
     && data.bookmarks.every(isReadingPosition)
     && Array.isArray(data.annotations)
-    && data.annotations.every((value) => {
-      if (!value || typeof value !== 'object') return false;
-      const annotation = value as Record<string, unknown>;
-      return typeof annotation.id === 'string'
-        && Number.isInteger(annotation.spineIndex)
-        && Number(annotation.spineIndex) >= 0
-        && typeof annotation.quote === 'string'
-        && typeof annotation.prefix === 'string'
-        && typeof annotation.suffix === 'string';
-    })
+    && data.annotations.every(isAnnotation)
     && Array.isArray(data.translationHistory)
-    && data.translationHistory.every((value) => {
-      if (!value || typeof value !== 'object') return false;
-      const entry = value as Record<string, unknown>;
-      return typeof entry.id === 'string'
-        && typeof entry.queriedAt === 'number'
-        && Number.isFinite(entry.queriedAt)
-        && typeof entry.query === 'string'
-        && (entry.kind === 'dictionary' || entry.kind === 'translation' || entry.kind === 'ai')
-        && (entry.provider === undefined || ['gemini', 'openai', 'deepseek', 'openrouter'].includes(String(entry.provider)))
-        && typeof entry.response === 'string'
-        && (entry.data === undefined || isDictionaryHistoryData(entry.data));
-    })
+    && data.translationHistory.every(isHistoryEntry)
     && (data.favorites === undefined || (
       Array.isArray(data.favorites)
-      && data.favorites.every((value) => {
-        if (!value || typeof value !== 'object') return false;
-        const favorite = value as Record<string, unknown>;
-        return typeof favorite.id === 'string'
-          && typeof favorite.savedAt === 'number'
-          && Number.isFinite(favorite.savedAt)
-          && typeof favorite.query === 'string'
-          && (favorite.kind === 'dictionary' || favorite.kind === 'translation' || favorite.kind === 'ai' || favorite.kind === 'glossary')
-          && (favorite.provider === undefined || ['gemini', 'openai', 'deepseek', 'openrouter'].includes(String(favorite.provider)))
-          && typeof favorite.response === 'string'
-          && (favorite.data === undefined || isDictionaryHistoryData(favorite.data));
-      })
+      && data.favorites.every(isFavorite)
     ))
     && (data.frequentQueriesVersion === undefined || data.frequentQueriesVersion === FREQUENT_QUERIES_VERSION)
     && (data.frequentQueries === undefined || (
       Array.isArray(data.frequentQueries)
-      && data.frequentQueries.every((value) => {
-        if (!value || typeof value !== 'object') return false;
-        const query = value as Record<string, unknown>;
-        return typeof query.key === 'string'
-          && typeof query.query === 'string'
-          && typeof query.count === 'number'
-          && Number.isInteger(query.count)
-          && query.count > 0
-          && typeof query.updatedAt === 'number'
-          && Number.isFinite(query.updatedAt);
-      })
+      && data.frequentQueries.every(isFrequentQuery)
     ));
+}
+
+// ─── Segmented file validators ────────────────────────────────────────────────
+// Each per-book file is a small envelope { formatVersion, bookKey, ...payload }.
+// `bookKey` must match the requested book so a mismatched/renamed folder is
+// rejected instead of silently mixing data between books.
+function readSegmentedEnvelope(value: unknown, bookKey: string): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const data = value as Record<string, unknown>;
+  if (data.formatVersion !== 1 || data.bookKey !== bookKey) return null;
+  return data;
+}
+
+function isReadingFile(value: unknown, bookKey: string): boolean {
+  const data = readSegmentedEnvelope(value, bookKey);
+  if (!data) return false;
+  if (data.position !== undefined && !isReadingPosition(data.position)) return false;
+  if (data.printedPages !== undefined && !(Number.isInteger(data.printedPages) && Number(data.printedPages) > 0)) return false;
+  if (data.chapterPageCounts !== undefined && !(Array.isArray(data.chapterPageCounts)
+    && data.chapterPageCounts.every((count) => Number.isInteger(count) && Number(count) > 0))) return false;
+  return true;
+}
+
+function isPositionsFile(value: unknown, bookKey: string): boolean {
+  const data = readSegmentedEnvelope(value, bookKey);
+  if (!data) return false;
+  return Array.isArray(data.items) && data.items.every(isReadingPosition);
+}
+
+function isAnnotationsFile(value: unknown, bookKey: string): boolean {
+  const data = readSegmentedEnvelope(value, bookKey);
+  if (!data) return false;
+  return Array.isArray(data.items) && data.items.every(isAnnotation);
+}
+
+function isHistoryFile(value: unknown, bookKey: string): boolean {
+  const data = readSegmentedEnvelope(value, bookKey);
+  if (!data) return false;
+  if (!Array.isArray(data.translationHistory) || !data.translationHistory.every(isHistoryEntry)) return false;
+  if (data.frequentQueries !== undefined && !(Array.isArray(data.frequentQueries) && data.frequentQueries.every(isFrequentQuery))) return false;
+  if (data.frequentQueriesVersion !== undefined && data.frequentQueriesVersion !== FREQUENT_QUERIES_VERSION) return false;
+  return true;
+}
+
+function isFavoritesFile(value: unknown, bookKey: string): boolean {
+  const data = readSegmentedEnvelope(value, bookKey);
+  if (!data) return false;
+  return Array.isArray(data.items) && data.items.every(isFavorite);
 }

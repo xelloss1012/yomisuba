@@ -11,6 +11,7 @@
     "favorites:test": "node scripts/test-translation-favorites.mjs",
     "frequent:test": "node scripts/test-frequent-queries.mjs",
     "history:test": "node scripts/test-translation-history.mjs",
+    "drive:test": "node scripts/test-google-drive-layout.mjs",
     "android:add": "npm run build:web && cap add android",
     "android:sync": "npm run build:web && cap sync android",
     "android:open": "cap open android",
