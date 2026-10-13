@@ -13,7 +13,8 @@ import { DictionaryEntry, getDictionarySearchTerms } from '../utils/dictionary';
 import { speakJapanese } from '../utils/japaneseSpeech';
 import { MarkdownContent } from './MarkdownContent';
 import {
-  formatDictionaryHistoryResponse,
+  buildDictionaryHistoryResponse,
+  DictionaryHistoryData,
   TranslationHistoryKind,
 } from '../utils/translationHistory';
 import {
@@ -35,7 +36,7 @@ interface Props {
   favorites: TranslationFavorite[];
   frequentSearchToken: number;
   language?: UiLanguage;
-  onSaveHistory: (kind: TranslationHistoryKind, query: string, response: string, provider?: AiProvider) => void;
+  onSaveHistory: (kind: TranslationHistoryKind, query: string, response: string, provider?: AiProvider, data?: DictionaryHistoryData) => void;
   onRecordFrequentQuery: (query: string, searchToken: string | number) => void;
   onToggleFavorite: (candidate: TranslationFavoriteCandidate) => void;
 }
@@ -187,11 +188,12 @@ export const TranslationModal: React.FC<Props> = ({
       };
       setDictionaryTerms(terms);
       if (lookup.hasCompleteMatch) {
-        onSaveHistory(
-          'dictionary',
-          trimmedQuery,
-          formatDictionaryHistoryResponse(terms.baseForm, terms.searchTerms, terms.entries, language)
+        const { response, data } = buildDictionaryHistoryResponse(
+          terms.baseForm,
+          terms.searchTerms,
+          terms.entries,
         );
+        onSaveHistory('dictionary', trimmedQuery, response, undefined, data);
         recordSuccessfulSearch(trimmedQuery, dictionarySearchCountRef.current + 1);
       }
     } catch (error) {
@@ -472,15 +474,16 @@ export const TranslationModal: React.FC<Props> = ({
               ) : (
                 <div className="space-y-2">
                   {dictionaryTerms.entries.map((entry) => {
+                    const { response, data } = buildDictionaryHistoryResponse(
+                      dictionaryTerms.baseForm,
+                      dictionaryTerms.searchTerms,
+                      [entry],
+                    );
                     const definitionFavorite: TranslationFavoriteCandidate = {
                       query: dictionaryTerms.query,
                       kind: 'dictionary',
-                      response: formatDictionaryHistoryResponse(
-                        dictionaryTerms.baseForm,
-                        dictionaryTerms.searchTerms,
-                        [entry],
-                        language,
-                      ),
+                      response,
+                      data,
                     };
                     const isDefinitionSaved = isTranslationFavorite(favorites, definitionFavorite);
                     return (

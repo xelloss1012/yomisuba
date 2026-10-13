@@ -1,4 +1,4 @@
-import { TranslationHistoryKind } from './translationHistory';
+import { DictionaryHistoryData, TranslationHistoryKind } from './translationHistory';
 
 export type TranslationFavoriteKind = TranslationHistoryKind | 'glossary';
 
@@ -9,7 +9,16 @@ export interface TranslationFavorite {
   kind: TranslationFavoriteKind;
   provider?: string;
   response: string;
+  data?: DictionaryHistoryData;
 }
+
+const isDictionaryHistoryData = (value: unknown): value is DictionaryHistoryData => {
+  if (!value || typeof value !== 'object') return false;
+  const data = value as Record<string, unknown>;
+  return typeof data.baseForm === 'string' &&
+    Array.isArray(data.searchTerms) &&
+    Array.isArray(data.entries);
+};
 
 export type TranslationFavoriteCandidate = Omit<TranslationFavorite, 'id' | 'savedAt'>;
 
@@ -33,7 +42,8 @@ export const readTranslationFavorites = (storageKey: string): TranslationFavorit
         typeof item.query === 'string' &&
         (item.kind === 'dictionary' || item.kind === 'translation' || item.kind === 'ai' || item.kind === 'glossary') &&
         (item.provider === undefined || typeof item.provider === 'string') &&
-        typeof item.response === 'string'
+        typeof item.response === 'string' &&
+        (item.data === undefined || isDictionaryHistoryData(item.data))
       )
     ).slice(0, MAX_TRANSLATION_FAVORITES);
   } catch {

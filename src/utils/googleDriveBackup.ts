@@ -4,6 +4,7 @@ import { ReaderSettingsState } from '../types/epub';
 import { RecentBook, saveRecentBook } from './recentBooks';
 import { extractEpubCoverBlob } from './epubParser';
 import { TranslationFavorite } from './translationFavorites';
+import { DictionaryHistoryData } from './translationHistory';
 import { FREQUENT_QUERIES_VERSION, FrequentQuery } from './frequentQueries';
 
 const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
@@ -68,6 +69,7 @@ export interface ReaderBookBackup {
     kind: 'dictionary' | 'translation' | 'ai';
     provider?: string;
     response: string;
+    data?: DictionaryHistoryData;
   }>;
   favorites: TranslationFavorite[];
   frequentQueries?: FrequentQuery[];
@@ -852,6 +854,14 @@ function isReadingPosition(value: unknown): value is ReaderBookBackup['position'
       || (Number.isInteger(position.textOffset) && Number(position.textOffset) >= 0));
 }
 
+const isDictionaryHistoryData = (value: unknown): value is DictionaryHistoryData => {
+  if (!value || typeof value !== 'object') return false;
+  const data = value as Record<string, unknown>;
+  return typeof data.baseForm === 'string' &&
+    Array.isArray(data.searchTerms) &&
+    Array.isArray(data.entries);
+};
+
 function isReaderBookBackup(value: unknown): value is ReaderBookBackup {
   if (!value || typeof value !== 'object') return false;
   const data = value as Record<string, unknown>;
@@ -884,7 +894,8 @@ function isReaderBookBackup(value: unknown): value is ReaderBookBackup {
         && typeof entry.query === 'string'
         && (entry.kind === 'dictionary' || entry.kind === 'translation' || entry.kind === 'ai')
         && (entry.provider === undefined || ['gemini', 'openai', 'deepseek', 'openrouter'].includes(String(entry.provider)))
-        && typeof entry.response === 'string';
+        && typeof entry.response === 'string'
+        && (entry.data === undefined || isDictionaryHistoryData(entry.data));
     })
     && (data.favorites === undefined || (
       Array.isArray(data.favorites)
@@ -897,7 +908,8 @@ function isReaderBookBackup(value: unknown): value is ReaderBookBackup {
           && typeof favorite.query === 'string'
           && (favorite.kind === 'dictionary' || favorite.kind === 'translation' || favorite.kind === 'ai' || favorite.kind === 'glossary')
           && (favorite.provider === undefined || ['gemini', 'openai', 'deepseek', 'openrouter'].includes(String(favorite.provider)))
-          && typeof favorite.response === 'string';
+          && typeof favorite.response === 'string'
+          && (favorite.data === undefined || isDictionaryHistoryData(favorite.data));
       })
     ))
     && (data.frequentQueriesVersion === undefined || data.frequentQueriesVersion === FREQUENT_QUERIES_VERSION)

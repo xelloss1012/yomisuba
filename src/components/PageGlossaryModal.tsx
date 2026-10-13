@@ -5,7 +5,7 @@ import {
   JapaneseMorphologicalToken,
   getDictionarySearchTerms,
 } from '../utils/dictionary';
-import { formatDictionaryHistoryResponse } from '../utils/translationHistory';
+import { buildDictionaryHistoryResponse } from '../utils/translationHistory';
 import {
   isTranslationFavorite,
   TranslationFavorite,
@@ -205,11 +205,10 @@ export const PageGlossaryModal: React.FC<Props> = ({
                 ? {
                     query,
                     kind: 'glossary',
-                    response: formatDictionaryHistoryResponse(
+                    ...buildDictionaryHistoryResponse(
                       lookup.baseForm,
                       lookup.searchTerms,
                       lookup.entries,
-                      language,
                     ),
                   }
                 : null;

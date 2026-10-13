@@ -39,7 +39,8 @@ import {
 import {
   readTranslationHistory,
   saveTranslationHistoryEntry,
-  formatDictionaryHistoryResponse,
+  buildDictionaryHistoryResponse,
+  DictionaryHistoryData,
   TranslationHistoryEntry,
   TranslationHistoryKind,
 } from '../utils/translationHistory';
@@ -631,12 +632,19 @@ export const EpubReader: React.FC<Props> = ({
     query: string,
     response: string,
     provider?: AiProvider,
+    data?: DictionaryHistoryData,
   ) => {
     const previousId = translationHistoryRef.current[0]?.id;
     const next = saveTranslationHistoryEntry(
       translationHistoryStorageKey,
       translationHistoryRef.current,
-      { kind, query, response, ...(kind === 'ai' && provider ? { provider } : {}) }
+      {
+        kind,
+        query,
+        response,
+        ...(kind === 'ai' && provider ? { provider } : {}),
+        ...(data ? { data } : {}),
+      }
     );
     translationHistoryRef.current = next;
     setTranslationHistory(next);
@@ -2606,11 +2614,12 @@ export const EpubReader: React.FC<Props> = ({
           setDictionaryPreview(hasEntries ? lookup : null);
           if (hasEntries && lookup.hasCompleteMatch) {
             handleRecordFrequentQuery(query, frequentSearchToken);
-            handleSaveTranslationHistory(
-              'dictionary',
-              query,
-              formatDictionaryHistoryResponse(lookup.baseForm, lookup.searchTerms, lookup.entries, settings.language)
+            const { response, data } = buildDictionaryHistoryResponse(
+              lookup.baseForm,
+              lookup.searchTerms,
+              lookup.entries,
             );
+            handleSaveTranslationHistory('dictionary', query, response, undefined, data);
           }
         })
         .catch(() => {

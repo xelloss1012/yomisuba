@@ -1,6 +1,30 @@
 import { AiProvider } from '../types/epub';
+import { t, UiLanguage } from './i18n';
 
 export type TranslationHistoryKind = 'dictionary' | 'translation' | 'ai';
+
+export interface DictionaryHistorySense {
+  partOfSpeech: string[];
+  glosses: string[];
+}
+
+export interface DictionaryHistoryEntry {
+  language: 'es' | 'en';
+  kanji: string[];
+  kana: string[];
+  senses: DictionaryHistorySense[];
+}
+
+/**
+ * Fixed, language-neutral contract stored for dictionary/glossary results.
+ * Property names are English and never change; labels are only translated
+ * when the entry is rendered to the user (see `formatDictionaryHistoryResponse`).
+ */
+export interface DictionaryHistoryData {
+  baseForm: string;
+  searchTerms: string[];
+  entries: DictionaryHistoryEntry[];
+}
 
 export interface TranslationHistoryEntry {
   id: string;
@@ -9,6 +33,7 @@ export interface TranslationHistoryEntry {
   kind: TranslationHistoryKind;
   provider?: AiProvider;
   response: string;
+  data?: DictionaryHistoryData;
 }
 
 export const MAX_TRANSLATION_HISTORY_ENTRIES = 500;
@@ -29,7 +54,8 @@ export const readTranslationHistory = (storageKey: string): TranslationHistoryEn
         typeof item.queriedAt === 'number' &&
         typeof item.query === 'string' &&
         (item.kind === 'dictionary' || item.kind === 'translation' || item.kind === 'ai') &&
-        typeof item.response === 'string'
+        typeof item.response === 'string' &&
+        (item.data === undefined || isDictionaryHistoryData(item.data))
       )
     ).slice(0, MAX_TRANSLATION_HISTORY_ENTRIES);
   } catch {
@@ -71,24 +97,23 @@ export const saveTranslationHistoryEntry = (
   return next;
 };
 
-import { t, UiLanguage } from './i18n';
+const isDictionaryHistoryData = (value: unknown): value is DictionaryHistoryData => {
+  if (!value || typeof value !== 'object') return false;
+  const data = value as Record<string, unknown>;
+  return typeof data.baseForm === 'string' &&
+    Array.isArray(data.searchTerms) &&
+    Array.isArray(data.entries);
+};
 
-export const formatDictionaryHistoryResponse = (
-  baseForm: string,
-  searchTerms: string[],
-  entries: Array<{
-    language: 'es' | 'en';
-    kanji: string[];
-    kana: string[];
-    senses: Array<{ partOfSpeech: string[]; glosses: string[] }>;
-  }>,
-  lang: UiLanguage = 'es',
-) => {
-  const lines = [`${t('glossary.baseForm', lang)}: ${baseForm}`, `${t('glossary.terms', lang)}: ${searchTerms.join(', ')}`];
-  if (!entries.length) {
+const renderDictionaryLines = (data: DictionaryHistoryData, lang: UiLanguage): string[] => {
+  const lines = [
+    `${t('glossary.baseForm', lang)}: ${data.baseForm}`,
+    `${t('glossary.terms', lang)}: ${data.searchTerms.join(', ')}`,
+  ];
+  if (!data.entries.length) {
     lines.push('', t('glossary.notFound', lang));
   }
-  entries.forEach((entry, index) => {
+  data.entries.forEach((entry, index) => {
     lines.push(
       '',
       `${index + 1}. [${entry.language.toUpperCase()}] ${entry.kanji.length ? entry.kanji.join(' · ') : entry.kana.join(' · ')}`,
@@ -98,5 +123,52 @@ export const formatDictionaryHistoryResponse = (
       ),
     );
   });
-  return lines.join('\n');
+  return lines;
+};
+
+/**
+ * Renders the stored dictionary data using the labels of the currently
+ * selected UI language. Used only at display time.
+ */
+export const formatDictionaryHistoryResponse = (
+  data: DictionaryHistoryData,
+  lang: UiLanguage = 'es',
+) => renderDictionaryLines(data, lang).join('\n');
+
+/**
+ * Builds the language-neutral canonical `response` string (English labels)
+ * that is persisted alongside the structured `data`. This keeps the stored
+ * text stable regardless of the UI language used when the entry was created.
+ */
+export const serializeDictionaryHistoryResponse = (data: DictionaryHistoryData) =>
+  renderDictionaryLines(data, 'en').join('\n');
+
+/**
+ * Convenience helper for call sites: builds the structured `data` and the
+ * canonical `response` string from a dictionary lookup result.
+ */
+export const buildDictionaryHistoryResponse = (
+  baseForm: string,
+  searchTerms: string[],
+  entries: Array<{
+    language: 'es' | 'en';
+    kanji: string[];
+    kana: string[];
+    senses: Array<{ partOfSpeech: string[]; glosses: string[] }>;
+  }>,
+): { response: string; data: DictionaryHistoryData } => {
+  const data: DictionaryHistoryData = {
+    baseForm,
+    searchTerms,
+    entries: entries.map((entry) => ({
+      language: entry.language,
+      kanji: entry.kanji,
+      kana: entry.kana,
+      senses: entry.senses.map((sense) => ({
+        partOfSpeech: sense.partOfSpeech,
+        glosses: sense.glosses,
+      })),
+    })),
+  };
+  return { response: serializeDictionaryHistoryResponse(data), data };
 };

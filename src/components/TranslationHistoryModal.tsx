@@ -4,6 +4,8 @@ import { AI_PROVIDER_LABELS } from '../utils/aiTranslation';
 import {
   MAX_TRANSLATION_HISTORY_ENTRIES,
   TranslationHistoryEntry,
+  DictionaryHistoryData,
+  formatDictionaryHistoryResponse,
 } from '../utils/translationHistory';
 import {
   isTranslationFavorite,
@@ -38,10 +40,19 @@ interface DisplayItem {
   kind?: TranslationFavoriteKind;
   provider?: string;
   response: string;
+  data?: DictionaryHistoryData;
   date?: number;
   count?: number;
   candidate?: TranslationFavoriteCandidate;
 }
+
+/**
+ * Renders an item using the current UI language. Dictionary/glossary entries
+ * keep their structured `data`, so the labels (Base form / Terms / Reading…)
+ * are translated at display time instead of being baked in when stored.
+ */
+const renderItemResponse = (item: DisplayItem, language: UiLanguage): string =>
+  item.data ? formatDictionaryHistoryResponse(item.data, language) : item.response;
 
 const getKindLabel = (entry: { kind: TranslationFavoriteKind; provider?: string }, language: UiLanguage = 'es') => {
   if (entry.kind === 'dictionary') return t('common.dictionary', language);
@@ -96,12 +107,14 @@ export const TranslationHistoryModal: React.FC<Props> = ({
         kind: entry.kind,
         provider: entry.provider,
         response: entry.response,
+        data: entry.data,
         date: entry.queriedAt,
         candidate: {
           query: entry.query,
           kind: entry.kind,
           ...(entry.provider ? { provider: entry.provider } : {}),
           response: entry.response,
+          ...(entry.data ? { data: entry.data } : {}),
         },
       }));
     }
@@ -112,6 +125,7 @@ export const TranslationHistoryModal: React.FC<Props> = ({
         kind: entry.kind,
         provider: entry.provider,
         response: entry.response,
+        data: entry.data,
         candidate: entry,
       }));
     }
@@ -123,12 +137,14 @@ export const TranslationHistoryModal: React.FC<Props> = ({
         kind: entry?.kind,
         provider: entry?.provider,
         response: entry?.response || '',
+        data: entry?.data,
         count: frequent.count,
         candidate: entry ? {
           query: entry.query,
           kind: entry.kind,
           ...(entry.provider ? { provider: entry.provider } : {}),
           response: entry.response,
+          ...(entry.data ? { data: entry.data } : {}),
         } : undefined,
       };
     });
@@ -267,7 +283,7 @@ export const TranslationHistoryModal: React.FC<Props> = ({
                           )}
                         </div>
                         <p className={`mt-1 text-xs text-zinc-600 dark:text-zinc-300 ${isExpanded ? '' : 'line-clamp-2'}`}>
-                          {item.response}
+                          {renderItemResponse(item, language)}
                         </p>
                       </button>
                       <div className="flex shrink-0 items-center gap-1">
