@@ -125,6 +125,7 @@ export const zh: Record<string, string> = {
   'pagination.of': '共',
   'pagination.ofChapter': '章',
   'pagination.pageOfChapterName': '第 {chapter} 章，第 {page} / {total} 页',
+  'pagination.pageShortOfChapterName': '第 {chapter} 章，第 {page} / {total} 页',
 
   // TextSelectionMenu
   'menu.translate': '翻译',

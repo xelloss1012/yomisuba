@@ -125,6 +125,7 @@ export const ko: Record<string, string> = {
   'pagination.of': '/',
   'pagination.ofChapter': '장',
   'pagination.pageOfChapterName': '{chapter} 챕터의 {page}/{total} 페이지',
+  'pagination.pageShortOfChapterName': '{chapter} 챕터의 {page}/{total} 페이지',
 
   // TextSelectionMenu
   'menu.translate': '번역',

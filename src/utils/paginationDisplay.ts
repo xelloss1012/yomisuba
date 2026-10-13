@@ -37,25 +37,26 @@ export function formatChapterPageDisplay(
   const percent = Math.round(((cPage + 1) / cTotal) * 100);
 
   if (chapterName) {
-    const template = t('pagination.pageOfChapterName', language);
-    let result = template
-      .replace('{page}', (cPage + 1).toString())
-      .replace('{total}', cTotal.toString())
-      .replace('{chapter}', chapterName);
-    
+    const templateKey = paginationMode === 'printed' ? 'pagination.pageShortOfChapterName' : 'pagination.pageOfChapterName';
+    const template = t(templateKey, language);
+    let resolvedTemplate = template === templateKey ? t('pagination.pageOfChapterName', language) : template;
+
+    let targetPage = cPage + 1;
+    let targetTotal = cTotal;
     if (paginationMode === 'printed') {
        const bTotal = Math.max(1, bookTotalPages || cTotal);
        const pTotal = printedPages && printedPages > 0 ? printedPages : cTotal;
        const approxChapPrintedTotal = Math.max(1, Math.round((cTotal / bTotal) * pTotal));
        const approxChapPrintedPage = Math.max(1, Math.min(approxChapPrintedTotal, Math.round((cPage / Math.max(1, cTotal - 1)) * (approxChapPrintedTotal - 1)) + 1));
-       result = template
-         .replace('{page}', approxChapPrintedPage.toString())
-         .replace('{total}', approxChapPrintedTotal.toString())
-         .replace('{chapter}', chapterName);
+       targetPage = approxChapPrintedPage;
+       targetTotal = approxChapPrintedTotal;
     } else if (paginationMode === 'percent') {
       return `${percent}% ${t('pagination.ofChapter', language)} ${chapterName}`;
     }
-    return result;
+    return resolvedTemplate
+      .replace('{page}', targetPage.toString())
+      .replace('{total}', targetTotal.toString())
+      .replace('{chapter}', chapterName);
   }
 
   if (paginationMode === 'printed') {

@@ -125,6 +125,7 @@ export const vi: Record<string, string> = {
   'pagination.of': 'trên',
   'pagination.ofChapter': 'của chương',
   'pagination.pageOfChapterName': 'Trang {page} trên {total} của chương {chapter}',
+  'pagination.pageShortOfChapterName': 'trang {page} trên {total} của chương {chapter}',
 
   // TextSelectionMenu
   'menu.translate': 'Dịch',

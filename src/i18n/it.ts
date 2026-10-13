@@ -125,6 +125,7 @@ export const it: Record<string, string> = {
   'pagination.of': 'di',
   'pagination.ofChapter': 'del capitolo',
   'pagination.pageOfChapterName': 'Pagina {page} di {total} del capitolo {chapter}',
+  'pagination.pageShortOfChapterName': 'pag. {page} di {total} del capitolo {chapter}',
 
   // TextSelectionMenu
   'menu.translate': 'Traduci',
