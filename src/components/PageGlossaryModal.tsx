@@ -209,6 +209,7 @@ export const PageGlossaryModal: React.FC<Props> = ({
                       lookup.baseForm,
                       lookup.searchTerms,
                       lookup.entries,
+                      language,
                     ),
                   }
                 : null;

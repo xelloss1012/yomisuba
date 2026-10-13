@@ -71,6 +71,8 @@ export const saveTranslationHistoryEntry = (
   return next;
 };
 
+import { t, UiLanguage } from './i18n';
+
 export const formatDictionaryHistoryResponse = (
   baseForm: string,
   searchTerms: string[],
@@ -80,16 +82,17 @@ export const formatDictionaryHistoryResponse = (
     kana: string[];
     senses: Array<{ partOfSpeech: string[]; glosses: string[] }>;
   }>,
+  lang: UiLanguage = 'es',
 ) => {
-  const lines = [`Forma base: ${baseForm}`, `Términos: ${searchTerms.join(', ')}`];
+  const lines = [`${t('glossary.baseForm', lang)}: ${baseForm}`, `${t('glossary.terms', lang)}: ${searchTerms.join(', ')}`];
   if (!entries.length) {
-    lines.push('', 'No se encontró una entrada local para esta forma.');
+    lines.push('', t('glossary.notFound', lang));
   }
   entries.forEach((entry, index) => {
     lines.push(
       '',
       `${index + 1}. [${entry.language.toUpperCase()}] ${entry.kanji.length ? entry.kanji.join(' · ') : entry.kana.join(' · ')}`,
-      ...(entry.kana.length ? [`Lectura: ${entry.kana.join(' · ')}`] : []),
+      ...(entry.kana.length ? [`${t('glossary.reading', lang)}: ${entry.kana.join(' · ')}`] : []),
       ...entry.senses.map((sense) =>
         `${sense.partOfSpeech.length ? `[${sense.partOfSpeech.join(', ')}] ` : ''}${sense.glosses.join('; ')}`
       ),

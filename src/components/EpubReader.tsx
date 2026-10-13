@@ -2609,7 +2609,7 @@ export const EpubReader: React.FC<Props> = ({
             handleSaveTranslationHistory(
               'dictionary',
               query,
-              formatDictionaryHistoryResponse(lookup.baseForm, lookup.searchTerms, lookup.entries)
+              formatDictionaryHistoryResponse(lookup.baseForm, lookup.searchTerms, lookup.entries, settings.language)
             );
           }
         })

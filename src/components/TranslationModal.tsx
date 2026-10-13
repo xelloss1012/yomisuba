@@ -190,7 +190,7 @@ export const TranslationModal: React.FC<Props> = ({
         onSaveHistory(
           'dictionary',
           trimmedQuery,
-          formatDictionaryHistoryResponse(terms.baseForm, terms.searchTerms, terms.entries)
+          formatDictionaryHistoryResponse(terms.baseForm, terms.searchTerms, terms.entries, language)
         );
         recordSuccessfulSearch(trimmedQuery, dictionarySearchCountRef.current + 1);
       }
@@ -479,6 +479,7 @@ export const TranslationModal: React.FC<Props> = ({
                         dictionaryTerms.baseForm,
                         dictionaryTerms.searchTerms,
                         [entry],
+                        language,
                       ),
                     };
                     const isDefinitionSaved = isTranslationFavorite(favorites, definitionFavorite);
