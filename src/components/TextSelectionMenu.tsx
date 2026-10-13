@@ -192,7 +192,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
                 className="tap-area flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl hover:bg-zinc-800 active:scale-95 text-xs font-medium transition-all text-amber-300 hover:text-white"
                 title={`${t('common.translate', language)} (${AI_PROVIDER_LABELS[provider]})`}
               >
-                <span>IA {AI_PROVIDER_LABELS[provider]}</span>
+                <span>{t('common.ai', language)} {AI_PROVIDER_LABELS[provider]}</span>
               </button>
             ))}
           </div>

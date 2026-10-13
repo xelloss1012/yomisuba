@@ -2759,10 +2759,10 @@ export const EpubReader: React.FC<Props> = ({
     );
     const chapterLabel = chapterIndex >= 0
       ? epub.toc[chapterIndex].label
-      : `Capítulo ${getDisplayChapter(position.spineIndex)}`;
+      : `${t('common.chapter', settings.language)} ${getDisplayChapter(position.spineIndex)}`;
     const chapterTotal = currentCount || position.pageCount || 1;
     const bookPage = getGlobalPage(position.spineIndex, page) + 1;
-    const chapterPageDisplay = formatChapterPageDisplay(page, chapterTotal, settings.paginationMode, printedPages, bookTotalPages);
+    const chapterPageDisplay = formatChapterPageDisplay(page, chapterTotal, settings.paginationMode, printedPages, bookTotalPages, settings.language, chapterLabel);
     const pageDisplay = formatPageDisplay(bookPage - 1, bookTotalPages, settings.paginationMode, printedPages);
     return {
       ...position,
@@ -2967,8 +2967,9 @@ export const EpubReader: React.FC<Props> = ({
     const chapterPage = location ? (currentCount ? mapPageToLayout(location.page, location.pageCount, currentCount) : location.page) : 0;
     const chapterTotal = currentCount || location?.pageCount || 1;
     const gPage = location ? getGlobalPage(annotation.spineIndex, chapterPage) : 0;
-    const chapterPageDisplay = formatChapterPageDisplay(chapterPage, chapterTotal, settings.paginationMode, printedPages, bookTotalPages);
-    const bookPageDisplay = formatPageDisplay(gPage, bookTotalPages, settings.paginationMode, printedPages);
+    const chapterName = spineLabels[annotation.spineIndex];
+    const chapterPageDisplay = formatChapterPageDisplay(chapterPage, chapterTotal, settings.paginationMode, printedPages, bookTotalPages, settings.language, chapterName);
+    const bookPageDisplay = formatPageDisplay(gPage, bookTotalPages, settings.paginationMode, printedPages, settings.language);
 
     const pageLabel = !isBookmarksOpen
       ? undefined
@@ -2981,7 +2982,7 @@ export const EpubReader: React.FC<Props> = ({
             : chapterPageDisplay;
     return {
       ...annotation,
-      chapterLabel: spineLabels[annotation.spineIndex] || `Sección ${annotation.spineIndex + 1}`,
+      chapterLabel: chapterName || `${t('common.section', settings.language)} ${annotation.spineIndex + 1}`,
       pageLabel,
     };
   });

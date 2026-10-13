@@ -92,6 +92,7 @@ export const vi: Record<string, string> = {
   'footer.modePercent': 'Phần trăm',
   'footer.changePaginationMode': 'Thay đổi chế độ phân trang (Thiết bị / Trang in / Phần trăm)',
   'reader.beginning': 'Đầu sách',
+  'reader.beginningChapter': 'Bắt đầu chương',
   'reader.selectWordError': 'Không thể chọn từ đó trên trang.',
   'reader.calculatingPage': 'Đang tính toán trang…',
   'reader.locateAnnotationError': 'Không thể định vị cụm từ được gạch chân này trong sách.',
@@ -123,6 +124,7 @@ export const vi: Record<string, string> = {
   'pagination.pageShort': 'Tr.',
   'pagination.of': 'trên',
   'pagination.ofChapter': 'của chương',
+  'pagination.pageOfChapterName': 'Trang {page} trên {total} của chương {chapter}',
 
   // TextSelectionMenu
   'menu.translate': 'Dịch',
@@ -292,6 +294,7 @@ export const vi: Record<string, string> = {
   'common.next': 'Sau',
   'common.dictionary': 'Từ điển',
   'common.translate': 'Dịch',
+  'common.ai': 'trí tuệ nhân tạo',
   'common.search': 'Tìm kiếm',
   'common.listen': 'Nghe',
   'common.source': 'nguồn',

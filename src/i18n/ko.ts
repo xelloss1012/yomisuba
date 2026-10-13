@@ -92,6 +92,7 @@ export const ko: Record<string, string> = {
   'footer.modePercent': '백분율',
   'footer.changePaginationMode': '페이지 매김 모드 변경 (기기 / 인쇄 페이지 / 백분율)',
   'reader.beginning': '책의 처음',
+  'reader.beginningChapter': '챕터 시작',
   'reader.selectWordError': '페이지에서 해당 단어를 선택할 수 없습니다.',
   'reader.calculatingPage': '페이지 계산 중…',
   'reader.locateAnnotationError': '책에서 밑줄 친 구문을 찾을 수 없습니다.',
@@ -123,6 +124,7 @@ export const ko: Record<string, string> = {
   'pagination.pageShort': 'p.',
   'pagination.of': '/',
   'pagination.ofChapter': '장',
+  'pagination.pageOfChapterName': '{chapter} 챕터의 {page}/{total} 페이지',
 
   // TextSelectionMenu
   'menu.translate': '번역',
@@ -292,6 +294,7 @@ export const ko: Record<string, string> = {
   'common.next': '다음',
   'common.dictionary': '사전',
   'common.translate': '번역',
+  'common.ai': '인공지능',
   'common.search': '검색',
   'common.listen': '듣기',
   'common.source': '출처',

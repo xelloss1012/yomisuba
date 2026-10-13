@@ -92,6 +92,7 @@ export const zh: Record<string, string> = {
   'footer.modePercent': '百分比',
   'footer.changePaginationMode': '更改分页模式 (设备 / 印刷页 / 百分比)',
   'reader.beginning': '图书开头',
+  'reader.beginningChapter': '章节开始',
   'reader.selectWordError': '无法在页面上选中该词。',
   'reader.calculatingPage': '正在计算页码…',
   'reader.locateAnnotationError': '无法在书中定位此划线短语。',
@@ -123,6 +124,7 @@ export const zh: Record<string, string> = {
   'pagination.pageShort': '页',
   'pagination.of': '共',
   'pagination.ofChapter': '章',
+  'pagination.pageOfChapterName': '第 {chapter} 章，第 {page} / {total} 页',
 
   // TextSelectionMenu
   'menu.translate': '翻译',
@@ -292,6 +294,7 @@ export const zh: Record<string, string> = {
   'common.next': '下一页',
   'common.dictionary': '词典',
   'common.translate': '翻译',
+  'common.ai': '人工智能',
   'common.search': '搜索',
   'common.listen': '朗读',
   'common.source': '来源',

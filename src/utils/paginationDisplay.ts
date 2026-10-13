@@ -29,11 +29,34 @@ export function formatChapterPageDisplay(
   paginationMode: 'device' | 'printed' | 'percent',
   printedPages?: number,
   bookTotalPages?: number,
-  language: UiLanguage = 'es'
+  language: UiLanguage = 'es',
+  chapterName?: string
 ): string {
   const cTotal = Math.max(1, chapterTotalPages);
   const cPage = Math.min(Math.max(0, chapterPage), cTotal - 1);
   const percent = Math.round(((cPage + 1) / cTotal) * 100);
+
+  if (chapterName) {
+    const template = t('pagination.pageOfChapterName', language);
+    let result = template
+      .replace('{page}', (cPage + 1).toString())
+      .replace('{total}', cTotal.toString())
+      .replace('{chapter}', chapterName);
+    
+    if (paginationMode === 'printed') {
+       const bTotal = Math.max(1, bookTotalPages || cTotal);
+       const pTotal = printedPages && printedPages > 0 ? printedPages : cTotal;
+       const approxChapPrintedTotal = Math.max(1, Math.round((cTotal / bTotal) * pTotal));
+       const approxChapPrintedPage = Math.max(1, Math.min(approxChapPrintedTotal, Math.round((cPage / Math.max(1, cTotal - 1)) * (approxChapPrintedTotal - 1)) + 1));
+       result = template
+         .replace('{page}', approxChapPrintedPage.toString())
+         .replace('{total}', approxChapPrintedTotal.toString())
+         .replace('{chapter}', chapterName);
+    } else if (paginationMode === 'percent') {
+      return `${percent}% ${t('pagination.ofChapter', language)} ${chapterName}`;
+    }
+    return result;
+  }
 
   if (paginationMode === 'printed') {
     const bTotal = Math.max(1, bookTotalPages || cTotal);

@@ -92,6 +92,7 @@ export const es: Record<string, string> = {
   'footer.modePercent': 'Porcentaje',
   'footer.changePaginationMode': 'Cambiar modo de paginación (Dispositivo / Páginas impresas / Porcentaje)',
   'reader.beginning': 'Principio del libro',
+  'reader.beginningChapter': 'Principio del capítulo',
   'reader.selectWordError': 'No se ha podido seleccionar esa palabra en la página.',
   'reader.calculatingPage': 'Calculando página…',
   'reader.locateAnnotationError': 'No se ha podido localizar esta frase subrayada en el libro.',
@@ -123,6 +124,7 @@ export const es: Record<string, string> = {
   'pagination.pageShort': 'Pág.',
   'pagination.of': 'de',
   'pagination.ofChapter': 'del capítulo',
+  'pagination.pageOfChapterName': 'Página {page} de {total} del capítulo {chapter}',
 
   // TextSelectionMenu
   'menu.translate': 'Traducir',
@@ -292,6 +294,7 @@ export const es: Record<string, string> = {
   'common.next': 'Siguiente',
   'common.dictionary': 'Diccionario',
   'common.translate': 'Traducir',
+  'common.ai': 'IA',
   'common.search': 'Buscar',
   'common.listen': 'Escuchar',
   'common.source': 'fuente',

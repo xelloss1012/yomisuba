@@ -165,7 +165,7 @@ export const BookmarksModal: React.FC<Props> = ({
                     "{annotation.quote}"
                   </span>
                   <span className="mt-0.5 block text-xs text-zinc-500 dark:text-zinc-400">
-                    {annotation.chapterLabel} {annotation.pageLabel ? `· ${annotation.pageLabel}` : ''}
+                    {annotation.pageLabel ? annotation.pageLabel : annotation.chapterLabel}
                   </span>
                 </button>
                 <button

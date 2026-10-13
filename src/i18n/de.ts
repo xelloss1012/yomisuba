@@ -92,6 +92,7 @@ export const de: Record<string, string> = {
   'footer.modePercent': 'Prozent',
   'footer.changePaginationMode': 'Paginierungsmodus ändern (Gerät / Gedruckte Seiten / Prozent)',
   'reader.beginning': 'Anfang des Buches',
+  'reader.beginningChapter': 'Kapitelsanfang',
   'reader.selectWordError': 'Dieses Wort konnte auf der Seite nicht ausgewählt werden.',
   'reader.calculatingPage': 'Seite wird berechnet…',
   'reader.locateAnnotationError': 'Dieser unterstrichene Satz konnte im Buch nicht gefunden werden.',
@@ -123,6 +124,7 @@ export const de: Record<string, string> = {
   'pagination.pageShort': 'S.',
   'pagination.of': 'von',
   'pagination.ofChapter': 'des Kapitels',
+  'pagination.pageOfChapterName': 'Seite {page} von {total} im Kapitel {chapter}',
 
   // TextSelectionMenu
   'menu.translate': 'Übersetzen',
@@ -292,6 +294,7 @@ export const de: Record<string, string> = {
   'common.next': 'Nächstes',
   'common.dictionary': 'Wörterbuch',
   'common.translate': 'Übersetzen',
+  'common.ai': 'KI',
   'common.search': 'Suchen',
   'common.listen': 'Anhören',
   'common.source': 'Quelle',
