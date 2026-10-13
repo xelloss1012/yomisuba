@@ -4052,6 +4052,7 @@ export const EpubReader: React.FC<Props> = ({
         isAdjusting={isSelectionAdjusting || isTranslateOpen || isBookmarksOpen || isSearchOpen || isTranslationHistoryOpen || isPageGlossaryOpen || isTocOpen || isSettingsOpen || Boolean(imageViewerSrc)}
         dictionaryPreview={dictionaryPreview}
         isUnderlined={isSelectionUnderlined}
+        language={settings.language}
         onToggleUnderline={handleToggleUnderline}
         onClose={() => {
           selectedTextRef.current = '';
