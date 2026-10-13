@@ -2763,7 +2763,7 @@ export const EpubReader: React.FC<Props> = ({
     const chapterTotal = currentCount || position.pageCount || 1;
     const bookPage = getGlobalPage(position.spineIndex, page) + 1;
     const chapterPageDisplay = formatChapterPageDisplay(page, chapterTotal, settings.paginationMode, printedPages, bookTotalPages, settings.language, chapterLabel);
-    const pageDisplay = formatPageDisplay(bookPage - 1, bookTotalPages, settings.paginationMode, printedPages);
+    const pageDisplay = formatPageDisplay(bookPage - 1, bookTotalPages, settings.paginationMode, printedPages, settings.language);
     return {
       ...position,
       page,
