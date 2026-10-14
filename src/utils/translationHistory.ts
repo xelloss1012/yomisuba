@@ -32,13 +32,36 @@ export interface TranslationHistoryEntry {
   query: string;
   kind: TranslationHistoryKind;
   provider?: AiProvider;
-  response: string;
+  /**
+   * Formatted text. Omitted for dictionary/glossary entries (it is fully
+   * derivable from `data`), and stored as a short preview for translation/AI
+   * entries — the full text only survives if the user saves it as a favorite.
+   */
+  response?: string;
   data?: DictionaryHistoryData;
 }
 
 export const MAX_TRANSLATION_HISTORY_ENTRIES = 500;
 const MAX_HISTORY_STORAGE_BYTES = 2.5 * 1024 * 1024;
-const MAX_RESPONSE_LENGTH = 32_000;
+// Translation / AI answers are kept only as a short preview in the history to
+// stop a few long explanations from bloating storage; the complete text is
+// preserved when the entry is starred as a favorite.
+export const HISTORY_PREVIEW_LENGTH = 600;
+
+const previewResponse = (response: string): string =>
+  response.length > HISTORY_PREVIEW_LENGTH
+    ? `${response.slice(0, HISTORY_PREVIEW_LENGTH)}\n…`
+    : response;
+
+/**
+ * Resolves the text to show for a history entry in the given UI language.
+ * Dictionary/glossary entries are re-rendered from their structured `data`;
+ * translation/AI entries fall back to the stored (preview) `response`.
+ */
+export const getHistoryEntryResponse = (
+  entry: Pick<TranslationHistoryEntry, 'response' | 'data'>,
+  lang: UiLanguage = 'es',
+): string => (entry.data ? formatDictionaryHistoryResponse(entry.data, lang) : (entry.response || ''));
 
 export const readTranslationHistory = (storageKey: string): TranslationHistoryEntry[] => {
   try {
@@ -54,7 +77,7 @@ export const readTranslationHistory = (storageKey: string): TranslationHistoryEn
         typeof item.queriedAt === 'number' &&
         typeof item.query === 'string' &&
         (item.kind === 'dictionary' || item.kind === 'translation' || item.kind === 'ai') &&
-        typeof item.response === 'string' &&
+        (typeof item.response === 'string' || isDictionaryHistoryData(item.data)) &&
         (item.data === undefined || isDictionaryHistoryData(item.data))
       )
     ).slice(0, MAX_TRANSLATION_HISTORY_ENTRIES);
@@ -68,11 +91,14 @@ export const saveTranslationHistoryEntry = (
   history: TranslationHistoryEntry[],
   entry: Omit<TranslationHistoryEntry, 'id' | 'queriedAt'>,
 ) => {
+  // Dictionary/glossary entries keep only their structured `data` (the text is
+  // re-derived from it on display). Translation/AI entries keep a short preview.
+  const { response: _response, ...rest } = entry;
   const nextEntry: TranslationHistoryEntry = {
-    ...entry,
-    response: entry.response.length > MAX_RESPONSE_LENGTH
-      ? `${entry.response.slice(0, MAX_RESPONSE_LENGTH)}\n\n[Respuesta abreviada en el historial]`
-      : entry.response,
+    ...rest,
+    ...(entry.data
+      ? {}
+      : { response: previewResponse(entry.response || '') }),
     id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
     queriedAt: Date.now(),
   };

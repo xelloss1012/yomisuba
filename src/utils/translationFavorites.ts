@@ -55,14 +55,34 @@ const normalizedResponse = (response: string) => response.length > MAX_RESPONSE_
   ? `${response.slice(0, MAX_RESPONSE_LENGTH)}\n\n[Respuesta abreviada en favoritos]`
   : response;
 
+const isPreviewOf = (favoriteResponse: string, candidateResponse: string): boolean => {
+  // A favorite may store the full answer while a history-derived candidate only
+  // carries its short preview (ending in "…"). Treat it as a match when the
+  // candidate is a prefix of the stored favorite.
+  if (!candidateResponse.endsWith('…')) return false;
+  const prefix = candidateResponse.slice(0, -1);
+  return favoriteResponse.startsWith(prefix);
+};
+
 const matchesCandidate = (
   favorite: TranslationFavorite,
   candidate: TranslationFavoriteCandidate,
-) =>
-  favorite.kind === candidate.kind &&
-  favorite.query === candidate.query &&
-  favorite.provider === candidate.provider &&
-  favorite.response === normalizedResponse(candidate.response);
+) => {
+  if (
+    favorite.kind !== candidate.kind ||
+    favorite.query !== candidate.query ||
+    favorite.provider !== candidate.provider
+  ) {
+    return false;
+  }
+  // Dictionary/glossary favorites are compared by their structured data, which
+  // is language-neutral, so toggling the star is stable across UI languages.
+  if (favorite.data && candidate.data) {
+    return JSON.stringify(favorite.data) === JSON.stringify(candidate.data);
+  }
+  const candidateResponse = normalizedResponse(candidate.response);
+  return favorite.response === candidateResponse || isPreviewOf(favorite.response, candidateResponse);
+};
 
 const fitFavoritesToStorage = (favorites: TranslationFavorite[]) => {
   const stored = favorites.slice(0, MAX_TRANSLATION_FAVORITES);

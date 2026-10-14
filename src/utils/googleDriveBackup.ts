@@ -87,7 +87,7 @@ export interface ReaderBookBackup {
     query: string;
     kind: 'dictionary' | 'translation' | 'ai';
     provider?: string;
-    response: string;
+    response?: string;
     data?: DictionaryHistoryData;
   }>;
   favorites: TranslationFavorite[];
@@ -1091,7 +1091,7 @@ function isHistoryEntry(value: unknown): boolean {
     && typeof entry.query === 'string'
     && (entry.kind === 'dictionary' || entry.kind === 'translation' || entry.kind === 'ai')
     && (entry.provider === undefined || ['gemini', 'openai', 'deepseek', 'openrouter'].includes(String(entry.provider)))
-    && typeof entry.response === 'string'
+    && (entry.response === undefined || typeof entry.response === 'string')
     && (entry.data === undefined || isDictionaryHistoryData(entry.data));
 }
 

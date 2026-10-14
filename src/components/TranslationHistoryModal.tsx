@@ -5,7 +5,7 @@ import {
   MAX_TRANSLATION_HISTORY_ENTRIES,
   TranslationHistoryEntry,
   DictionaryHistoryData,
-  formatDictionaryHistoryResponse,
+  getHistoryEntryResponse,
 } from '../utils/translationHistory';
 import {
   isTranslationFavorite,
@@ -52,7 +52,7 @@ interface DisplayItem {
  * are translated at display time instead of being baked in when stored.
  */
 const renderItemResponse = (item: DisplayItem, language: UiLanguage): string =>
-  item.data ? formatDictionaryHistoryResponse(item.data, language) : item.response;
+  getHistoryEntryResponse(item, language);
 
 const getKindLabel = (entry: { kind: TranslationFavoriteKind; provider?: string }, language: UiLanguage = 'es') => {
   if (entry.kind === 'dictionary') return t('common.dictionary', language);
@@ -84,7 +84,7 @@ export const TranslationHistoryModal: React.FC<Props> = ({
     const latest = new Map<string, TranslationHistoryEntry>();
     entries.forEach((entry) => {
       const key = normalizeFrequentQuery(entry.query);
-      const response = entry.response.trim();
+      const response = getHistoryEntryResponse(entry, language).trim();
       if (
         key &&
         response &&
@@ -93,7 +93,7 @@ export const TranslationHistoryModal: React.FC<Props> = ({
       ) latest.set(key, entry);
     });
     return latest;
-  }, [entries]);
+  }, [entries, language]);
 
   const frequentEntries = useMemo(
     () => frequentQueries.filter((entry) => entry.count >= 2 && latestHistoryByQuery.has(entry.key)),
@@ -106,14 +106,14 @@ export const TranslationHistoryModal: React.FC<Props> = ({
         query: entry.query,
         kind: entry.kind,
         provider: entry.provider,
-        response: entry.response,
+        response: entry.response || '',
         data: entry.data,
         date: entry.queriedAt,
         candidate: {
           query: entry.query,
           kind: entry.kind,
           ...(entry.provider ? { provider: entry.provider } : {}),
-          response: entry.response,
+          response: getHistoryEntryResponse(entry, language),
           ...(entry.data ? { data: entry.data } : {}),
         },
       }));
@@ -136,19 +136,19 @@ export const TranslationHistoryModal: React.FC<Props> = ({
         query: entry?.query || frequent.key,
         kind: entry?.kind,
         provider: entry?.provider,
-        response: entry?.response || '',
+        response: entry ? getHistoryEntryResponse(entry, language) : '',
         data: entry?.data,
         count: frequent.count,
         candidate: entry ? {
           query: entry.query,
           kind: entry.kind,
           ...(entry.provider ? { provider: entry.provider } : {}),
-          response: entry.response,
+          response: getHistoryEntryResponse(entry, language),
           ...(entry.data ? { data: entry.data } : {}),
         } : undefined,
       };
     });
-  }, [activeTab, entries, favorites, frequentEntries, latestHistoryByQuery]);
+  }, [activeTab, entries, favorites, frequentEntries, language, latestHistoryByQuery]);
 
   if (!isOpen) return null;
 

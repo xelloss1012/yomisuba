@@ -23,6 +23,8 @@ try {
   const {
     buildDictionaryHistoryResponse,
     formatDictionaryHistoryResponse,
+    getHistoryEntryResponse,
+    HISTORY_PREVIEW_LENGTH,
     readTranslationHistory,
     saveTranslationHistoryEntry,
   } = await server.ssrLoadModule('/src/utils/translationHistory.ts');
@@ -62,7 +64,8 @@ try {
   assert.match(en, /^Base form: 猫/);
   assert.match(en, /^Terms: 猫, ねこ$/m);
 
-  // The structured `data` survives a save/read round-trip through storage.
+  // A) Dictionary entries are stored WITHOUT the redundant `response` text: it is
+  // re-derived from `data` on display. Only `data` is persisted.
   const key = 'test-history';
   const history = saveTranslationHistoryEntry(key, [], {
     kind: 'dictionary',
@@ -70,9 +73,27 @@ try {
     response,
     data,
   });
+  assert.equal(history[0].response, undefined, 'dictionary entry must not persist response');
+  assert.ok(!('response' in history[0]));
   const [stored] = readTranslationHistory(key);
   assert.equal(stored.query, '猫');
   assert.deepEqual(stored.data, data);
+  // getHistoryEntryResponse re-renders from data in any UI language.
+  assert.match(getHistoryEntryResponse(stored, 'es'), /^Forma base: 猫/);
+  assert.match(getHistoryEntryResponse(stored, 'en'), /^Base form: 猫/);
+
+  // B) Long translation/AI answers are truncated to a short preview in the
+  // history so they cannot bloat storage.
+  const longText = 'あ'.repeat(5000);
+  const tkey = 'test-history-translation';
+  const [translation] = saveTranslationHistoryEntry(tkey, [], {
+    kind: 'translation',
+    query: '長い段落',
+    response: longText,
+  });
+  assert.ok(translation.response.length <= HISTORY_PREVIEW_LENGTH + 2);
+  assert.ok(translation.response.startsWith('あ'));
+  assert.ok(translation.response.endsWith('…'));
 
   // Entries whose `data` is malformed are rejected on read.
   storage.set(key, JSON.stringify([
@@ -80,7 +101,13 @@ try {
   ]));
   assert.deepEqual(readTranslationHistory(key), []);
 
-  console.log('PASS: dictionary history stores an English contract and translates on display.');
+  // An entry with neither `response` nor valid `data` is also rejected.
+  storage.set(key, JSON.stringify([
+    { id: 'a', queriedAt: 1, query: 'x', kind: 'translation' },
+  ]));
+  assert.deepEqual(readTranslationHistory(key), []);
+
+  console.log('PASS: history de-duplicates dictionary text and previews long translations.');
 } finally {
   await server.close();
 }
