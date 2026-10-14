@@ -22,6 +22,15 @@ export interface DictionaryLookup {
   searchTerms: string[];
   entries: DictionaryEntry[];
   hasCompleteMatch: boolean;
+  /**
+   * True only when the *entire* selection resolved to a single dictionary form:
+   * either the whole text matched exactly, or the tokenizer reduced it to one
+   * head word whose conjugated base form matched exactly. Used to decide whether
+   * the lookup deserves a "dictionary" history entry — a phrase where only one
+   * internal word matched should not be stored as a dictionary history entry
+   * (it can still be shown in the contextual menu / translated instead).
+   */
+  hasCompleteTextMatch: boolean;
   englishFallbackError?: string;
 }
 
@@ -400,25 +409,33 @@ const findRawEntries = (
   directTerms: string[],
   inflectedTerms: string[],
   index: DictionaryIndex,
-): Array<{ entry: CompactEntry; score: number }> => {
+): Array<{ entry: CompactEntry; score: number; exactText?: boolean }> => {
   const normalizedDirect = unique(directTerms.map(normalizeSelection)).filter(Boolean);
   const normalizedInflected = unique(inflectedTerms.map(normalizeSelection)).filter(Boolean);
-  const ranked = new Map<string, { entry: CompactEntry; score: number }>();
+  const ranked = new Map<string, { entry: CompactEntry; score: number; exactText?: boolean }>();
 
-  const addMatches = (matches: CompactEntry[] | undefined, score: number, form: string, requireInflectable = false) => {
+  const addMatches = (
+    matches: CompactEntry[] | undefined,
+    score: number,
+    form: string,
+    requireInflectable = false,
+    markExactText = false,
+  ) => {
     for (const entry of matches || []) {
       const effectiveScore = requireInflectable && !isInflectableEntry(entry, form)
         ? Math.max(score, 5)
         : score;
       const current = ranked.get(entry.id);
       if (!current || effectiveScore < current.score) {
-        ranked.set(entry.id, { entry, score: effectiveScore });
+        ranked.set(entry.id, { entry, score: effectiveScore, ...(markExactText ? { exactText: true } : {}) });
+      } else if (markExactText && effectiveScore === current.score) {
+        current.exactText = true;
       }
     }
   };
 
   for (const term of normalizedDirect) {
-    addMatches(index.byForm.get(term), 0, term);
+    addMatches(index.byForm.get(term), 0, term, false, true);
 
     for (let length = 2; length < term.length; length += 1) {
       addMatches(index.byForm.get(term.slice(0, length)), 10 + (term.length - length), term);
@@ -469,16 +486,20 @@ const findRawEntries = (
 export const getDictionarySearchTerms = async (value: string, language: UiLanguage = 'es'): Promise<DictionaryLookup> => {
   const originalText = normalizeSelection(value) || value.trim();
   if (!originalText) {
-    return { originalText: '', baseForm: '', searchTerms: [], entries: [], hasCompleteMatch: false };
+    return { originalText: '', baseForm: '', searchTerms: [], entries: [], hasCompleteMatch: false, hasCompleteTextMatch: false };
   }
 
   let searchTerms = guessBaseForms(originalText);
   const tokenSurfaceTerms: string[] = [];
   const tokenBaseForms: string[] = [];
+  let singleTokenConjugationExact = false;
+  let tokenizerAvailable = false;
 
   try {
     const tokenizer = await getTokenizer();
     const tokens = await tokenizer.tokenize(originalText);
+    tokenizerAvailable = true;
+
     for (const token of tokens) {
       if (!['記号', '助詞', '助動詞'].includes(token.pos) && token.surface_form) {
         tokenSurfaceTerms.push(token.surface_form);
@@ -494,8 +515,20 @@ export const getDictionarySearchTerms = async (value: string, language: UiLangua
         token.basic_form !== '*'
     );
     if (verbalBase?.basic_form) searchTerms.unshift(verbalBase.basic_form);
-  } catch {
+
+    // Single-token conjugation fallback: a selection that resolves to exactly
+    // one meaningful token (plus optional particles/auxiliaries) counts as a
+    // full-text match if its base form exists in the dictionary.
+    const meaningfulTokens = tokens.filter(
+      (token) => !['記号', '助詞', '助動詞'].includes(token.pos) && token.surface_form
+    );
+    if (meaningfulTokens.length === 1 && verbalBase?.basic_form) {
+      const baseFormResults = findRawEntries([verbalBase.basic_form], [], spanishIndex);
+      singleTokenConjugationExact = baseFormResults.some((item) => item.exactText);
+    }
+  } catch (err) {
     // The regex fallback still provides useful lookups when the tokenizer is unavailable.
+    console.error('[dictionary] tokenizer error:', err);
   }
 
   searchTerms = unique([
@@ -512,7 +545,7 @@ export const getDictionarySearchTerms = async (value: string, language: UiLangua
   const inflectedTerms = searchTerms.filter((term) => !directTerms.includes(term));
 
   const spanishResults = findRawEntries(directTerms, inflectedTerms, spanishIndex);
-  let englishResults: Array<{ entry: CompactEntry; score: number }> = [];
+  let englishResults: Array<{ entry: CompactEntry; score: number; exactText?: boolean }> = [];
   let englishFallbackError: string | undefined;
 
   try {
@@ -559,12 +592,24 @@ export const getDictionarySearchTerms = async (value: string, language: UiLangua
   });
   const hasCompleteMatch = topEntries.some((item) => item.score === 0);
 
+  let hasCompleteTextMatch = spanishResults.some((m) => m.exactText)
+    || englishResults.some((m) => m.exactText)
+    || singleTokenConjugationExact;
+
+  // If the tokenizer was unavailable (e.g. in Node tests), we fall back to
+  // hasCompleteMatch because guessBaseForms and direct matches are always
+  // against the entire selection.
+  if (!tokenizerAvailable && hasCompleteMatch) {
+    hasCompleteTextMatch = true;
+  }
+
   return {
     originalText,
     baseForm: searchTerms[0] || originalText,
     searchTerms,
     entries: topEntries.map((item) => item.entry),
     hasCompleteMatch,
+    hasCompleteTextMatch,
     englishFallbackError,
   };
 };

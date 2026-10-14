@@ -39,6 +39,16 @@ export interface TranslationHistoryEntry {
    */
   response?: string;
   data?: DictionaryHistoryData;
+  /**
+   * Dictionary-only gate resolved by the dictionary lookup itself: true when
+   * the *entire* selection matched a single dictionary form (a whole-text
+   * exact match, or a lone verb token matched through its base form).
+   * Partial matches — a phrase where only one internal word has a
+   * definition — do not qualify and are not stored as a "dictionary"
+   * history entry; such phrases are surfaced in the menu and stored as
+   * translations if the user translates them.
+   */
+  hasCompleteTextMatch?: boolean;
 }
 
 export const MAX_TRANSLATION_HISTORY_ENTRIES = 500;
@@ -94,7 +104,15 @@ export const saveTranslationHistoryEntry = (
   storageKey: string,
   history: TranslationHistoryEntry[],
   entry: Omit<TranslationHistoryEntry, 'id' | 'queriedAt'>,
+  hasCompleteTextMatch?: boolean,
 ) => {
+  // Dictionary entries that do not resolve the *entire* selection (a phrase
+  // where only one internal word has a definition) are not stored as a
+  // dictionary history entry. The phrase remains visible in the menu and can
+  // still be stored as a translation if the user translates it.
+  if (entry.kind === 'dictionary' && entry.data && hasCompleteTextMatch === false) {
+    return history;
+  }
   // Dictionary/glossary entries keep only their structured `data` (the text is
   // re-derived from it on display). Translation/AI entries keep a short preview.
   const { response: _response, ...rest } = entry;

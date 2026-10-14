@@ -636,6 +636,7 @@ export const EpubReader: React.FC<Props> = ({
     response: string,
     provider?: AiProvider,
     data?: DictionaryHistoryData,
+    hasFullMatch?: boolean,
   ) => {
     const previousId = translationHistoryRef.current[0]?.id;
     const next = saveTranslationHistoryEntry(
@@ -647,7 +648,8 @@ export const EpubReader: React.FC<Props> = ({
         response,
         ...(kind === 'ai' && provider ? { provider } : {}),
         ...(data ? { data } : {}),
-      }
+      },
+      hasFullMatch,
     );
     translationHistoryRef.current = next;
     setTranslationHistory(next);
@@ -2622,7 +2624,7 @@ export const EpubReader: React.FC<Props> = ({
               lookup.searchTerms,
               lookup.entries,
             );
-            handleSaveTranslationHistory('dictionary', query, response, undefined, data);
+            handleSaveTranslationHistory('dictionary', query, response, undefined, data, lookup.hasCompleteTextMatch);
           }
         })
         .catch(() => {

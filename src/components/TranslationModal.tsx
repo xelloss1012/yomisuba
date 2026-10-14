@@ -36,7 +36,7 @@ interface Props {
   favorites: TranslationFavorite[];
   frequentSearchToken: number;
   language?: UiLanguage;
-  onSaveHistory: (kind: TranslationHistoryKind, query: string, response: string, provider?: AiProvider, data?: DictionaryHistoryData) => void;
+  onSaveHistory: (kind: TranslationHistoryKind, query: string, response: string, provider?: AiProvider, data?: DictionaryHistoryData, hasFullMatch?: boolean) => void;
   onRecordFrequentQuery: (query: string, searchToken: string | number) => void;
   onToggleFavorite: (candidate: TranslationFavoriteCandidate) => void;
 }
@@ -193,7 +193,7 @@ export const TranslationModal: React.FC<Props> = ({
           terms.searchTerms,
           terms.entries,
         );
-        onSaveHistory('dictionary', trimmedQuery, response, undefined, data);
+        onSaveHistory('dictionary', trimmedQuery, response, undefined, data, lookup.hasCompleteTextMatch);
         recordSuccessfulSearch(trimmedQuery, dictionarySearchCountRef.current + 1);
       }
     } catch (error) {
