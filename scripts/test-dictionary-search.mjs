@@ -40,6 +40,26 @@ try {
     'Expected the partial noun おぶ to rank below both verb matches.',
   );
 
+  // Test conjugated compound phrase: 肩をすくめて -> 肩をすくめる
+  const kataLookup = await getDictionarySearchTerms('肩をすくめて');
+  assert.equal(kataLookup.hasCompleteMatch, true, 'Expected complete match for 肩をすくめて');
+  assert.equal(kataLookup.hasCompleteTextMatch, true, 'Expected hasCompleteTextMatch for 肩をすくめて');
+  assert.equal(kataLookup.baseForm, '肩をすくめる', 'Expected baseForm to be 肩をすくめる');
+  assert(
+    kataLookup.entries[0]?.kanji.includes('肩をすくめる') || kataLookup.entries[0]?.kanji.includes('肩を竦める'),
+    `Expected 肩をすくめる as first entry, got: ${kataLookup.entries[0]?.kanji.join(', ')}`,
+  );
+
+  // Test conjugated compound phrase: 気がした -> 気がする
+  const kiLookup = await getDictionarySearchTerms('気がした');
+  assert.equal(kiLookup.hasCompleteMatch, true, 'Expected complete match for 気がした');
+  assert.equal(kiLookup.hasCompleteTextMatch, true, 'Expected hasCompleteTextMatch for 気がした');
+  assert.equal(kiLookup.baseForm, '気がする', 'Expected baseForm to be 気がする');
+  assert(
+    kiLookup.entries[0]?.kanji.includes('気がする'),
+    `Expected 気がする as first entry, got: ${kiLookup.entries[0]?.kanji.join(', ')}`,
+  );
+
   // A multi-word phrase where only an internal word has a definition must NOT
   // count as a full-text match for history purposes: the menu may show that
   // word's definition, but the whole phrase must not be stored as a dictionary
@@ -53,7 +73,7 @@ try {
     );
   }
 
-  console.log('PASS: おぶって ranks 負ぶる (おぶる) and 負ぶう (おぶう) before partial matches.');
+  console.log('PASS: Dictionary searches correctly prioritize conjugated phrases (肩をすくめて, 気がした, おぶって).');
 } finally {
   await server.close();
 }

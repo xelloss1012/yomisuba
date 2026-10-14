@@ -396,22 +396,25 @@ const isInflectableEntry = (entry: CompactEntry, form: string): boolean => {
   return entry.s.some((sense) =>
     sense.p.some((pos) => {
       const normalizedPos = pos.toLowerCase();
-      const isSuruVerb = pos === 'vs' || pos.startsWith('vs-') || normalizedPos.includes('verb suru');
+      const isSuruVerb = pos === 'vs' || pos.startsWith('vs-') || normalizedPos.includes('suru');
       const isVerb = (pos.startsWith('v') && !pos.startsWith('vs')) ||
         (/\bverb\b/.test(normalizedPos) && (!isSuruVerb || form.endsWith('する')));
       const isAdjective = pos.startsWith('adj') || /\badjective\b/.test(normalizedPos);
-      return isVerb || isAdjective || (isSuruVerb && form.endsWith('する'));
+      const isExpression = pos === 'exp' || normalizedPos.includes('expressions');
+      return isVerb || isAdjective || (isSuruVerb && form.endsWith('する')) || (isExpression && /[うくぐすつぬぶむるい]$/.test(form));
     })
   );
 };
 
 const findRawEntries = (
   directTerms: string[],
-  inflectedTerms: string[],
+  wholePhraseTerms: string[],
+  subTokenTerms: string[],
   index: DictionaryIndex,
 ): Array<{ entry: CompactEntry; score: number; exactText?: boolean }> => {
   const normalizedDirect = unique(directTerms.map(normalizeSelection)).filter(Boolean);
-  const normalizedInflected = unique(inflectedTerms.map(normalizeSelection)).filter(Boolean);
+  const normalizedWhole = unique(wholePhraseTerms.map(normalizeSelection)).filter(Boolean);
+  const normalizedSub = unique(subTokenTerms.map(normalizeSelection)).filter(Boolean);
   const ranked = new Map<string, { entry: CompactEntry; score: number; exactText?: boolean }>();
 
   const addMatches = (
@@ -434,6 +437,7 @@ const findRawEntries = (
     }
   };
 
+  // 1. Direct whole-text matches
   for (const term of normalizedDirect) {
     addMatches(index.byForm.get(term), 0, term, false, true);
 
@@ -457,11 +461,12 @@ const findRawEntries = (
     }
   }
 
-  for (const term of normalizedInflected) {
-    addMatches(index.byForm.get(term), 0, term, true);
+  // 2. Whole-phrase deconjugated matches (score 0, mark exact text match)
+  for (const term of normalizedWhole) {
+    addMatches(index.byForm.get(term), 0, term, true, true);
 
     for (let length = 2; length < term.length; length += 1) {
-      addMatches(index.byForm.get(term.slice(0, length)), 10 + (term.length - length), term, true);
+      addMatches(index.byForm.get(term.slice(0, length)), 12 + (term.length - length), term, true);
     }
 
     let low = 0;
@@ -475,9 +480,14 @@ const findRawEntries = (
       const form = index.forms[position];
       if (!form.startsWith(term)) break;
       if (form.length > term.length && term.length >= 2) {
-        addMatches(index.byForm.get(form), 20 + (form.length - term.length), term, true);
+        addMatches(index.byForm.get(form), 22 + (form.length - term.length), term, true);
       }
     }
+  }
+
+  // 3. Sub-token matches (score >= 5, partial match for individual internal words)
+  for (const term of normalizedSub) {
+    addMatches(index.byForm.get(term), 5, term, false, false);
   }
 
   return [...ranked.values()].sort((left, right) => left.score - right.score);
@@ -489,10 +499,10 @@ export const getDictionarySearchTerms = async (value: string, language: UiLangua
     return { originalText: '', baseForm: '', searchTerms: [], entries: [], hasCompleteMatch: false, hasCompleteTextMatch: false };
   }
 
-  let searchTerms = guessBaseForms(originalText);
-  const tokenSurfaceTerms: string[] = [];
-  const tokenBaseForms: string[] = [];
-  let singleTokenConjugationExact = false;
+  const guessed = guessBaseForms(originalText).filter((form) => form !== originalText);
+  let phraseBase: string | null = null;
+  const wholePhraseTerms: string[] = [...guessed];
+  const subTokenTerms: string[] = [];
   let tokenizerAvailable = false;
 
   try {
@@ -500,57 +510,67 @@ export const getDictionarySearchTerms = async (value: string, language: UiLangua
     const tokens = await tokenizer.tokenize(originalText);
     tokenizerAvailable = true;
 
-    for (const token of tokens) {
-      if (!['記号', '助詞', '助動詞'].includes(token.pos) && token.surface_form) {
-        tokenSurfaceTerms.push(token.surface_form);
-        if (token.basic_form && token.basic_form !== '*') {
-          tokenBaseForms.push(token.basic_form);
-        }
+    // Look for the last predicate token (verb, adjective) to reconstruct the base form of the whole phrase
+    let lastVerbIdx = -1;
+    for (let i = tokens.length - 1; i >= 0; i -= 1) {
+      if (
+        ['動詞', '形容詞', '形容動詞'].includes(tokens[i].pos) &&
+        tokens[i].basic_form &&
+        tokens[i].basic_form !== '*'
+      ) {
+        lastVerbIdx = i;
+        break;
       }
     }
-    const verbalBase = tokens.find(
-      (token) =>
-        ['動詞', '形容詞', '形容動詞'].includes(token.pos) &&
-        token.basic_form &&
-        token.basic_form !== '*'
-    );
-    if (verbalBase?.basic_form) searchTerms.unshift(verbalBase.basic_form);
 
-    // Single-token conjugation fallback: a selection that resolves to exactly
-    // one meaningful token (plus optional particles/auxiliaries) counts as a
-    // full-text match if its base form exists in the dictionary.
+    if (lastVerbIdx >= 0) {
+      phraseBase = tokens.slice(0, lastVerbIdx).map((t) => t.surface_form).join('') + tokens[lastVerbIdx].basic_form;
+      if (phraseBase && phraseBase !== originalText) {
+        wholePhraseTerms.unshift(phraseBase);
+      }
+    }
+
     const meaningfulTokens = tokens.filter(
       (token) => !['記号', '助詞', '助動詞'].includes(token.pos) && token.surface_form
     );
-    if (meaningfulTokens.length === 1 && verbalBase?.basic_form) {
-      const baseFormResults = findRawEntries([verbalBase.basic_form], [], spanishIndex);
-      singleTokenConjugationExact = baseFormResults.some((item) => item.exactText);
+
+    if (meaningfulTokens.length > 1) {
+      for (const token of meaningfulTokens) {
+        if (token.surface_form) subTokenTerms.push(token.surface_form);
+        if (token.basic_form && token.basic_form !== '*') {
+          subTokenTerms.push(token.basic_form);
+        }
+      }
+    } else if (meaningfulTokens.length === 1 && lastVerbIdx >= 0) {
+      const verbBase = tokens[lastVerbIdx].basic_form;
+      if (verbBase && verbBase !== '*') {
+        wholePhraseTerms.unshift(verbBase);
+      }
     }
   } catch (err) {
     // The regex fallback still provides useful lookups when the tokenizer is unavailable.
     console.error('[dictionary] tokenizer error:', err);
   }
 
-  searchTerms = unique([
-    ...searchTerms,
-    ...tokenSurfaceTerms,
-    ...tokenBaseForms,
+  const directTerms = [originalText];
+  const filteredWhole = unique(wholePhraseTerms).filter((term) => !directTerms.includes(term));
+  const filteredSub = unique(subTokenTerms).filter(
+    (term) => !directTerms.includes(term) && !filteredWhole.includes(term)
+  );
+
+  const searchTerms = unique([
+    ...filteredWhole,
     originalText,
+    ...filteredSub,
   ]).filter((term) => term.length > 0);
 
-  // Solo el texto seleccionado completo se considera una búsqueda directa.
-  // Las superficies y formas base de Kuromoji se evalúan como términos
-  // morfológicos para que una segmentación parcial no parezca una coincidencia exacta.
-  const directTerms = [originalText];
-  const inflectedTerms = searchTerms.filter((term) => !directTerms.includes(term));
-
-  const spanishResults = findRawEntries(directTerms, inflectedTerms, spanishIndex);
+  const spanishResults = findRawEntries(directTerms, filteredWhole, filteredSub, spanishIndex);
   let englishResults: Array<{ entry: CompactEntry; score: number; exactText?: boolean }> = [];
   let englishFallbackError: string | undefined;
 
   try {
     const englishIndex = await getEnglishIndex();
-    englishResults = findRawEntries(directTerms, inflectedTerms, englishIndex);
+    englishResults = findRawEntries(directTerms, filteredWhole, filteredSub, englishIndex);
   } catch (error) {
     englishIndexPromise = null;
     englishFallbackError = error instanceof Error
@@ -593,8 +613,7 @@ export const getDictionarySearchTerms = async (value: string, language: UiLangua
   const hasCompleteMatch = topEntries.some((item) => item.score === 0);
 
   let hasCompleteTextMatch = spanishResults.some((m) => m.exactText)
-    || englishResults.some((m) => m.exactText)
-    || singleTokenConjugationExact;
+    || englishResults.some((m) => m.exactText);
 
   // If the tokenizer was unavailable (e.g. in Node tests), we fall back to
   // hasCompleteMatch because guessBaseForms and direct matches are always
@@ -603,9 +622,19 @@ export const getDictionarySearchTerms = async (value: string, language: UiLangua
     hasCompleteTextMatch = true;
   }
 
+  // Determine the best resolved baseForm: the matching whole phrase, or the top whole-phrase candidate, or originalText
+  const matchedWhole = filteredWhole.find((form) =>
+    topEntries.some(
+      (item) =>
+        item.score === 0 &&
+        (item.entry.kanji.includes(form) || item.entry.kana.includes(form))
+    )
+  );
+  const baseForm = matchedWhole || filteredWhole[0] || originalText;
+
   return {
     originalText,
-    baseForm: searchTerms[0] || originalText,
+    baseForm,
     searchTerms,
     entries: topEntries.map((item) => item.entry),
     hasCompleteMatch,
