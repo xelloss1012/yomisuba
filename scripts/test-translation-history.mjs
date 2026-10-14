@@ -25,6 +25,7 @@ try {
     formatDictionaryHistoryResponse,
     getHistoryEntryResponse,
     HISTORY_PREVIEW_LENGTH,
+    HISTORY_DEDUP_WINDOW_MS,
     readTranslationHistory,
     saveTranslationHistoryEntry,
   } = await server.ssrLoadModule('/src/utils/translationHistory.ts');
@@ -107,7 +108,35 @@ try {
   ]));
   assert.deepEqual(readTranslationHistory(key), []);
 
-  console.log('PASS: history de-duplicates dictionary text and previews long translations.');
+  // C) De-duplication by kind + query within the time window.
+  const dkey = 'test-history-dedup';
+  let h = [];
+  // Same dictionary word consulted three times in a row → single entry.
+  h = saveTranslationHistoryEntry(dkey, h, { kind: 'dictionary', query: '猫', response: 'r', data });
+  h = saveTranslationHistoryEntry(dkey, h, { kind: 'dictionary', query: '猫', response: 'r', data });
+  h = saveTranslationHistoryEntry(dkey, h, { kind: 'dictionary', query: '猫', response: 'r', data });
+  assert.equal(h.length, 1, 'repeated same-kind word must not stack');
+
+  // A → B → A still keeps a single entry for A (it is refreshed to the top).
+  h = saveTranslationHistoryEntry(dkey, h, { kind: 'dictionary', query: '犬', response: 'r', data });
+  assert.equal(h.length, 2);
+  h = saveTranslationHistoryEntry(dkey, h, { kind: 'dictionary', query: '猫', response: 'r', data });
+  assert.equal(h.length, 2, 'A→B→A must not duplicate A');
+  assert.equal(h[0].query, '猫', 'refreshed entry moves to the top');
+
+  // Same word but a different kind is a distinct entry.
+  h = saveTranslationHistoryEntry(dkey, h, { kind: 'translation', query: '猫', response: 'gato' });
+  assert.equal(h.filter((e) => e.query === '猫').length, 2, 'dictionary vs translation are different entries');
+
+  // Outside the dedup window, the same word is appended again.
+  const stale = [{
+    id: 'old', queriedAt: Date.now() - HISTORY_DEDUP_WINDOW_MS - 1000,
+    query: '古い', kind: 'dictionary', data,
+  }];
+  const grown = saveTranslationHistoryEntry(dkey, stale, { kind: 'dictionary', query: '古い', response: 'r', data });
+  assert.equal(grown.length, 2, 'same word outside the window is a new entry');
+
+  console.log('PASS: history de-duplicates dictionary text, previews long translations, and de-dupes by kind+query over time.');
 } finally {
   await server.close();
 }

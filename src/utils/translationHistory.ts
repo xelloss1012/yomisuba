@@ -43,6 +43,10 @@ export interface TranslationHistoryEntry {
 
 export const MAX_TRANSLATION_HISTORY_ENTRIES = 500;
 const MAX_HISTORY_STORAGE_BYTES = 2.5 * 1024 * 1024;
+// If the same query of the same kind is consulted again within this window,
+// the existing entry is refreshed (moved to the top, content updated) instead
+// of stacking a duplicate.
+export const HISTORY_DEDUP_WINDOW_MS = 60_000;
 // Translation / AI answers are kept only as a short preview in the history to
 // stop a few long explanations from bloating storage; the complete text is
 // preserved when the entry is starred as a favorite.
@@ -94,23 +98,28 @@ export const saveTranslationHistoryEntry = (
   // Dictionary/glossary entries keep only their structured `data` (the text is
   // re-derived from it on display). Translation/AI entries keep a short preview.
   const { response: _response, ...rest } = entry;
+  const queriedAt = Date.now();
   const nextEntry: TranslationHistoryEntry = {
     ...rest,
     ...(entry.data
       ? {}
       : { response: previewResponse(entry.response || '') }),
-    id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
-    queriedAt: Date.now(),
+    id: `${queriedAt.toString(36)}-${Math.random().toString(36).slice(2)}`,
+    queriedAt,
   };
-  const latest = history[0];
-  if (
-    latest &&
-    latest.kind === nextEntry.kind &&
-    latest.query === nextEntry.query
-  ) {
-    return history;
-  }
-  const next = [nextEntry, ...history].slice(0, MAX_TRANSLATION_HISTORY_ENTRIES);
+  // De-duplicate: if the same query of the same kind was consulted recently
+  // (within the dedup window), refresh that entry (move it to the top and
+  // update its content) instead of appending a duplicate.
+  const recentIndex = history.findIndex(
+    (item) =>
+      item.kind === nextEntry.kind &&
+      item.query === nextEntry.query &&
+      queriedAt - item.queriedAt < HISTORY_DEDUP_WINDOW_MS,
+  );
+  const next = (recentIndex >= 0
+    ? [nextEntry, ...history.filter((_, index) => index !== recentIndex)]
+    : [nextEntry, ...history]
+  ).slice(0, MAX_TRANSLATION_HISTORY_ENTRIES);
 
   try {
     while (next.length > 1 && JSON.stringify(next).length * 2 > MAX_HISTORY_STORAGE_BYTES) {
