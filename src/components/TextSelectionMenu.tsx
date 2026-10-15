@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import { Copy, Languages, Volume2, Search, BookOpen, Check, X, Underline, TextSearch } from 'lucide-react';
 import { AiProvider } from '../types/epub';
 import { AI_PROVIDER_LABELS } from '../utils/aiTranslation';
@@ -16,13 +16,24 @@ export interface SelectionPosition {
 /**
  * A tap that selects a word reveals this menu exactly where the finger was (on
  * phones it is docked against the bottom edge), and the browser then finishes
- * the gesture by firing its compatibility `click` at those same coordinates.
- * Hit-testing starts again from the top document, so that click lands on the
- * menu that was not there when the touch began and opens the dictionary or the
- * translation by accident. A genuine activation always arrives right after a
- * `pointerdown` (or a `keydown` for keyboard users) on the menu itself, so any
- * other click is swallowed before it can reach a button.
+ * the gesture by firing the compatibility `mousedown`/`click` of that same tap
+ * at those coordinates. Hit-testing starts again from the top document, so they
+ * land on the menu that was not there when the touch began: the button under
+ * the finger lights up (`:active`) and opens the dictionary or the translation
+ * by accident.
+ *
+ * Two lines of defence, because blocking only the `click` still leaves the
+ * button receiving (and visually reacting to) the press:
+ *
+ *  1. `MENU_GHOST_TAP_GUARD_MS`: right after every selection the menu is not
+ *     hit-testable at all, so those leftover events fall through to the page —
+ *     the route every ordinary tap already takes — and never reach the menu.
+ *  2. `MENU_INTERACTION_WINDOW_MS`: a click is only honoured when a
+ *     `pointerdown` (or a `keydown`, for keyboard users) on the menu itself
+ *     preceded it, so anything that slips past the guard is still swallowed
+ *     during capture before it can reach a button.
  */
+const MENU_GHOST_TAP_GUARD_MS = 400;
 const MENU_INTERACTION_WINDOW_MS = 1000;
 
 interface Props {
@@ -59,9 +70,32 @@ export const TextSelectionMenu: React.FC<Props> = ({
   const [copied, setCopied] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [speechError, setSpeechError] = useState('');
+  // While `settling`, the menu is on screen but not hit-testable: the leftover
+  // events of the gesture that opened it pass straight through it.
+  const [settling, setSettling] = useState(true);
   const lastInteractionAtRef = useRef(0);
 
-  // Records the moment the user actually interacted *with the menu*. A click
+  const isVisible = Boolean(selectedText.trim()) && !isAdjusting;
+
+  // The tap that opened the menu has not finished when the menu appears — the
+  // browser still owes the `mousedown`/`click` of that same gesture, at
+  // coordinates that now fall on the menu. Keeping `pointer-events: none`
+  // until they have been delivered means the button is never the target: no
+  // `:active` flash, no handler, nothing. `position` is a fresh object on
+  // every selection, so each tapped word gets its own guard; `useLayoutEffect`
+  // so the attribute is applied before the browser gets to dispatch them.
+  useLayoutEffect(() => {
+    if (!isVisible) {
+      setSettling(true);
+      return;
+    }
+    setSettling(true);
+    const timer = window.setTimeout(() => setSettling(false), MENU_GHOST_TAP_GUARD_MS);
+    return () => window.clearTimeout(timer);
+  }, [isVisible, position]);
+
+  // Second line of defence for anything that outlives the guard above.
+  // Records the moment the user actually interacted *with the menu*; a click
   // without such a preceding event is the leftover of the gesture that opened
   // the menu, not a new decision by the user.
   const markMenuInteraction = () => {
@@ -155,7 +189,11 @@ export const TextSelectionMenu: React.FC<Props> = ({
       onKeyDownCapture={markMenuInteraction}
       onClickCapture={handleClickCapture}
       className={`z-[60] select-none transition-opacity ${
-        isAdjusting ? 'duration-0 opacity-0 pointer-events-none' : 'duration-200 opacity-100 pointer-events-auto'
+        isAdjusting
+          ? 'duration-0 opacity-0 pointer-events-none'
+          : settling
+            ? 'duration-200 opacity-100 pointer-events-none'
+            : 'duration-200 opacity-100 pointer-events-auto'
       } ${isMobile ? 'max-w-md mx-auto shadow-2xl' : 'shadow-2xl'}`}
       onClick={(e) => e.stopPropagation()}
     >
