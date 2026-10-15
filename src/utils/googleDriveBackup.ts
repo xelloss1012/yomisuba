@@ -1,4 +1,4 @@
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { SocialLogin } from '@capgo/capacitor-social-login';
 import { ReaderSettingsState } from '../types/epub';
 import { RecentBook, saveRecentBook } from './recentBooks';
@@ -13,6 +13,9 @@ const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const DRIVE_SESSION_EXPECTED_KEY = 'ereader_google_drive_session_expected';
 const DRIVE_SESSION_SCOPE_VERSION_KEY = 'ereader_google_drive_scope_version';
 const DRIVE_SESSION_SCOPE_VERSION = 'drive.file.v1';
+const DRIVE_PROFILE_KEY = 'ereader_google_drive_profile';
+// Google access tokens last an hour; a resume within this time keeps the token.
+const ACCESS_TOKEN_REUSE_MS = 45 * 60 * 1000;
 const PENDING_READER_DATA_KEY = 'ereader_pending_drive_reader_data_v1';
 const DRIVE_FOLDER_NAME = '.ereader';
 const DRIVE_FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
@@ -99,7 +102,14 @@ export interface ReaderBookBackup {
   dirtyGroups?: ReaderDataGroup[];
 }
 
+/** Native (Android) silent renewal of the Drive token: see GoogleDriveTokenPlugin.java. */
+interface GoogleDriveTokenPlugin {
+  authorize(options: { scopes: string[] }): Promise<{ accessToken: string }>;
+}
+const GoogleDriveToken = registerPlugin<GoogleDriveTokenPlugin>('GoogleDriveToken');
+
 let initializePromise: Promise<void> | null = null;
+let currentSession: { session: GoogleDriveSession; obtainedAt: number } | null = null;
 const readerBackupQueues = new Map<string, Promise<void>>();
 const driveFolderCache = new Map<string, Promise<string>>();
 export const googleDriveConfigured = Boolean(import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID);
@@ -151,7 +161,55 @@ export async function signInToGoogleDrive(): Promise<GoogleDriveSession> {
   const session = await createGoogleDriveSession(accessToken, result.result.idToken);
   localStorage.setItem(DRIVE_SESSION_EXPECTED_KEY, 'true');
   localStorage.setItem(DRIVE_SESSION_SCOPE_VERSION_KEY, DRIVE_SESSION_SCOPE_VERSION);
+  return rememberSession(session);
+}
+
+/** Keeps the session in memory (for resumes) and its profile on disk (for silent restores). */
+function rememberSession(session: GoogleDriveSession): GoogleDriveSession {
+  currentSession = { session, obtainedAt: Date.now() };
+  localStorage.setItem(DRIVE_PROFILE_KEY, JSON.stringify({ email: session.email, name: session.name }));
   return session;
+}
+
+function forgetSession() {
+  currentSession = null;
+  localStorage.removeItem(DRIVE_SESSION_EXPECTED_KEY);
+  localStorage.removeItem(DRIVE_SESSION_SCOPE_VERSION_KEY);
+  localStorage.removeItem(DRIVE_PROFILE_KEY);
+}
+
+/**
+ * On Android, a new Drive token without any UI, or null when Google needs the
+ * user (or the APK predates the native plugin) and the regular flow must run.
+ * Drive needs no ID token, so the account's name and email come from the last
+ * sign-in, or from Google's userinfo endpoint with the new token.
+ */
+async function restoreSessionSilently(): Promise<GoogleDriveSession | null> {
+  if (!Capacitor.isNativePlatform()) return null;
+  try {
+    const { accessToken } = await withTimeout(
+      GoogleDriveToken.authorize({ scopes: DRIVE_SCOPES }),
+      GOOGLE_AUTH_TIMEOUT_MS,
+      'Google no respondió al renovar el acceso a Drive.',
+    );
+    if (!accessToken) return null;
+    let profile: { email?: unknown; name?: unknown } = {};
+    try {
+      profile = JSON.parse(localStorage.getItem(DRIVE_PROFILE_KEY) || '{}');
+    } catch {
+      // Read it again from Google below.
+    }
+    if (typeof profile.email !== 'string' || !profile.email) {
+      profile = await (await driveRequest(accessToken, 'https://www.googleapis.com/oauth2/v3/userinfo')).json();
+    }
+    return {
+      accessToken,
+      email: typeof profile.email === 'string' ? profile.email : '',
+      name: typeof profile.name === 'string' ? profile.name : '',
+    };
+  } catch {
+    return null;
+  }
 }
 
 async function createGoogleDriveSession(accessToken: string, idToken: string): Promise<GoogleDriveSession> {
@@ -179,11 +237,12 @@ export async function restoreGoogleDriveSession(): Promise<GoogleDriveSession | 
       GOOGLE_AUTH_TIMEOUT_MS,
       'No se pudo cerrar a tiempo la sesión anterior de Google.',
     );
-    localStorage.removeItem(DRIVE_SESSION_EXPECTED_KEY);
-    localStorage.removeItem(DRIVE_SESSION_SCOPE_VERSION_KEY);
+    forgetSession();
     return null;
   }
   if (Capacitor.isNativePlatform() && expectedSession) {
+    const silent = await restoreSessionSilently();
+    if (silent) return rememberSession(silent);
     try {
       await withTimeout(
         SocialLogin.refresh({ provider: 'google', options: { scopes: DRIVE_SCOPES } }),
@@ -197,8 +256,7 @@ export async function restoreGoogleDriveSession(): Promise<GoogleDriveSession | 
         'Google no respondió al comprobar la sesión.',
       );
       if (!isLoggedIn) {
-        localStorage.removeItem(DRIVE_SESSION_EXPECTED_KEY);
-        localStorage.removeItem(DRIVE_SESSION_SCOPE_VERSION_KEY);
+        forgetSession();
         throw new Error('La sesión de Google ha caducado o se ha revocado. Vuelve a conectar la cuenta.');
       }
       throw error;
@@ -210,10 +268,7 @@ export async function restoreGoogleDriveSession(): Promise<GoogleDriveSession | 
     'Google no respondió al comprobar la sesión.',
   );
   if (!isLoggedIn) {
-    if (expectedSession) {
-      localStorage.removeItem(DRIVE_SESSION_EXPECTED_KEY);
-      localStorage.removeItem(DRIVE_SESSION_SCOPE_VERSION_KEY);
-    }
+    if (expectedSession) forgetSession();
     return null;
   }
 
@@ -235,10 +290,18 @@ export async function restoreGoogleDriveSession(): Promise<GoogleDriveSession | 
   const session = await createGoogleDriveSession(authorization.accessToken, authorization.jwt);
   localStorage.setItem(DRIVE_SESSION_EXPECTED_KEY, 'true');
   localStorage.setItem(DRIVE_SESSION_SCOPE_VERSION_KEY, DRIVE_SESSION_SCOPE_VERSION);
-  return session;
+  return rememberSession(session);
 }
 
+/**
+ * Called on every return to the app. A token obtained less than 45 minutes ago
+ * is still good, so nothing is asked of Google (asking used to bring up the
+ * sign-in sheet on most returns).
+ */
 export async function refreshGoogleDriveSession(): Promise<GoogleDriveSession | null> {
+  if (currentSession && Date.now() - currentSession.obtainedAt < ACCESS_TOKEN_REUSE_MS) {
+    return currentSession.session;
+  }
   return restoreGoogleDriveSession();
 }
 
@@ -248,8 +311,7 @@ export async function signOutGoogleDrive(): Promise<void> {
     GOOGLE_AUTH_TIMEOUT_MS,
     'Google tardó demasiado en cerrar la sesión.',
   );
-  localStorage.removeItem(DRIVE_SESSION_EXPECTED_KEY);
-  localStorage.removeItem(DRIVE_SESSION_SCOPE_VERSION_KEY);
+  forgetSession();
 }
 
 async function driveRequest(accessToken: string, url: string, init: RequestInit = {}): Promise<Response> {

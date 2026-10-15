@@ -369,6 +369,17 @@ export async function parseEpub(data: ArrayBuffer | Blob): Promise<ParsedEpub> {
       }
     }
 
+    // Calibre wraps covers in <svg width="100%" height="100%" preserveAspectRatio="none">,
+    // which stretches the picture whenever the reader's size limits change the
+    // box's proportions. Keep the image's own proportions instead.
+    const svgs = chapterDoc.querySelectorAll('svg');
+    for (let i = 0; i < svgs.length; i++) {
+      const svg = svgs[i];
+      if (svg.getAttribute('preserveAspectRatio')?.trim() === 'none' && svg.querySelector('image')) {
+        svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+      }
+    }
+
     // Rewrite Stylesheets <link rel="stylesheet" href="...">
     const styleLinks = chapterDoc.querySelectorAll('link[rel="stylesheet"]');
     for (let i = 0; i < styleLinks.length; i++) {

@@ -23,6 +23,7 @@ public class MainActivity extends BridgeActivity implements ModifiedMainActivity
         registerPlugin(JapaneseTtsPlugin.class);
         registerPlugin(ReaderFullscreenPlugin.class);
         registerPlugin(ReaderOrientationPlugin.class);
+        registerPlugin(GoogleDriveTokenPlugin.class);
         super.onCreate(savedInstanceState);
     }
 

@@ -413,6 +413,7 @@ export const EpubReader: React.FC<Props> = ({
   const lastSelectionTime = useRef<number>(0);
   const currentPageRef = useRef(0);
   const pageNudgeRef = useRef(0);
+  const reanalyzeAfterLoadRef = useRef(false);
   const totalPagesRef = useRef(1);
   const currentSpineRef = useRef(0);
   const chapterPageCountsRef = useRef<number[]>([]);
@@ -1611,6 +1612,21 @@ export const EpubReader: React.FC<Props> = ({
       targetTextOffset?: number,
     ) => {
       if (spineIndex < 0 || spineIndex >= epub.spine.length) return;
+      // The page analysis points into the document about to be replaced. When
+      // the same page is reloaded in place (a furigana mode or a style changed),
+      // it is run again on the new document once it is laid out.
+      if (wordSelectionModeRef.current || pageWordsRef.current.length > 0) {
+        reanalyzeAfterLoadRef.current =
+          spineIndex === currentSpineRef.current && targetPage === currentPageRef.current;
+        pageAnalysisRequestRef.current += 1;
+        automaticPageAnalysisRequestRef.current = 0;
+        wordSelectionModeRef.current = false;
+        setIsWordSelectionMode(false);
+        setIsAnalyzingPage(false);
+        pageWordsRef.current = [];
+        setPageWords([]);
+        setIsPageGlossaryOpen(false);
+      }
       selectionEdgeIndicatorRef.current = null;
       setSelectionEdgeIndicator(null);
       setIsLoadingChapter(true);
@@ -2091,6 +2107,11 @@ export const EpubReader: React.FC<Props> = ({
           // other use, and on dense pages a gap near the centre is hard to find.
           if (isTap) {
             if (Date.now() - lastSelectionTime.current < 400) return false;
+            // Leave the page exactly in place, whatever a previous gesture left behind.
+            if (pageNudgeRef.current) {
+              pageNudgeRef.current = 0;
+              updatePagination();
+            }
             setShowUi(p => !p);
           }
           return false;
@@ -2256,6 +2277,14 @@ export const EpubReader: React.FC<Props> = ({
           countDebugRef.current('tcancel');
           nativeSelectionTookOverRef.current = true;
           lastPointerActivityRef.current = Date.now();
+          // A swipe the browser cancels never reaches onEnd, so the page would
+          // stay where the finger dragged it, off centre, until the next turn.
+          if (pageNudgeRef.current) {
+            pageNudgeRef.current = 0;
+            const scroller = doc.getElementById('reader-scroller');
+            if (scroller) scroller.style.transition = 'transform 0.22s cubic-bezier(0.25, 1, 0.5, 1)';
+            updatePagination();
+          }
         }, { passive: true });
 
         // ── Trigger pagination once content is laid out ──
@@ -3833,6 +3862,13 @@ export const EpubReader: React.FC<Props> = ({
     }
   }, []);
 
+  // A page that was analysed before its chapter was reloaded in place.
+  useEffect(() => {
+    if (isLoadingChapter || !reanalyzeAfterLoadRef.current) return;
+    reanalyzeAfterLoadRef.current = false;
+    if (!settings.autoAnalyzePage) void analyzeCurrentPage(false);
+  }, [analyzeCurrentPage, isLoadingChapter, settings.autoAnalyzePage]);
+
   useEffect(() => {
     if (!settings.autoAnalyzePage || isLoadingChapter) return;
 
@@ -4021,8 +4057,8 @@ export const EpubReader: React.FC<Props> = ({
             setDebugEnabled((enabled) => !enabled);
           }}
           className="tap-area-free p-2 rounded-full backdrop-blur-md shadow-md transition-colors bg-zinc-900/40 text-white/80"
-          title={t('nav.open')}
-          aria-label={t('nav.open')}
+          title={t('nav.showControls')}
+          aria-label={t('nav.showControls')}
         >
           <Menu className="w-4 h-4" />
         </button>
@@ -4046,8 +4082,8 @@ export const EpubReader: React.FC<Props> = ({
         <button
           onClick={() => setShowUi(false)}
           className="tap-area-free fixed z-[55] p-2 rounded-full backdrop-blur-md shadow-md transition-colors right-3 bottom-[118px] bg-white/90 text-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-200"
-          title={t('nav.close')}
-          aria-label={t('nav.close')}
+          title={t('nav.hideControls')}
+          aria-label={t('nav.hideControls')}
         >
           <X className="w-4 h-4" />
         </button>

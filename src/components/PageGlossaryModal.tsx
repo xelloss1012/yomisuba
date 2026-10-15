@@ -176,7 +176,7 @@ export const PageGlossaryModal: React.FC<Props> = ({
     const result = new Set<string>();
     if (!studyLevel || !wordLevels) return result;
     for (const { key, token } of words) {
-      if (GRAMMAR_POS.has(token.pos) || isWithinLevel(wordLevels, lookupForm(token), levels.get(key) ?? null, studyLevel)) {
+      if (GRAMMAR_POS.has(token.pos) || isWithinLevel(levels.get(key) ?? null, studyLevel)) {
         result.add(key);
       }
     }

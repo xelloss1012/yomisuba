@@ -44,12 +44,14 @@ try {
   assert.deepEqual(sorted, ['食べる', '挨拶', '暴虐', '志']);
 
   // "My level": an N5 word is known from N5 on; an N1 word only at N1.
-  assert.equal(isWithinLevel(data, '食べる', level('食べる'), 5), true);
-  assert.equal(isWithinLevel(data, '志', level('志'), 3), false);
-  assert.equal(isWithinLevel(data, '志', level('志'), 1), true);
+  assert.equal(isWithinLevel(level('食べる'), 5), true);
+  assert.equal(isWithinLevel(level('志'), 3), false);
+  assert.equal(isWithinLevel(level('志'), 1), true);
+  // Knowing a word does not depend on its kanji: 貼る is N5 though 貼 is in no JLPT kanji list.
+  assert.equal(isWithinLevel(level('貼る'), 3), true);
   // Words without a JLPT level count as known only from the levels whose band covers them.
-  assert.equal(isWithinLevel(data, '暴虐', level('暴虐'), 2), false);
-  assert.equal(isWithinLevel(data, 'メロス', null, 1), false);
+  assert.equal(isWithinLevel(level('暴虐'), 2), false);
+  assert.equal(isWithinLevel(null, 1), false);
 
   console.log('PASS: word levels classify JLPT words, kana spellings, homophones and unlisted words, sort by usefulness and respect the reader level.');
 } finally {

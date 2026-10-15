@@ -93,7 +93,7 @@ const isDifficult = (token: JapaneseMorphologicalToken, options: FuriganaOptions
   // a name) is judged by its kanji alone: its frequency band says nothing about
   // whether the reader can read it.
   return level?.jlpt
-    ? !isWithinLevel(options.levels, token.surface_form, level, studyLevel)
+    ? !(isWithinLevel(level, studyLevel) && kanjiWithinLevel(options.levels, token.surface_form, studyLevel))
     : !kanjiWithinLevel(options.levels, token.surface_form, studyLevel);
 };
 

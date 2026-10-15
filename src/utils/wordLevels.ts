@@ -128,20 +128,13 @@ const KNOWN_BANDS: Record<JlptLevel, WordBand[]> = {
 /**
  * Whether a word is within the reader's level ("Mi nivel"): its JLPT level is
  * the reader's or easier, or, without one, its band is expected at that level.
- * Kanji outside the reader's JLPT kanji level also make a word difficult.
+ * This is about knowing the word, as its badge shows; whether the reader can
+ * read its kanji is kanjiWithinLevel's question (half the N5 and N4 words are
+ * spelt with a kanji outside the N3 kanji list: 貼る, 鞄).
  */
-export const isWithinLevel = (
-  data: WordLevelsData,
-  form: string,
-  level: WordLevel | null,
-  studyLevel: JlptLevel,
-): boolean => {
+export const isWithinLevel = (level: WordLevel | null, studyLevel: JlptLevel): boolean => {
   if (!level) return false;
-  const known = level.jlpt ? level.jlpt >= studyLevel : KNOWN_BANDS[studyLevel].includes(level.band);
-  if (!known) return false;
-  // A word of the reader's level may still be spelt with a kanji they have not
-  // met (JLPT kanji level harder than theirs, or none at all).
-  return kanjiWithinLevel(data, form, studyLevel);
+  return level.jlpt ? level.jlpt >= studyLevel : KNOWN_BANDS[studyLevel].includes(level.band);
 };
 
 /** Whether every kanji of a form is at the reader's JLPT kanji level or easier. */

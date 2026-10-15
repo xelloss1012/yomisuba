@@ -133,6 +133,42 @@ export const TextSelectionMenu: React.FC<Props> = ({
       onClick={(e) => e.stopPropagation()}
     >
       <div className="bg-zinc-900/95 dark:bg-zinc-800/95 text-white rounded-2xl p-2 shadow-2xl backdrop-blur-xl border border-zinc-700/80 flex flex-col gap-1.5">
+        {/* Mobile Preview Header */}
+        {isMobile && (
+          <div className="flex items-center gap-1 pl-2 pb-1 border-b border-zinc-700/60 text-xs">
+            <span className="min-w-0 flex-1 truncate text-zinc-300 font-serif">
+              "{selectedText}"
+            </span>
+
+            {aiProviders.map((provider) => (
+              <button
+                key={provider}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenAiTranslate(provider);
+                }}
+                className="tap-area flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl hover:bg-zinc-800 active:scale-95 text-xs font-medium transition-all text-amber-300 hover:text-white"
+                title={`${t('common.translate')} (${AI_PROVIDER_LABELS[provider]})`}
+              >
+                <span>{t('common.ai')} {AI_PROVIDER_LABELS[provider]}</span>
+              </button>
+            ))}
+
+            {/* Close, in the corner where the thumb expects it and large enough to hit. */}
+            <button
+              onClick={(event) => {
+                event.stopPropagation();
+                onClose();
+              }}
+              className="tap-area-free flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-800 text-zinc-300 hover:text-white active:scale-95"
+              title={t('menu.close')}
+              aria-label={t('menu.close')}
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+        )}
+
         {dictionaryPreview?.entries[0] && (
           <button
             type="button"
@@ -174,36 +210,6 @@ export const TextSelectionMenu: React.FC<Props> = ({
                 : JMDICT_SOURCE.label}
             </span>
           </button>
-        )}
-
-        {/* Mobile Preview Header */}
-        {isMobile && (
-          <div className="flex items-center justify-between px-2 pt-0.5 pb-1 border-b border-zinc-700/60 text-xs">
-            <span className="truncate max-w-[240px] text-zinc-300 font-serif">
-              "{selectedText}"
-            </span>
-            <button
-              onClick={onClose}
-              className="tap-area p-1 rounded-full text-zinc-400 hover:text-white"
-              title={t('menu.close')}
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-
-            {aiProviders.map((provider) => (
-              <button
-                key={provider}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onOpenAiTranslate(provider);
-                }}
-                className="tap-area flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl hover:bg-zinc-800 active:scale-95 text-xs font-medium transition-all text-amber-300 hover:text-white"
-                title={`${t('common.translate')} (${AI_PROVIDER_LABELS[provider]})`}
-              >
-                <span>{t('common.ai')} {AI_PROVIDER_LABELS[provider]}</span>
-              </button>
-            ))}
-          </div>
         )}
 
         {/* Action Buttons */}
