@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Bookmark, Highlighter, Trash2, X } from 'lucide-react';
 import { TextAnnotation } from '../utils/textAnnotations';
-import { t, UiLanguage } from '../utils/i18n';
+import { useT } from '../i18n/LanguageContext';
 
 export interface ReaderBookmark {
   spineIndex: number;
@@ -27,7 +27,6 @@ interface Props {
   isOpen: boolean;
   bookmarks: BookmarkItem[];
   annotations: AnnotationItem[];
-  language?: UiLanguage;
   onClose: () => void;
   onSelect: (bookmark: ReaderBookmark) => void;
   onRemove: (bookmark: ReaderBookmark) => void;
@@ -39,13 +38,13 @@ export const BookmarksModal: React.FC<Props> = ({
   isOpen,
   bookmarks,
   annotations,
-  language = 'es',
   onClose,
   onSelect,
   onRemove,
   onSelectAnnotation,
   onRemoveAnnotation,
 }) => {
+  const t = useT();
   const [activeTab, setActiveTab] = useState<'bookmarks' | 'annotations'>(() =>
     bookmarks.length === 0 && annotations.length > 0 ? 'annotations' : 'bookmarks'
   );
@@ -66,20 +65,20 @@ export const BookmarksModal: React.FC<Props> = ({
         <header className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
           <div className="flex items-center gap-2">
             <h2 id="saved-items-title" className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
-              {t('bookmarks.title', language)}
+              {t('bookmarks.title')}
             </h2>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="tap-area rounded-full p-2 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-            aria-label={t('nav.close', language)}
+            aria-label={t('nav.close')}
           >
             <X className="h-5 w-5" />
           </button>
         </header>
 
-        <div role="tablist" aria-label={t('bookmarks.title', language)} className="grid grid-cols-2 gap-1 border-b border-zinc-200 p-2 dark:border-zinc-800">
+        <div role="tablist" aria-label={t('bookmarks.title')} className="grid grid-cols-2 gap-1 border-b border-zinc-200 p-2 dark:border-zinc-800">
           <button
             type="button"
             role="tab"
@@ -92,7 +91,7 @@ export const BookmarksModal: React.FC<Props> = ({
             }`}
           >
             <Bookmark className="h-4 w-4" />
-            {t('bookmarks.tabBookmarks', language)}
+            {t('bookmarks.tabBookmarks')}
             <span className="text-xs opacity-70">{bookmarks.length}</span>
           </button>
           <button
@@ -107,7 +106,7 @@ export const BookmarksModal: React.FC<Props> = ({
             }`}
           >
             <Highlighter className="h-4 w-4" />
-            {t('bookmarks.tabAnnotations', language)}
+            {t('bookmarks.tabAnnotations')}
             <span className="text-xs opacity-70">{annotations.length}</span>
           </button>
         </div>
@@ -129,15 +128,15 @@ export const BookmarksModal: React.FC<Props> = ({
                       {bookmark.chapterLabel}
                     </span>
                     <span className="mt-0.5 block text-xs text-zinc-500 dark:text-zinc-400">
-                      {bookmark.chapterPageDisplay || `${t('bookmarks.page', language)} ${bookmark.page + 1}`} · {bookmark.pageDisplay || `${t('bookmarks.page', language)} ${bookmark.bookPage}`}
+                      {bookmark.chapterPageDisplay || `${t('bookmarks.page')} ${bookmark.page + 1}`} · {bookmark.pageDisplay || `${t('bookmarks.page')} ${bookmark.bookPage}`}
                     </span>
                   </button>
                   <button
                     type="button"
                     onClick={() => onRemove(bookmark)}
                     className="tap-area rounded-lg p-2 text-zinc-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-300"
-                    aria-label={t('bookmarks.removeBookmark', language)}
-                    title={t('common.delete', language)}
+                    aria-label={t('bookmarks.removeBookmark')}
+                    title={t('common.delete')}
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
@@ -146,7 +145,7 @@ export const BookmarksModal: React.FC<Props> = ({
             </ul>
           ) : (
             <p role="tabpanel" className="px-5 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
-              {t('bookmarks.empty', language)}
+              {t('bookmarks.empty')}
             </p>
           )
         ) : annotations.length ? (
@@ -172,8 +171,8 @@ export const BookmarksModal: React.FC<Props> = ({
                   type="button"
                   onClick={() => onRemoveAnnotation(annotation)}
                   className="tap-area rounded-lg p-2 text-zinc-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-300"
-                  aria-label={t('common.delete', language)}
-                  title={t('common.delete', language)}
+                  aria-label={t('common.delete')}
+                  title={t('common.delete')}
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -182,7 +181,7 @@ export const BookmarksModal: React.FC<Props> = ({
           </ul>
         ) : (
           <p role="tabpanel" className="px-5 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
-            {t('bookmarks.empty', language)}
+            {t('bookmarks.empty')}
           </p>
         )}
       </section>

@@ -4,8 +4,8 @@ export function formatPageDisplay(
   globalPage: number,
   bookTotalPages: number,
   paginationMode: 'device' | 'printed' | 'percent',
-  printedPages?: number,
-  language: UiLanguage = 'es'
+  printedPages: number | undefined,
+  language: UiLanguage
 ): string {
   const safeTotal = Math.max(1, bookTotalPages);
   const safeGlobal = Math.min(Math.max(0, globalPage), safeTotal - 1);
@@ -27,9 +27,9 @@ export function formatChapterPageDisplay(
   chapterPage: number,
   chapterTotalPages: number,
   paginationMode: 'device' | 'printed' | 'percent',
-  printedPages?: number,
-  bookTotalPages?: number,
-  language: UiLanguage = 'es',
+  printedPages: number | undefined,
+  bookTotalPages: number | undefined,
+  language: UiLanguage,
   chapterName?: string
 ): string {
   const cTotal = Math.max(1, chapterTotalPages);

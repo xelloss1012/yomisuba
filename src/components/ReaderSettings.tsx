@@ -2,7 +2,14 @@ import React from 'react';
 import { AiProvider, FontFamily, ReaderSettingsState, ReaderTheme } from '../types/epub';
 import { X, Type, AlignLeft, Sun, BookOpen, Compass, Languages } from 'lucide-react';
 import { DEFAULT_OPENROUTER_MODEL, OPENROUTER_MODEL_PRESETS } from '../utils/aiTranslation';
-import { t, AVAILABLE_LANGUAGES } from '../utils/i18n';
+import {
+  AVAILABLE_LANGUAGES,
+  resolveTranslationLanguage,
+  TRANSLATION_LANGUAGES,
+  TranslationLanguage,
+} from '../utils/i18n';
+import { useT } from '../i18n/LanguageContext';
+import { JapaneseDictionaryPanel } from './JapaneseDictionaryPanel';
 
 interface Props {
   isOpen: boolean;
@@ -23,19 +30,20 @@ export const ReaderSettings: React.FC<Props> = ({
   printedPages,
   onUpdatePrintedPages,
 }) => {
+  const t = useT();
   if (!isOpen) return null;
 
   const themes: { id: ReaderTheme; label: string; bg: string; text: string; border: string }[] = [
-    { id: 'light', label: t('settings.themeLight', settings.language), bg: 'bg-white', text: 'text-zinc-900', border: 'border-zinc-300' },
-    { id: 'paper', label: t('settings.themePaper', settings.language), bg: 'bg-[#faf7f0]', text: 'text-[#2c2825]', border: 'border-[#dfd7ca]' },
-    { id: 'sepia', label: t('settings.themeSepia', settings.language), bg: 'bg-[#f4ede4]', text: 'text-[#5c4838]', border: 'border-[#d7c0a9]' },
-    { id: 'dark', label: t('settings.themeDark', settings.language), bg: 'bg-[#18181b]', text: 'text-[#e4e4e7]', border: 'border-[#3f3f46]' },
+    { id: 'light', label: t('settings.themeLight'), bg: 'bg-white', text: 'text-zinc-900', border: 'border-zinc-300' },
+    { id: 'paper', label: t('settings.themePaper'), bg: 'bg-[#faf7f0]', text: 'text-[#2c2825]', border: 'border-[#dfd7ca]' },
+    { id: 'sepia', label: t('settings.themeSepia'), bg: 'bg-[#f4ede4]', text: 'text-[#5c4838]', border: 'border-[#d7c0a9]' },
+    { id: 'dark', label: t('settings.themeDark'), bg: 'bg-[#18181b]', text: 'text-[#e4e4e7]', border: 'border-[#3f3f46]' },
   ];
 
   const fonts: { id: FontFamily; label: string; sample: string; family: string }[] = [
     { id: 'mincho', label: 'Mincho (明朝体)', sample: '美しい日本語', family: '"Noto Serif JP", serif' },
     { id: 'gothic', label: 'Gothic (ゴシック体)', sample: '美しい日本語', family: '"Noto Sans JP", sans-serif' },
-    { id: 'serif', label: t('settings.fontSerif', settings.language), sample: 'Typography', family: 'Georgia, serif' },
+    { id: 'serif', label: t('settings.fontSerif'), sample: 'Typography', family: 'Georgia, serif' },
     { id: 'sans', label: 'Sans-serif', sample: 'Typography', family: 'system-ui, sans-serif' },
   ];
   const aiProviders: { id: AiProvider; label: string; hint: string }[] = [
@@ -55,7 +63,7 @@ export const ReaderSettings: React.FC<Props> = ({
         <div className="flex items-center justify-between pb-4 border-b border-zinc-200 dark:border-zinc-800">
           <div className="flex items-center gap-2">
             <Type className="w-5 h-5 text-zinc-700 dark:text-zinc-300" />
-            <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">{t('settings.title', settings.language)}</h2>
+            <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">{t('settings.title')}</h2>
           </div>
           <button
             onClick={onClose}
@@ -69,7 +77,7 @@ export const ReaderSettings: React.FC<Props> = ({
           {/* Idioma de la interfaz */}
           <div>
             <label className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2 flex items-center gap-1.5">
-              <Languages className="w-4 h-4" /> {t('language.label', settings.language)}
+              <Languages className="w-4 h-4" /> {t('language.label')}
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {AVAILABLE_LANGUAGES.map((langItem) => (
@@ -87,12 +95,37 @@ export const ReaderSettings: React.FC<Props> = ({
                 </button>
               ))}
             </div>
+            <span className="mt-3 block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+              {t('settings.translationLanguage')}
+            </span>
+            <select
+              value={settings.translationLanguage ?? ''}
+              onChange={(event) => onUpdateSettings({
+                translationLanguage: (event.target.value || undefined) as TranslationLanguage | undefined,
+              })}
+              className="w-full rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-2 text-xs text-zinc-800 dark:text-zinc-200 outline-none focus:border-indigo-500"
+            >
+              <option value="">
+                {t('settings.translationLanguageAuto', {
+                  language: TRANSLATION_LANGUAGES.find(
+                    (item) => item.code === resolveTranslationLanguage(settings.language),
+                  )?.label || '',
+                })}
+              </option>
+              {TRANSLATION_LANGUAGES.map((langItem) => (
+                <option key={langItem.code} value={langItem.code}>{langItem.label}</option>
+              ))}
+            </select>
+            <span className="mt-1 block text-[10px] text-zinc-500 dark:text-zinc-400">
+              {t('settings.translationLanguageHint')}
+            </span>
+            {settings.language === 'ja' && <JapaneseDictionaryPanel />}
           </div>
 
           {/* Dirección y Modo de Escritura (Japonés vertical vs horizontal) */}
           <div>
             <label className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2 flex items-center gap-1.5">
-              <Compass className="w-4 h-4" /> {t('settings.orientation', settings.language)}
+              <Compass className="w-4 h-4" /> {t('settings.orientation')}
             </label>
             <div className="grid grid-cols-2 gap-2">
               <button
@@ -104,8 +137,8 @@ export const ReaderSettings: React.FC<Props> = ({
                     : 'border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300'
                 }`}
               >
-                <span className="text-base">{t('settings.vertical', settings.language)}</span>
-                <span className="text-xs opacity-75">{t('settings.verticalHint', settings.language)}</span>
+                <span className="text-base">{t('settings.vertical')}</span>
+                <span className="text-xs opacity-75">{t('settings.verticalHint')}</span>
               </button>
               <button
                 type="button"
@@ -116,8 +149,8 @@ export const ReaderSettings: React.FC<Props> = ({
                     : 'border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300'
                 }`}
               >
-                <span className="text-base">{t('settings.horizontal', settings.language)}</span>
-                <span className="text-xs opacity-75">{t('settings.horizontalHint', settings.language)}</span>
+                <span className="text-base">{t('settings.horizontal')}</span>
+                <span className="text-xs opacity-75">{t('settings.horizontalHint')}</span>
               </button>
             </div>
           </div>
@@ -125,13 +158,13 @@ export const ReaderSettings: React.FC<Props> = ({
           {/* Tipo de Paginación y Páginas Impresas */}
           <div>
             <label className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2 flex items-center gap-1.5">
-              <BookOpen className="w-4 h-4" /> {t('settings.pagination', settings.language)}
+              <BookOpen className="w-4 h-4" /> {t('settings.pagination')}
             </label>
             <div className="grid grid-cols-3 gap-2 mb-3">
               {[
-                { id: 'device' as const, label: t('settings.paginationDevice', settings.language) },
-                { id: 'printed' as const, label: t('settings.paginationPrinted', settings.language) },
-                { id: 'percent' as const, label: t('settings.paginationPercent', settings.language) },
+                { id: 'device' as const, label: t('settings.paginationDevice') },
+                { id: 'printed' as const, label: t('settings.paginationPrinted') },
+                { id: 'percent' as const, label: t('settings.paginationPercent') },
               ].map((m) => (
                 <button
                   key={m.id}
@@ -151,8 +184,8 @@ export const ReaderSettings: React.FC<Props> = ({
             {onUpdatePrintedPages && (
               <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 p-3 space-y-2">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{t('settings.printedPages', settings.language)}</span>
-                  <span className="text-xs text-zinc-500">{t('settings.optional', settings.language)}</span>
+                  <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{t('settings.printedPages')}</span>
+                  <span className="text-xs text-zinc-500">{t('settings.optional')}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <input
@@ -173,12 +206,12 @@ export const ReaderSettings: React.FC<Props> = ({
                       onClick={() => onUpdatePrintedPages(undefined)}
                       className="text-xs text-rose-600 dark:text-rose-400 hover:underline px-2 py-1 shrink-0"
                     >
-                      {t('settings.clear', settings.language)}
+                      {t('settings.clear')}
                     </button>
                   )}
                 </div>
                 <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                  {t('settings.printedHint', settings.language)}
+                  {t('settings.printedHint')}
                 </p>
               </div>
             )}
@@ -192,9 +225,9 @@ export const ReaderSettings: React.FC<Props> = ({
               className="mt-0.5 h-4 w-4 accent-indigo-600"
             />
             <span>
-              <span className="block text-sm font-medium">{t('settings.autoRotate', settings.language)}</span>
+              <span className="block text-sm font-medium">{t('settings.autoRotate')}</span>
               <span className="mt-0.5 block text-xs text-zinc-500 dark:text-zinc-400">
-                {t('settings.autoRotateHint', settings.language)}
+                {t('settings.autoRotateHint')}
               </span>
             </span>
           </label>
@@ -207,9 +240,9 @@ export const ReaderSettings: React.FC<Props> = ({
               className="mt-0.5 h-4 w-4 accent-indigo-600"
             />
             <span>
-              <span className="block text-sm font-medium">{t('settings.furigana', settings.language)}</span>
+              <span className="block text-sm font-medium">{t('settings.furigana')}</span>
               <span className="mt-0.5 block text-xs text-zinc-500 dark:text-zinc-400">
-                {t('settings.furiganaHint', settings.language)}
+                {t('settings.furiganaHint')}
               </span>
             </span>
           </label>
@@ -222,9 +255,9 @@ export const ReaderSettings: React.FC<Props> = ({
               className="mt-0.5 h-4 w-4 accent-indigo-600"
             />
             <span>
-              <span className="block text-sm font-medium">{t('settings.autoAnalyze', settings.language)}</span>
+              <span className="block text-sm font-medium">{t('settings.autoAnalyze')}</span>
               <span className="mt-0.5 block text-xs text-zinc-500 dark:text-zinc-400">
-                {t('settings.autoAnalyzeHint', settings.language)}
+                {t('settings.autoAnalyzeHint')}
               </span>
             </span>
           </label>
@@ -232,7 +265,7 @@ export const ReaderSettings: React.FC<Props> = ({
           {/* Tema / Color de fondo */}
           <div>
             <label className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2 flex items-center gap-1.5">
-              <Sun className="w-4 h-4" /> {t('settings.theme', settings.language)}
+              <Sun className="w-4 h-4" /> {t('settings.theme')}
             </label>
             <div className="grid grid-cols-4 gap-2">
               {themes.map((th) => (
@@ -255,9 +288,9 @@ export const ReaderSettings: React.FC<Props> = ({
                 className="mt-0.5 h-4 w-4 accent-indigo-600"
               />
               <span>
-                <span className="block text-sm font-medium">{t('settings.nightMode', settings.language)}</span>
+                <span className="block text-sm font-medium">{t('settings.nightMode')}</span>
                 <span className="mt-0.5 block text-xs text-zinc-500 dark:text-zinc-400">
-                  {t('settings.nightModeHint', settings.language)}
+                  {t('settings.nightModeHint')}
                 </span>
               </span>
             </label>
@@ -266,7 +299,7 @@ export const ReaderSettings: React.FC<Props> = ({
           {/* Tipografía */}
           <div>
             <label className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2 flex items-center gap-1.5">
-              <BookOpen className="w-4 h-4" /> {t('settings.fontFamily', settings.language)}
+              <BookOpen className="w-4 h-4" /> {t('settings.fontFamily')}
             </label>
             <div className="grid grid-cols-2 gap-2">
               {fonts.map((f) => (
@@ -291,7 +324,7 @@ export const ReaderSettings: React.FC<Props> = ({
           <div>
             <div className="flex justify-between items-center mb-2">
               <label className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
-                <Type className="w-4 h-4" /> {t('settings.fontSize', settings.language)}
+                <Type className="w-4 h-4" /> {t('settings.fontSize')}
               </label>
               <span className="text-xs font-semibold px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300">
                 {settings.fontSize}px
@@ -328,7 +361,7 @@ export const ReaderSettings: React.FC<Props> = ({
           <div>
             <div className="flex justify-between items-center mb-2">
               <label className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
-                <AlignLeft className="w-4 h-4" /> {t('settings.lineHeight', settings.language)}
+                <AlignLeft className="w-4 h-4" /> {t('settings.lineHeight')}
               </label>
               <span className="text-xs font-semibold px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300">
                 {settings.lineHeight.toFixed(1)}
@@ -336,9 +369,9 @@ export const ReaderSettings: React.FC<Props> = ({
             </div>
             <div className="grid grid-cols-3 gap-2">
               {[
-                { val: 1.5, label: t('settings.lineCompact', settings.language) },
-                { val: 1.9, label: t('settings.lineNormal', settings.language) },
-                { val: 2.3, label: t('settings.lineWide', settings.language) },
+                { val: 1.5, label: t('settings.lineCompact') },
+                { val: 1.9, label: t('settings.lineNormal') },
+                { val: 2.3, label: t('settings.lineWide') },
               ].map((lh) => (
                 <button
                   key={lh.val}
@@ -357,10 +390,10 @@ export const ReaderSettings: React.FC<Props> = ({
             {/* Traducción con IA */}
             <div className="mt-6">
               <label className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2 flex items-center gap-1.5">
-                <span className="text-sm">✦</span> {t('settings.aiSection', settings.language)}
+                <span className="text-sm">✦</span> {t('settings.aiSection')}
               </label>
               <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mb-3">
-                {t('settings.aiKeysNote', settings.language)}
+                {t('settings.aiKeysNote')}
               </p>
               <div className="space-y-2">
                 {aiProviders.map((provider) => (
@@ -387,7 +420,7 @@ export const ReaderSettings: React.FC<Props> = ({
                 ))}
                 <div>
                   <span className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1">
-                    {t('settings.aiModel', settings.language)}
+                    {t('settings.aiModel')}
                   </span>
                   <select
                     value={OPENROUTER_MODEL_PRESETS.some((model) => model.id === settings.openRouterModel)
@@ -403,7 +436,7 @@ export const ReaderSettings: React.FC<Props> = ({
                     {OPENROUTER_MODEL_PRESETS.map((model) => (
                       <option key={model.id} value={model.id}>{model.label}</option>
                     ))}
-                    <option value="custom">{t('settings.customModel', settings.language)}</option>
+                    <option value="custom">{t('settings.customModel')}</option>
                   </select>
                   {settings.openRouterModel === '' || !OPENROUTER_MODEL_PRESETS.some((model) => model.id === settings.openRouterModel) ? (
                     <input
@@ -417,7 +450,7 @@ export const ReaderSettings: React.FC<Props> = ({
                     />
                   ) : null}
                   <span className="mt-1 block text-[10px] text-zinc-500 dark:text-zinc-400">
-                    {t('settings.defaultModel', settings.language).replace('{model}', DEFAULT_OPENROUTER_MODEL)}
+                    {t('settings.defaultModel').replace('{model}', DEFAULT_OPENROUTER_MODEL)}
                   </span>
                 </div>
               </div>

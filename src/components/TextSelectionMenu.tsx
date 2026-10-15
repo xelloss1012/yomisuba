@@ -4,7 +4,7 @@ import { AiProvider } from '../types/epub';
 import { AI_PROVIDER_LABELS } from '../utils/aiTranslation';
 import { DictionaryLookup } from '../utils/dictionary';
 import { speakJapanese } from '../utils/japaneseSpeech';
-import { t, UiLanguage } from '../utils/i18n';
+import { useT } from '../i18n/LanguageContext';
 
 export interface SelectionPosition {
   x: number;
@@ -17,7 +17,6 @@ interface Props {
   selectedText: string;
   position: SelectionPosition | null;
   isAdjusting?: boolean;
-  language?: UiLanguage;
   onClose: () => void;
   onOpenTranslate: () => void;
   onOpenDictionary: () => void;
@@ -33,7 +32,6 @@ export const TextSelectionMenu: React.FC<Props> = ({
   selectedText,
   position,
   isAdjusting = false,
-  language = 'es',
   onClose,
   onOpenTranslate,
   onOpenDictionary,
@@ -44,6 +42,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
   aiProviders,
   onOpenAiTranslate,
 }) => {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [speechError, setSpeechError] = useState('');
@@ -86,7 +85,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
     try {
       await speakJapanese(selectedText);
     } catch (error) {
-      setSpeechError(error instanceof Error ? error.message : t('menu.ttsError', language));
+      setSpeechError(error instanceof Error ? error.message : t('menu.ttsError'));
     } finally {
       setIsSpeaking(false);
     }
@@ -138,7 +137,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
               onOpenDictionary();
             }}
             className="w-full rounded-xl border border-emerald-400/20 bg-emerald-950/35 px-3 py-2 text-left transition-colors hover:bg-emerald-950/60"
-            title={t('menu.openDictDetails', language)}
+            title={t('menu.openDictDetails')}
           >
             <span className="flex items-baseline gap-2">
               <span className="text-sm font-semibold text-emerald-200">
@@ -177,7 +176,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
             <button
               onClick={onClose}
               className="tap-area p-1 rounded-full text-zinc-400 hover:text-white"
-              title={t('menu.close', language)}
+              title={t('menu.close')}
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -190,9 +189,9 @@ export const TextSelectionMenu: React.FC<Props> = ({
                   onOpenAiTranslate(provider);
                 }}
                 className="tap-area flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl hover:bg-zinc-800 active:scale-95 text-xs font-medium transition-all text-amber-300 hover:text-white"
-                title={`${t('common.translate', language)} (${AI_PROVIDER_LABELS[provider]})`}
+                title={`${t('common.translate')} (${AI_PROVIDER_LABELS[provider]})`}
               >
-                <span>{t('common.ai', language)} {AI_PROVIDER_LABELS[provider]}</span>
+                <span>{t('common.ai')} {AI_PROVIDER_LABELS[provider]}</span>
               </button>
             ))}
           </div>
@@ -208,23 +207,23 @@ export const TextSelectionMenu: React.FC<Props> = ({
             className={`tap-area flex flex-1 items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-xs font-medium transition-all hover:bg-zinc-800 active:scale-95 ${
               isUnderlined ? 'text-amber-300' : 'text-zinc-100'
             }`}
-            title={isUnderlined ? t('menu.removeUnderline', language) : t('menu.underline', language)}
-            aria-label={isUnderlined ? t('menu.removeUnderline', language) : t('menu.underline', language)}
+            title={isUnderlined ? t('menu.removeUnderline') : t('menu.underline')}
+            aria-label={isUnderlined ? t('menu.removeUnderline') : t('menu.underline')}
             aria-pressed={isUnderlined}
           >
             <Underline className="h-3.5 w-3.5" />
-            {!isMobile && <span>{isUnderlined ? t('menu.removeUnderline', language) : t('menu.underline', language)}</span>}
+            {!isMobile && <span>{isUnderlined ? t('menu.removeUnderline') : t('menu.underline')}</span>}
           </button>
 
           {/* Copiar */}
           <button
             onClick={handleCopy}
             className="tap-area flex-1 flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl hover:bg-zinc-800 active:scale-95 text-xs font-medium transition-all"
-            title={t('menu.copy', language)}
-            aria-label={t('menu.copy', language)}
+            title={t('menu.copy')}
+            aria-label={t('menu.copy')}
           >
             {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-            {!isMobile && <span>{copied ? t('menu.copied', language) : t('menu.copy', language)}</span>}
+            {!isMobile && <span>{copied ? t('menu.copied') : t('menu.copy')}</span>}
           </button>
 
           {/* Traducir */}
@@ -234,10 +233,10 @@ export const TextSelectionMenu: React.FC<Props> = ({
               onOpenDictionary();
             }}
             className="tap-area flex-1 flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl hover:bg-zinc-800 active:scale-95 text-xs font-medium transition-all text-indigo-300 hover:text-white"
-            title={t('menu.translate', language)}
+            title={t('menu.translate')}
           >
             <Languages className="w-3.5 h-3.5" />
-            <span>{t('menu.translate', language)}</span>
+            <span>{t('menu.translate')}</span>
           </button>
 
           {/* Diccionario local */}
@@ -247,10 +246,10 @@ export const TextSelectionMenu: React.FC<Props> = ({
               onOpenTranslate();
             }}
             className="tap-area flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl hover:bg-zinc-800 active:scale-95 text-xs font-medium transition-all text-emerald-300 hover:text-white"
-            title={t('menu.dictLocal', language)}
+            title={t('menu.dictLocal')}
           >
             <BookOpen className="w-3.5 h-3.5" />
-            <span>{t('menu.dict', language)}</span>
+            <span>{t('menu.dict')}</span>
           </button>
 
           {/* Pronunciación TTS */}
@@ -258,7 +257,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
             onClick={handleSpeak}
             disabled={isSpeaking}
             className="tap-area p-2 rounded-xl hover:bg-zinc-800 active:scale-95 text-xs transition-all text-amber-300 hover:text-white disabled:opacity-50"
-            title={t('menu.tts', language)}
+            title={t('menu.tts')}
           >
             <Volume2 className={`w-4 h-4 ${isSpeaking ? 'animate-pulse text-amber-400' : ''}`} />
           </button>
@@ -270,8 +269,8 @@ export const TextSelectionMenu: React.FC<Props> = ({
               onSearchInBook();
             }}
             className="tap-area p-2 rounded-xl hover:bg-zinc-800 active:scale-95 text-xs transition-all text-sky-300 hover:text-white"
-            title={t('menu.searchInBook', language)}
-            aria-label={t('menu.searchInBook', language)}
+            title={t('menu.searchInBook')}
+            aria-label={t('menu.searchInBook')}
           >
             <TextSearch className="w-4 h-4" />
           </button>
@@ -280,7 +279,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
           <button
             onClick={handleSearchGoogle}
             className="tap-area p-2 rounded-xl hover:bg-zinc-800 active:scale-95 text-xs transition-all text-zinc-300 hover:text-white"
-            title={t('menu.googleSearch', language)}
+            title={t('menu.googleSearch')}
           >
             <Search className="w-4 h-4" />
           </button>
@@ -291,7 +290,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
               <button
                 onClick={onClose}
                 className="tap-area p-1.5 rounded-xl hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors"
-                title={t('menu.close', language)}
+                title={t('menu.close')}
               >
                 <X className="w-3.5 h-3.5" />
               </button>

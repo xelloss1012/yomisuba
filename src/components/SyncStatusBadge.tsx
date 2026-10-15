@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Cloud, Check, Loader2, AlertTriangle, RefreshCw, UploadCloud } from 'lucide-react';
 import { GoogleDriveSession } from '../utils/googleDriveBackup';
-import { t, formatSyncError, SyncErrorState, UiLanguage } from '../utils/i18n';
+import { formatSyncError, SyncErrorState } from '../utils/i18n';
+import { useLanguage, useT } from '../i18n/LanguageContext';
 
 interface Props {
   googleDriveSession?: GoogleDriveSession | null;
@@ -12,7 +13,6 @@ interface Props {
   isBookUploaded?: boolean;
   onUploadBook?: () => void;
   align?: 'left' | 'right';
-  language?: UiLanguage;
 }
 
 export const SyncStatusBadge: React.FC<Props> = ({
@@ -24,8 +24,9 @@ export const SyncStatusBadge: React.FC<Props> = ({
   isBookUploaded = true,
   onUploadBook,
   align = 'right',
-  language = 'es',
 }) => {
+  const t = useT();
+  const language = useLanguage();
   const [isOpen, setIsOpen] = useState(false);
 
   if (!googleDriveSession) return null;
@@ -68,14 +69,14 @@ export const SyncStatusBadge: React.FC<Props> = ({
         onClick={handleToggle}
         title={
           displayError
-            ? `${t('sync.notice', language)} ${displayError}`
+            ? `${t('sync.notice')} ${displayError}`
             : isDriveBusy
-              ? t('sync.syncing', language)
+              ? t('sync.syncing')
               : !isBookUploaded
-                ? t('sync.progressOnly', language)
-                : t('sync.synchronized', language)
+                ? t('sync.progressOnly')
+                : t('sync.synchronized')
         }
-        aria-label={t('sync.statusAria', language)}
+        aria-label={t('sync.statusAria')}
         className={`tap-area flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-xs shadow-sm backdrop-blur-sm transition-all ${getStatusBg()} text-zinc-700 dark:text-zinc-200 hover:scale-105`}
       >
         <Cloud className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
@@ -109,7 +110,7 @@ export const SyncStatusBadge: React.FC<Props> = ({
             <div className="flex items-center justify-between mb-2">
               <span className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
                 <Cloud className="w-4 h-4 text-indigo-600" />
-                {t('sync.title', language)}
+                {t('sync.title')}
               </span>
               <button
                 onClick={(e) => {
@@ -117,7 +118,7 @@ export const SyncStatusBadge: React.FC<Props> = ({
                   setIsOpen(false);
                 }}
                 className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 font-bold px-1"
-                aria-label={t('menu.close', language)}
+                aria-label={t('menu.close')}
               >
                 ✕
               </button>
@@ -126,7 +127,7 @@ export const SyncStatusBadge: React.FC<Props> = ({
             {displayError ? (
               <div className="space-y-3">
                 <div className="rounded-xl bg-amber-50 dark:bg-amber-950/50 p-2.5 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-900">
-                  <p className="font-medium mb-1">{t('sync.syncWarning', language)}</p>
+                  <p className="font-medium mb-1">{t('sync.syncWarning')}</p>
                   <p className="text-[11px] opacity-90 break-words">{displayError}</p>
                 </div>
                 {onRetry && (
@@ -139,16 +140,16 @@ export const SyncStatusBadge: React.FC<Props> = ({
                     className="w-full flex items-center justify-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 transition-colors shadow-sm cursor-pointer"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
-                    {t('sync.retry', language)}
+                    {t('sync.retry')}
                   </button>
                 )}
               </div>
             ) : !isBookUploaded ? (
               <div className="space-y-3">
                 <div className="rounded-xl bg-indigo-50 dark:bg-indigo-950/40 p-2.5 text-indigo-900 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-900">
-                  <p className="font-medium mb-1">{t('sync.progressTitle', language)}</p>
+                  <p className="font-medium mb-1">{t('sync.progressTitle')}</p>
                   <p className="text-[11px] opacity-90">
-                    {t('sync.progressDesc', language)}
+                    {t('sync.progressDesc')}
                   </p>
                 </div>
                 {onUploadBook && (
@@ -161,18 +162,18 @@ export const SyncStatusBadge: React.FC<Props> = ({
                     className="w-full flex items-center justify-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 transition-colors shadow-sm cursor-pointer"
                   >
                     <UploadCloud className="w-4 h-4" />
-                    {t('sync.uploadBookBtn', language)}
+                    {t('sync.uploadBookBtn')}
                   </button>
                 )}
               </div>
             ) : (
               <div className="space-y-2">
                 <p className="text-zinc-600 dark:text-zinc-400">
-                  {isDriveBusy ? t('sync.syncing', language) : t('sync.syncedOk', language)}
+                  {isDriveBusy ? t('sync.syncing') : t('sync.syncedOk')}
                 </p>
                 {lastSyncedDate && (
                   <p className="text-[10px] text-zinc-400">
-                    {t('sync.lastSync', language)}{lastSyncedDate}
+                    {t('sync.lastSync')}{lastSyncedDate}
                   </p>
                 )}
               </div>

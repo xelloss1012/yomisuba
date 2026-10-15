@@ -2,7 +2,8 @@ import React from 'react';
 import { BookMetadata, ReaderSettingsState } from '../types/epub';
 import { GoogleDriveSession } from '../utils/googleDriveBackup';
 import { SyncStatusBadge } from './SyncStatusBadge';
-import { t, UiLanguage, SyncErrorState } from '../utils/i18n';
+import { SyncErrorState } from '../utils/i18n';
+import { useT } from '../i18n/LanguageContext';
 import {
   Menu,
   SlidersHorizontal,
@@ -46,7 +47,6 @@ interface Props {
   lastSyncedDate?: string | null;
   isBookUploaded?: boolean;
   onUploadBook?: () => void;
-  language?: UiLanguage;
 }
 
 export const ReaderNavbar: React.FC<Props> = ({
@@ -77,15 +77,15 @@ export const ReaderNavbar: React.FC<Props> = ({
   lastSyncedDate,
   isBookUploaded,
   onUploadBook,
-  language = 'es',
 }) => {
+  const t = useT();
   const isVertical = settings.writingMode === 'vertical-rl';
   const isAnalyzerActive = settings.autoAnalyzePage || isWordSelectionMode;
   const analyzerTitle = settings.autoAnalyzePage
-    ? t('nav.analyzerOn', language)
+    ? t('nav.analyzerOn')
     : isWordSelectionMode
-      ? t('nav.analyzerPageOff', language)
-      : t('nav.analyzerOff', language);
+      ? t('nav.analyzerPageOff')
+      : t('nav.analyzerOff');
 
   return (
     <header
@@ -103,25 +103,25 @@ export const ReaderNavbar: React.FC<Props> = ({
           <div className="flex shrink-0 items-center gap-1 sm:gap-2">
             <button
               onClick={onOpenFile}
-              title={t('nav.openTitle', language)}
+              title={t('nav.openTitle')}
               className="tap-area p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-200 transition-colors flex items-center gap-1.5 text-xs font-medium"
             >
               <FolderOpen className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-              <span className="hidden sm:inline">{t('nav.open', language)}</span>
+              <span className="hidden sm:inline">{t('nav.open')}</span>
             </button>
             <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-700 mx-1" />
             <button
               onClick={onToggleToc}
-              title={t('nav.tocTitle', language)}
+              title={t('nav.tocTitle')}
               className="tap-area p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-200 transition-colors flex items-center gap-1.5 text-xs font-medium"
             >
               <Menu className="w-4 h-4" />
-              <span className="hidden md:inline">{t('nav.toc', language)}</span>
+              <span className="hidden md:inline">{t('nav.toc')}</span>
             </button>
             <button
               onClick={onOpenBookmarks}
-              title={`${t('bookmarks.title', language)} (${bookmarkCount + annotationCount})`}
-              aria-label={`${t('bookmarks.title', language)} (${bookmarkCount + annotationCount})`}
+              title={`${t('bookmarks.title')} (${bookmarkCount + annotationCount})`}
+              aria-label={`${t('bookmarks.title')} (${bookmarkCount + annotationCount})`}
               className="tap-area relative rounded-lg p-2 text-zinc-700 transition-colors hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
             >
               <List className="h-4 w-4" />
@@ -133,16 +133,16 @@ export const ReaderNavbar: React.FC<Props> = ({
             </button>
             <button
               onClick={onOpenSearch}
-              title={t('nav.searchTitle', language)}
-              aria-label={t('nav.search', language)}
+              title={t('nav.searchTitle')}
+              aria-label={t('nav.search')}
               className="tap-area rounded-lg p-2 text-zinc-700 transition-colors hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
             >
               <Search className="h-4 w-4" />
             </button>
             <button
               onClick={onOpenHistory}
-              title={`${t('history.title', language)} (${historyCount} ${t('history.queries', language)}, ${favoriteCount} ${t('history.tabFavorites', language).toLowerCase()}, ${frequentCount} ${t('history.tabFrequent', language).toLowerCase()})`}
-              aria-label={`${t('history.title', language)} (${historyCount} ${t('history.queries', language)}, ${favoriteCount} ${t('history.tabFavorites', language).toLowerCase()}, ${frequentCount} ${t('history.tabFrequent', language).toLowerCase()})`}
+              title={`${t('history.title')} (${historyCount} ${t('history.queries')}, ${favoriteCount} ${t('history.tabFavorites').toLowerCase()}, ${frequentCount} ${t('history.tabFrequent').toLowerCase()})`}
+              aria-label={`${t('history.title')} (${historyCount} ${t('history.queries')}, ${favoriteCount} ${t('history.tabFavorites').toLowerCase()}, ${frequentCount} ${t('history.tabFrequent').toLowerCase()})`}
               className="tap-area relative rounded-lg p-2 text-zinc-700 transition-colors hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
             >
               <History className="h-4 w-4" />
@@ -176,8 +176,8 @@ export const ReaderNavbar: React.FC<Props> = ({
               type="button"
               onClick={onOpenPageGlossary}
               disabled={isAnalyzingPage}
-              title={t('nav.glossary', language)}
-              aria-label={t('nav.glossary', language)}
+              title={t('nav.glossary')}
+              aria-label={t('nav.glossary')}
               className="tap-area rounded-lg p-2 text-zinc-700 transition-colors hover:bg-zinc-100 disabled:opacity-50 dark:text-zinc-200 dark:hover:bg-zinc-800"
             >
               <BookOpen className="h-4 w-4" />
@@ -185,8 +185,8 @@ export const ReaderNavbar: React.FC<Props> = ({
             <button
               type="button"
               onClick={() => onUpdateSettings({ showFurigana: !settings.showFurigana })}
-              title={settings.showFurigana ? t('nav.hideFurigana', language) : t('nav.showFurigana', language)}
-              aria-label={settings.showFurigana ? t('nav.hideFurigana', language) : t('nav.showFurigana', language)}
+              title={settings.showFurigana ? t('nav.hideFurigana') : t('nav.showFurigana')}
+              aria-label={settings.showFurigana ? t('nav.hideFurigana') : t('nav.showFurigana')}
               aria-pressed={settings.showFurigana}
               className={`tap-area rounded-lg p-2 transition-colors ${
                 settings.showFurigana
@@ -207,7 +207,7 @@ export const ReaderNavbar: React.FC<Props> = ({
                   progressionDirection: isVertical ? 'ltr' : 'rtl',
                 })
               }
-              title={isVertical ? t('nav.switchToHorizontal', language) : t('nav.switchToVertical', language)}
+              title={isVertical ? t('nav.switchToHorizontal') : t('nav.switchToVertical')}
               className="tap-area p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-200 transition-colors flex items-center gap-1 text-xs font-medium"
             >
               {isVertical ? (
@@ -226,7 +226,7 @@ export const ReaderNavbar: React.FC<Props> = ({
             {/* Typography Settings (Aa) */}
             <button
               onClick={onToggleSettings}
-              title={t('nav.settings', language)}
+              title={t('nav.settings')}
               className="tap-area p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-200 transition-colors flex items-center gap-1 text-xs font-medium"
             >
               <SlidersHorizontal className="w-4 h-4" />
@@ -256,7 +256,6 @@ export const ReaderNavbar: React.FC<Props> = ({
                 isBookUploaded={isBookUploaded}
                 onUploadBook={onUploadBook}
                 align="right"
-                language={language}
               />
             </div>
           )}

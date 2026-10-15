@@ -14,6 +14,9 @@ export const vi: Record<string, string> = {
   'sample.btn': 'Tải sách mẫu tiếng Nhật',
   'recent.title': 'Sách gần đây',
   'language.label': 'Ngôn ngữ giao diện',
+  'settings.translationLanguage': 'Ngôn ngữ dịch',
+  'settings.translationLanguageAuto': 'Giống giao diện ({language})',
+  'settings.translationLanguageHint': 'Ngôn ngữ dùng để dịch văn bản tiếng Nhật, cũng dùng cho từ điển song ngữ.',
 
   // ReaderSettings & Options
   'settings.title': 'Cài đặt đọc',
@@ -158,7 +161,7 @@ export const vi: Record<string, string> = {
   'translate.errorDict': 'Không thể tra cứu từ điển.',
   'translate.errorExplain': 'Không thể tạo lời giải thích.',
   'translate.originalJapanese': 'Văn bản gốc (Tiếng Nhật)',
-  'translate.targetTranslation': 'Bản dịch tiếng Việt',
+  'translate.targetTranslation': 'Bản dịch ({language})',
   'translate.localJmdict': 'Từ điển JMDict cục bộ · Tiếng Tây Ban Nha & Tiếng Anh',
   'translate.explaining': 'Đang giải thích…',
   'translate.translating': 'Đang dịch...',
@@ -265,6 +268,7 @@ export const vi: Record<string, string> = {
   'glossary.baseForm': 'Dạng cơ bản',
   'glossary.terms': 'Thuật ngữ',
   'glossary.reading': 'Cách đọc',
+  'glossary.synonyms': 'Từ đồng nghĩa',
   'glossary.notFound': 'Không tìm thấy mục cục bộ cho dạng này.',
   'glossary.noDefinition': 'Không tìm thấy định nghĩa.',
   'glossary.errorQuery': 'Lỗi truy vấn',
@@ -284,6 +288,18 @@ export const vi: Record<string, string> = {
   'history.savedFavs': 'Mục yêu thích đã lưu ({count}/{max})',
   'history.frequentTerms': 'Các thuật ngữ tra cứu thường xuyên',
   'history.queries': 'truy vấn',
+
+  // Japanese–Japanese dictionary
+  'jaDict.title': 'Từ điển Nhật–Nhật',
+  'jaDict.description': 'Tải từ điển dựa trên Wiktionary tiếng Nhật để xem định nghĩa và từ đồng nghĩa bằng tiếng Nhật (khoảng {size}).',
+  'jaDict.download': 'Tải xuống',
+  'jaDict.downloading': 'Đang tải… {percent}%',
+  'jaDict.installed': 'Đã cài ({size})',
+  'jaDict.updateAvailable': 'Có phiên bản mới hơn.',
+  'jaDict.update': 'Cập nhật',
+  'jaDict.delete': 'Xóa',
+  'jaDict.error': 'Không tải được: {message}',
+  'jaDict.attribution': 'Wiktionary tiếng Nhật (CC BY-SA)',
 
   // Common
   'common.cancel': 'Hủy',

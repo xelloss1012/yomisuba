@@ -1,4 +1,4 @@
-import { UiLanguage } from '../utils/i18n';
+import { TranslationLanguage, UiLanguage } from '../utils/i18n';
 
 export type WritingMode = 'vertical-rl' | 'horizontal-tb' | 'auto';
 export type ProgressionDirection = 'rtl' | 'ltr' | 'auto';
@@ -67,4 +67,6 @@ export interface ReaderSettingsState {
   openRouterModel: string;
   paginationMode: PaginationMode;
   language: UiLanguage;
+  /** Target of translations; unset means "follow the interface" (see resolveTranslationLanguage). */
+  translationLanguage?: TranslationLanguage;
 }

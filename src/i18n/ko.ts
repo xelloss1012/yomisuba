@@ -14,6 +14,9 @@ export const ko: Record<string, string> = {
   'sample.btn': '일본어 샘플 책 로드',
   'recent.title': '최근 책',
   'language.label': '인터페이스 언어',
+  'settings.translationLanguage': '번역 언어',
+  'settings.translationLanguageAuto': '인터페이스와 동일 ({language})',
+  'settings.translationLanguageHint': '일본어 텍스트를 번역할 언어이며, 이중 언어 사전에도 사용됩니다.',
 
   // ReaderSettings & Options
   'settings.title': '읽기 설정',
@@ -158,7 +161,7 @@ export const ko: Record<string, string> = {
   'translate.errorDict': '사전을 조회할 수 없습니다.',
   'translate.errorExplain': '설명을 생성할 수 없습니다.',
   'translate.originalJapanese': '원문 (일본어)',
-  'translate.targetTranslation': '한국어 번역',
+  'translate.targetTranslation': '번역 ({language})',
   'translate.localJmdict': '로컬 JMDict 사전 · 스페인어 및 영어',
   'translate.explaining': '설명 중…',
   'translate.translating': '번역 중...',
@@ -265,6 +268,7 @@ export const ko: Record<string, string> = {
   'glossary.baseForm': '기본형',
   'glossary.terms': '용어',
   'glossary.reading': '읽기',
+  'glossary.synonyms': '동의어',
   'glossary.notFound': '이 형태에 대한 로컬 항목을 찾을 수 없습니다.',
   'glossary.noDefinition': '정의를 찾을 수 없습니다.',
   'glossary.errorQuery': '조회 오류',
@@ -284,6 +288,18 @@ export const ko: Record<string, string> = {
   'history.savedFavs': '저장된 즐겨찾기 ({count}/{max})',
   'history.frequentTerms': '자주 조회한 용어',
   'history.queries': '회 조회',
+
+  // Japanese–Japanese dictionary
+  'jaDict.title': '일일 사전',
+  'jaDict.description': '일본어 위키낱말사전을 바탕으로 한 사전을 내려받아 일본어 정의와 동의어를 볼 수 있습니다 (약 {size}).',
+  'jaDict.download': '다운로드',
+  'jaDict.downloading': '다운로드 중… {percent}%',
+  'jaDict.installed': '설치됨 ({size})',
+  'jaDict.updateAvailable': '새 버전이 있습니다.',
+  'jaDict.update': '업데이트',
+  'jaDict.delete': '삭제',
+  'jaDict.error': '다운로드하지 못했습니다: {message}',
+  'jaDict.attribution': '일본어 위키낱말사전 (CC BY-SA)',
 
   // Common
   'common.cancel': '취소',

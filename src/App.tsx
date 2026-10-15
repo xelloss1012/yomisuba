@@ -4,6 +4,7 @@ import { ParsedEpub, ReaderSettingsState } from './types/epub';
 import { extractEpubCoverBlob, parseEpub } from './utils/epubParser';
 import { FileDropZone } from './components/FileDropZone';
 import { EpubReader } from './components/EpubReader';
+import { LanguageProvider } from './i18n/LanguageContext';
 import { setReaderAutoRotate } from './utils/readerOrientation';
 import { createBookId, deleteRecentBook, getLastBookId, getRecentBook, listRecentBooks, RecentBook, saveRecentBook, setLastBookId } from './utils/recentBooks';
 import {
@@ -700,59 +701,60 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 w-full h-full overflow-hidden select-none bg-stone-100 dark:bg-zinc-950">
-      {errorMessage && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 max-w-md bg-red-600 text-white text-xs px-4 py-3 rounded-xl shadow-xl flex items-center justify-between gap-3 animate-bounce">
-          <span>{errorMessage}</span>
-          <button
-            onClick={() => setErrorMessage(null)}
-            className="text-white/80 hover:text-white font-bold text-sm"
-          >
-            ✕
-          </button>
-        </div>
-      )}
+    <LanguageProvider language={settings.language} translationLanguage={settings.translationLanguage}>
+      <div className="fixed inset-0 w-full h-full overflow-hidden select-none bg-stone-100 dark:bg-zinc-950">
+        {errorMessage && (
+          <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 max-w-md bg-red-600 text-white text-xs px-4 py-3 rounded-xl shadow-xl flex items-center justify-between gap-3 animate-bounce">
+            <span>{errorMessage}</span>
+            <button
+              onClick={() => setErrorMessage(null)}
+              className="text-white/80 hover:text-white font-bold text-sm"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
-      {currentEpub ? (
-        <EpubReader
-          epub={currentEpub}
-          onCloseBook={handleCloseBook}
-          settings={effectiveSettings}
-          selectedTheme={settings.theme}
-          onUpdateSettings={handleUpdateSettings}
-          onBookDataChange={handleBookDataChange}
-          googleDriveSession={googleDriveSession}
-          isDriveBusy={isDriveBusy}
-          syncError={syncError}
-          onRetry={handleRetrySync}
-          lastSyncedDate={googleDriveSettingsDate}
-          isBookUploaded={isCurrentBookUploaded}
-          onUploadBook={handleUploadCurrentBook}
-        />
-      ) : (
-        <FileDropZone
-          onFileLoaded={handleFileLoaded}
-          onOpenRecent={handleOpenRecent}
-          onRemoveRecentBook={(book) => { void handleRemoveRecentBook(book); }}
-          recentBooks={recentBooks}
-          isLoading={isLoading}
-          googleDriveConfigured={googleDriveConfigured}
-          googleDriveSession={googleDriveSession}
-          googleDriveSettingsDate={googleDriveSettingsDate}
-          googleDriveBooks={googleDriveBooks}
-          isDriveBusy={isDriveBusy}
-          onGoogleDriveSignIn={handleGoogleDriveSignIn}
-          onGoogleDriveSignOut={handleGoogleDriveSignOut}
-          onRestoreDriveSettings={handleRestoreDriveSettings}
-          onUploadDriveBook={handleUploadDriveBook}
-          onDownloadDriveBook={handleDownloadDriveBook}
-          onDeleteDriveBook={handleDeleteDriveBook}
-          onRefreshDriveBooks={handleRefreshDriveBooks}
-          language={settings.language}
-          onUpdateSettings={handleUpdateSettings}
-        />
-      )}
-    </div>
+        {currentEpub ? (
+          <EpubReader
+            epub={currentEpub}
+            onCloseBook={handleCloseBook}
+            settings={effectiveSettings}
+            selectedTheme={settings.theme}
+            onUpdateSettings={handleUpdateSettings}
+            onBookDataChange={handleBookDataChange}
+            googleDriveSession={googleDriveSession}
+            isDriveBusy={isDriveBusy}
+            syncError={syncError}
+            onRetry={handleRetrySync}
+            lastSyncedDate={googleDriveSettingsDate}
+            isBookUploaded={isCurrentBookUploaded}
+            onUploadBook={handleUploadCurrentBook}
+          />
+        ) : (
+          <FileDropZone
+            onFileLoaded={handleFileLoaded}
+            onOpenRecent={handleOpenRecent}
+            onRemoveRecentBook={(book) => { void handleRemoveRecentBook(book); }}
+            recentBooks={recentBooks}
+            isLoading={isLoading}
+            googleDriveConfigured={googleDriveConfigured}
+            googleDriveSession={googleDriveSession}
+            googleDriveSettingsDate={googleDriveSettingsDate}
+            googleDriveBooks={googleDriveBooks}
+            isDriveBusy={isDriveBusy}
+            onGoogleDriveSignIn={handleGoogleDriveSignIn}
+            onGoogleDriveSignOut={handleGoogleDriveSignOut}
+            onRestoreDriveSettings={handleRestoreDriveSettings}
+            onUploadDriveBook={handleUploadDriveBook}
+            onDownloadDriveBook={handleDownloadDriveBook}
+            onDeleteDriveBook={handleDeleteDriveBook}
+            onRefreshDriveBooks={handleRefreshDriveBooks}
+            onUpdateSettings={handleUpdateSettings}
+          />
+        )}
+      </div>
+    </LanguageProvider>
   );
 };
 

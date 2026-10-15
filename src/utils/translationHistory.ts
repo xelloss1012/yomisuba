@@ -9,10 +9,12 @@ export interface DictionaryHistorySense {
 }
 
 export interface DictionaryHistoryEntry {
-  language: 'es' | 'en';
+  /** `ja` comes from the optional Japanese–Japanese dictionary. */
+  language: 'es' | 'en' | 'ja';
   kanji: string[];
   kana: string[];
   senses: DictionaryHistorySense[];
+  synonyms?: string[];
 }
 
 /**
@@ -74,7 +76,7 @@ const previewResponse = (response: string): string =>
  */
 export const getHistoryEntryResponse = (
   entry: Pick<TranslationHistoryEntry, 'response' | 'data'>,
-  lang: UiLanguage = 'es',
+  lang: UiLanguage,
 ): string => (entry.data ? formatDictionaryHistoryResponse(entry.data, lang) : (entry.response || ''));
 
 export const readTranslationHistory = (storageKey: string): TranslationHistoryEntry[] => {
@@ -174,6 +176,7 @@ const renderDictionaryLines = (data: DictionaryHistoryData, lang: UiLanguage): s
       ...entry.senses.map((sense) =>
         `${sense.partOfSpeech.length ? `[${sense.partOfSpeech.join(', ')}] ` : ''}${sense.glosses.join('; ')}`
       ),
+      ...(entry.synonyms?.length ? [`${t('glossary.synonyms', lang)}: ${entry.synonyms.join(' · ')}`] : []),
     );
   });
   return lines;
@@ -185,7 +188,7 @@ const renderDictionaryLines = (data: DictionaryHistoryData, lang: UiLanguage): s
  */
 export const formatDictionaryHistoryResponse = (
   data: DictionaryHistoryData,
-  lang: UiLanguage = 'es',
+  lang: UiLanguage,
 ) => renderDictionaryLines(data, lang).join('\n');
 
 /**
@@ -204,10 +207,11 @@ export const buildDictionaryHistoryResponse = (
   baseForm: string,
   searchTerms: string[],
   entries: Array<{
-    language: 'es' | 'en';
+    language: DictionaryHistoryEntry['language'];
     kanji: string[];
     kana: string[];
     senses: Array<{ partOfSpeech: string[]; glosses: string[] }>;
+    synonyms?: string[];
   }>,
 ): { response: string; data: DictionaryHistoryData } => {
   const data: DictionaryHistoryData = {
@@ -221,6 +225,7 @@ export const buildDictionaryHistoryResponse = (
         partOfSpeech: sense.partOfSpeech,
         glosses: sense.glosses,
       })),
+      ...(entry.synonyms?.length ? { synonyms: entry.synonyms } : {}),
     })),
   };
   return { response: serializeDictionaryHistoryResponse(data), data };

@@ -1,7 +1,8 @@
 import TokenizerWorker from './tokenizer.worker?worker&inline';
 import jmdictEntries from '../data/jmdict-spa.json';
 import englishDictionaryUrl from '../data/jmdict-en.json.gz?inline';
-import { UiLanguage } from './i18n';
+import { TranslationLanguage } from './i18n';
+import { loadJapaneseDictionaryEntries, onJapaneseDictionaryChange } from './japaneseDictionary';
 
 export interface DictionarySense {
   partOfSpeech: string[];
@@ -10,10 +11,12 @@ export interface DictionarySense {
 
 export interface DictionaryEntry {
   id: string;
-  language: 'es' | 'en';
+  /** `ja` is the optional Japanese–Japanese dictionary: glosses are Japanese definitions. */
+  language: 'es' | 'en' | 'ja';
   kanji: string[];
   kana: string[];
   senses: DictionarySense[];
+  synonyms?: string[];
 }
 
 export interface DictionaryLookup {
@@ -39,6 +42,8 @@ interface CompactEntry {
   k: string[];
   r: string[];
   s: Array<{ p: string[]; g: string[] }>;
+  /** Synonyms (Japanese–Japanese dictionary only). */
+  y?: string[];
 }
 
 const entries = jmdictEntries as CompactEntry[];
@@ -58,6 +63,9 @@ interface TokenizerClient {
 }
 let tokenizerPromise: Promise<TokenizerClient> | null = null;
 let englishIndexPromise: Promise<DictionaryIndex> | null = null;
+let japaneseIndexPromise: Promise<DictionaryIndex | null> | null = null;
+// Installing or removing the Japanese dictionary invalidates the cached index.
+onJapaneseDictionaryChange(() => { japaneseIndexPromise = null; });
 
 interface DictionaryIndex {
   byForm: Map<string, CompactEntry[]>;
@@ -355,6 +363,7 @@ const toEntry = (entry: CompactEntry, language: DictionaryEntry['language']): Di
     partOfSpeech: sense.p,
     glosses: sense.g,
   })),
+  ...(entry.y?.length ? { synonyms: entry.y } : {}),
 });
 
 const createIndex = (source: CompactEntry[]): DictionaryIndex => {
@@ -392,9 +401,28 @@ const getEnglishIndex = async (): Promise<DictionaryIndex> => {
   return englishIndexPromise;
 };
 
+/** Index of the downloaded Japanese–Japanese dictionary, or null when it is not installed. */
+const getJapaneseIndex = (): Promise<DictionaryIndex | null> => {
+  if (!japaneseIndexPromise) {
+    japaneseIndexPromise = loadJapaneseDictionaryEntries()
+      .then((loadedEntries) => (loadedEntries ? createIndex(loadedEntries) : null))
+      .catch((error) => {
+        japaneseIndexPromise = null;
+        throw error;
+      });
+  }
+  return japaneseIndexPromise;
+};
+
+// Parts of speech of the Japanese–Japanese dictionary that conjugate.
+const JAPANESE_INFLECTABLE_POS = new Set(['動詞', '形容詞', '形容動詞', '助動詞']);
+const JAPANESE_EXPRESSION_POS = new Set(['成句', '慣用句', 'ことわざ']);
+
 const isInflectableEntry = (entry: CompactEntry, form: string): boolean => {
   return entry.s.some((sense) =>
     sense.p.some((pos) => {
+      if (JAPANESE_INFLECTABLE_POS.has(pos)) return true;
+      if (JAPANESE_EXPRESSION_POS.has(pos)) return /[うくぐすつぬぶむるい]$/.test(form);
       const normalizedPos = pos.toLowerCase();
       const isSuruVerb = pos === 'vs' || pos.startsWith('vs-') || normalizedPos.includes('suru');
       const isVerb = (pos.startsWith('v') && !pos.startsWith('vs')) ||
@@ -493,7 +521,16 @@ const findRawEntries = (
   return [...ranked.values()].sort((left, right) => left.score - right.score);
 };
 
-export const getDictionarySearchTerms = async (value: string, language: UiLanguage = 'es'): Promise<DictionaryLookup> => {
+export interface DictionarySearchOptions {
+  /** Also search the downloaded Japanese–Japanese dictionary and list its entries first. */
+  includeJapanese?: boolean;
+}
+
+export const getDictionarySearchTerms = async (
+  value: string,
+  language: TranslationLanguage,
+  { includeJapanese = false }: DictionarySearchOptions = {},
+): Promise<DictionaryLookup> => {
   const originalText = normalizeSelection(value) || value.trim();
   if (!originalText) {
     return { originalText: '', baseForm: '', searchTerms: [], entries: [], hasCompleteMatch: false, hasCompleteTextMatch: false };
@@ -578,6 +615,17 @@ export const getDictionarySearchTerms = async (value: string, language: UiLangua
       : 'No se pudo cargar el complemento inglés de JMdict.';
   }
 
+  let japaneseResults: Array<{ entry: CompactEntry; score: number; exactText?: boolean }> = [];
+  if (includeJapanese) {
+    try {
+      const japaneseIndex = await getJapaneseIndex();
+      if (japaneseIndex) japaneseResults = findRawEntries(directTerms, filteredWhole, filteredSub, japaneseIndex);
+    } catch (error) {
+      // The bilingual dictionaries still answer if the downloaded one is unreadable.
+      console.error('[dictionary] Japanese dictionary error:', error);
+    }
+  }
+
   const preferEnglish = language !== 'es';
   const preferredDictLang = language === 'es' ? 'es' : 'en';
   const otherDictLang = preferredDictLang === 'es' ? 'en' : 'es';
@@ -601,7 +649,16 @@ export const getDictionarySearchTerms = async (value: string, language: UiLangua
     return left.score - right.score;
   });
 
+  // Japanese definitions go first: whoever installed the monolingual dictionary
+  // reads the interface in Japanese and wants them before the translations.
+  const japaneseCombined = japaneseResults.map((m) => ({
+    entry: toEntry(m.entry, 'ja'),
+    score: m.score,
+    priority: m.score === 0 ? -1 : 2,
+  }));
+
   const topEntries = [
+    ...japaneseCombined.slice(0, 20),
     ...combined.filter((item) => item.entry.language === preferredDictLang).slice(0, 20),
     ...combined.filter((item) => item.entry.language === otherDictLang).slice(0, 20),
   ].sort((left, right) => {
@@ -613,7 +670,8 @@ export const getDictionarySearchTerms = async (value: string, language: UiLangua
   const hasCompleteMatch = topEntries.some((item) => item.score === 0);
 
   let hasCompleteTextMatch = spanishResults.some((m) => m.exactText)
-    || englishResults.some((m) => m.exactText);
+    || englishResults.some((m) => m.exactText)
+    || japaneseResults.some((m) => m.exactText);
 
   // If the tokenizer was unavailable (e.g. in Node tests), we fall back to
   // hasCompleteMatch because guessBaseForms and direct matches are always

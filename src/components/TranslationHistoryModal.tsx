@@ -18,14 +18,14 @@ import {
   FrequentQuery,
   normalizeFrequentQuery,
 } from '../utils/frequentQueries';
-import { t, UiLanguage } from '../utils/i18n';
+import { UiLanguage } from '../utils/i18n';
+import { Translate, useLanguage, useT } from '../i18n/LanguageContext';
 
 interface Props {
   isOpen: boolean;
   entries: TranslationHistoryEntry[];
   favorites: TranslationFavorite[];
   frequentQueries: FrequentQuery[];
-  language?: UiLanguage;
   onClose: () => void;
   onRemove: (id: string) => void;
   onClear: () => void;
@@ -54,14 +54,14 @@ interface DisplayItem {
 const renderItemResponse = (item: DisplayItem, language: UiLanguage): string =>
   getHistoryEntryResponse(item, language);
 
-const getKindLabel = (entry: { kind: TranslationFavoriteKind; provider?: string }, language: UiLanguage = 'es') => {
-  if (entry.kind === 'dictionary') return t('common.dictionary', language);
-  if (entry.kind === 'glossary') return t('nav.glossary', language);
+const getKindLabel = (entry: { kind: TranslationFavoriteKind; provider?: string }, t: Translate) => {
+  if (entry.kind === 'dictionary') return t('common.dictionary');
+  if (entry.kind === 'glossary') return t('nav.glossary');
   if (entry.kind === 'ai' && entry.provider) {
     const provider = entry.provider as keyof typeof AI_PROVIDER_LABELS;
     return `AI · ${AI_PROVIDER_LABELS[provider] || entry.provider}`;
   }
-  return t('common.translate', language);
+  return t('common.translate');
 };
 
 export const TranslationHistoryModal: React.FC<Props> = ({
@@ -69,7 +69,6 @@ export const TranslationHistoryModal: React.FC<Props> = ({
   entries,
   favorites,
   frequentQueries,
-  language = 'es',
   onClose,
   onRemove,
   onClear,
@@ -77,6 +76,8 @@ export const TranslationHistoryModal: React.FC<Props> = ({
   onClearFavorites,
   onClearFrequentQueries,
 }) => {
+  const t = useT();
+  const language = useLanguage();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'history' | 'favorites' | 'frequent'>('history');
 
@@ -168,20 +169,20 @@ export const TranslationHistoryModal: React.FC<Props> = ({
           <div className="flex items-center gap-2">
             <Clock className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
             <h2 id="history-modal-title" className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
-              {t('history.title', language)}
+              {t('history.title')}
             </h2>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="tap-area rounded-full p-2 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-            aria-label={t('nav.close', language)}
+            aria-label={t('nav.close')}
           >
             <X className="h-5 w-5" />
           </button>
         </header>
 
-        <div role="tablist" aria-label={t('history.title', language)} className="grid grid-cols-3 gap-1 border-b border-zinc-200 p-2 dark:border-zinc-800">
+        <div role="tablist" aria-label={t('history.title')} className="grid grid-cols-3 gap-1 border-b border-zinc-200 p-2 dark:border-zinc-800">
           <button
             type="button"
             role="tab"
@@ -194,7 +195,7 @@ export const TranslationHistoryModal: React.FC<Props> = ({
             }`}
           >
             <Clock className="h-3.5 w-3.5" />
-            {t('history.tabHistory', language)}
+            {t('history.tabHistory')}
             <span className="text-[10px] opacity-70">({entries.length})</span>
           </button>
           <button
@@ -209,7 +210,7 @@ export const TranslationHistoryModal: React.FC<Props> = ({
             }`}
           >
             <Star className="h-3.5 w-3.5" />
-            {t('history.tabFavorites', language)}
+            {t('history.tabFavorites')}
             <span className="text-[10px] opacity-70">({favorites.length})</span>
           </button>
           <button
@@ -224,16 +225,16 @@ export const TranslationHistoryModal: React.FC<Props> = ({
             }`}
           >
             <BarChart3 className="h-3.5 w-3.5" />
-            {t('history.tabFrequent', language)}
+            {t('history.tabFrequent')}
             <span className="text-[10px] opacity-70">({frequentEntries.length})</span>
           </button>
         </div>
 
         <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-2 dark:border-zinc-800/80">
           <span className="text-[11px] text-zinc-500 dark:text-zinc-400">
-            {activeTab === 'history' && t('history.maxEntries', language).replace('{count}', String(MAX_TRANSLATION_HISTORY_ENTRIES))}
-            {activeTab === 'favorites' && t('history.savedFavs', language).replace('{count}', String(favorites.length)).replace('{max}', String(MAX_TRANSLATION_FAVORITES))}
-            {activeTab === 'frequent' && t('history.frequentTerms', language)}
+            {activeTab === 'history' && t('history.maxEntries').replace('{count}', String(MAX_TRANSLATION_HISTORY_ENTRIES))}
+            {activeTab === 'favorites' && t('history.savedFavs').replace('{count}', String(favorites.length)).replace('{max}', String(MAX_TRANSLATION_FAVORITES))}
+            {activeTab === 'frequent' && t('history.frequentTerms')}
           </span>
           {displayItems.length > 0 && (
             <button
@@ -245,7 +246,7 @@ export const TranslationHistoryModal: React.FC<Props> = ({
               }}
               className="tap-area text-[11px] font-medium text-rose-600 hover:underline dark:text-rose-400"
             >
-              {t('history.clear', language)}
+              {t('history.clear')}
             </button>
           )}
         </div>
@@ -273,12 +274,12 @@ export const TranslationHistoryModal: React.FC<Props> = ({
                           </span>
                           {item.kind && (
                             <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
-                              {getKindLabel({ kind: item.kind, provider: item.provider }, language)}
+                              {getKindLabel({ kind: item.kind, provider: item.provider }, t)}
                             </span>
                           )}
                           {item.count !== undefined && (
                             <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-                              {item.count} {t('history.queries', language)}
+                              {item.count} {t('history.queries')}
                             </span>
                           )}
                         </div>
@@ -296,8 +297,8 @@ export const TranslationHistoryModal: React.FC<Props> = ({
                                 ? 'text-amber-500 hover:text-amber-600 dark:text-amber-400'
                                 : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200'
                             }`}
-                            title={isFavorite ? t('glossary.removeFav', language) : t('glossary.addFav', language)}
-                            aria-label={isFavorite ? t('glossary.removeFav', language) : t('glossary.addFav', language)}
+                            title={isFavorite ? t('glossary.removeFav') : t('glossary.addFav')}
+                            aria-label={isFavorite ? t('glossary.removeFav') : t('glossary.addFav')}
                           >
                             <Star className={`h-4 w-4 ${isFavorite ? 'fill-current' : ''}`} />
                           </button>
@@ -307,8 +308,8 @@ export const TranslationHistoryModal: React.FC<Props> = ({
                             type="button"
                             onClick={() => onRemove(item.id)}
                             className="tap-area rounded-lg p-2 text-zinc-400 hover:text-rose-600 dark:hover:text-rose-400"
-                            title={t('common.delete', language)}
-                            aria-label={t('common.delete', language)}
+                            title={t('common.delete')}
+                            aria-label={t('common.delete')}
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
@@ -321,7 +322,7 @@ export const TranslationHistoryModal: React.FC<Props> = ({
             </ul>
           ) : (
             <p className="py-12 text-center text-sm text-zinc-500 dark:text-zinc-400">
-              {t('history.empty', language)}
+              {t('history.empty')}
             </p>
           )}
         </div>

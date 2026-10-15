@@ -1,4 +1,5 @@
 import { AiProvider } from '../types/epub';
+import { TranslationLanguage } from './i18n';
 
 type TranslationProvider = 'google' | AiProvider;
 
@@ -24,8 +25,16 @@ function fingerprint(value: string): string {
   return (hash >>> 0).toString(16);
 }
 
-function createCacheKey(provider: TranslationProvider, text: string, apiKey = '', model = ''): string {
-  return `${provider}:${fingerprint(apiKey)}:${model ? `${model}:` : ''}${text.trim()}`;
+// The target language is part of the key: the same text translated into another
+// language is a different translation.
+function createCacheKey(
+  provider: TranslationProvider,
+  targetLanguage: TranslationLanguage,
+  text: string,
+  apiKey = '',
+  model = '',
+): string {
+  return `${provider}:${targetLanguage}:${fingerprint(apiKey)}:${model ? `${model}:` : ''}${text.trim()}`;
 }
 
 function readEntries(): CachedTranslation[] {
@@ -55,11 +64,12 @@ function writeEntries(entries: CachedTranslation[]): void {
 
 export function getCachedTranslation(
   provider: TranslationProvider,
+  targetLanguage: TranslationLanguage,
   text: string,
   apiKey = '',
   model = '',
 ): string | null {
-  const cacheKey = createCacheKey(provider, text, apiKey, model);
+  const cacheKey = createCacheKey(provider, targetLanguage, text, apiKey, model);
   const entries = readEntries();
   const entry = entries.find((candidate) => candidate.cacheKey === cacheKey);
   if (!entry) {
@@ -77,13 +87,14 @@ export function getCachedTranslation(
 
 export function saveCachedTranslation(
   provider: TranslationProvider,
+  targetLanguage: TranslationLanguage,
   text: string,
   translation: string,
   apiKey = '',
   model = '',
 ): void {
   const now = Date.now();
-  const cacheKey = createCacheKey(provider, text, apiKey, model);
+  const cacheKey = createCacheKey(provider, targetLanguage, text, apiKey, model);
   const entries = readEntries().filter((entry) => entry.cacheKey !== cacheKey);
   writeEntries([
     {

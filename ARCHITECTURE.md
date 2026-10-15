@@ -122,7 +122,8 @@ Se conservan las 6 entradas más recientes, de modo que rotar el dispositivo o c
 - **Herramientas de Selección**:
   - **Copiar**: Copia el texto al portapapeles.
   - **Traducir**: Llama a la API de traducción e integra la respuesta en un modal.
-  - **JMDict local**: Muestra dentro del modal las entradas y definiciones en español, usando la forma base obtenida por Kuromoji para verbos conjugados.
+  - **JMDict local**: Muestra dentro del modal las entradas y definiciones en español e inglés, usando la forma base obtenida por Kuromoji para verbos conjugados. El orden sigue el idioma de traducción.
+  - **Diccionario japonés-japonés (opcional)**: con la interfaz en japonés, las búsquedas incluyen también un 国語辞典 con definiciones y sinónimos en japonés, que se listan primero. Se genera desde el Wiktionary japonés (kaikki.org, CC BY-SA) con `npm run ja-dictionary:build`, en el mismo formato compacto que JMdict más `y` (sinónimos), y queda en unos 5,3 MB en gzip. No va incluido en la app: se descarga desde Ajustes (`JapaneseDictionaryPanel`) y se guarda tal cual en IndexedDB (`src/utils/japaneseDictionary.ts`). `dictionary.ts` lo descomprime e indexa la primera vez que hace falta. La URL de publicación y la versión están en `JAPANESE_DICTIONARY_URL` y `JAPANESE_DICTIONARY_VERSION`.
   - **Pronunciación TTS**: Utiliza `window.speechSynthesis` con voz `ja-JP`.
   - **Buscar**: Búsqueda en Google.
 
@@ -138,6 +139,13 @@ Se conservan las 6 entradas más recientes, de modo que rotar el dispositivo o c
 - **Resaltado**: CSS Custom Highlight API (`::highlight(search-hit)`), 8 s, sin tocar el DOM; si el navegador no la tiene, solo se navega.
 - **Recientes**: hasta 20 por libro en `${bookStorageKey}_recent_searches`; se guardan al pulsar Intro o una coincidencia, no al teclear.
 - Máximo 300 coincidencias mostradas. Los fragmentos se muestran sobre el texto normalizado (sin espacios).
+
+### 3.2. Idiomas de la interfaz y de traducción (`src/utils/i18n.ts` / `src/i18n/`)
+
+- **Textos**: una tabla por idioma en `src/i18n/<código>.ts` (es, en, fr, it, de, zh, ko, vi, ja), todas con las mismas claves y marcadores `{…}`. `npm run i18n:test` lo comprueba.
+- **Componentes**: nunca pasan el idioma. `App` envuelve todo en `LanguageProvider`, y cada componente usa `const t = useT()` y llama a `t('clave')` o `t('clave', { param })`. La función es estable y lee siempre el idioma del último render, así que un `useCallback` que no la declare en sus dependencias tampoco se queda con el idioma antiguo. `useLanguage()` da el código cuando hace falta para otra cosa.
+- **Código fuera de React**: usa `t(clave, idioma, params)` de `utils/i18n.ts`, con el idioma **obligatorio**. No hay valor por defecto, así que olvidarlo es un error de compilación.
+- **Idioma de traducción**: es independiente de la interfaz (`settings.translationLanguage`). Si no se elige, sigue a la interfaz, y con la interfaz en japonés pasa a inglés (`resolveTranslationLanguage`). Lo usan la traducción (Google o IA), su caché, el orden de JMdict y el glosario. Se lee con `useTranslationLanguage()`. La explicación con IA se da en el idioma de la interfaz; en japonés es una paráfrasis y explicación en japonés sencillo.
 
 ## 🔄 Estado Actual del Desarrollo
 

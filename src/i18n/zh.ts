@@ -14,6 +14,9 @@ export const zh: Record<string, string> = {
   'sample.btn': '加载日语示例图书',
   'recent.title': '最近的图书',
   'language.label': '界面语言',
+  'settings.translationLanguage': '翻译语言',
+  'settings.translationLanguageAuto': '与界面相同（{language}）',
+  'settings.translationLanguageHint': '日语文本翻译成的语言，双语词典也使用该语言。',
 
   // ReaderSettings & Options
   'settings.title': '阅读设置',
@@ -158,7 +161,7 @@ export const zh: Record<string, string> = {
   'translate.errorDict': '查询词典失败。',
   'translate.errorExplain': '生成解释失败。',
   'translate.originalJapanese': '原文 (日语)',
-  'translate.targetTranslation': '中文翻译',
+  'translate.targetTranslation': '翻译（{language}）',
   'translate.localJmdict': '本地 JMDict 词典 · 西班牙语及英语',
   'translate.explaining': '正在解释…',
   'translate.translating': '正在翻译...',
@@ -265,6 +268,7 @@ export const zh: Record<string, string> = {
   'glossary.baseForm': '基本形',
   'glossary.terms': '术语',
   'glossary.reading': '读音',
+  'glossary.synonyms': '同义词',
   'glossary.notFound': '未找到该形态的本地词条。',
   'glossary.noDefinition': '未找到释义。',
   'glossary.errorQuery': '查询错误',
@@ -284,6 +288,18 @@ export const zh: Record<string, string> = {
   'history.savedFavs': '已保存收藏 ({count}/{max})',
   'history.frequentTerms': '频繁查询的术语',
   'history.queries': '次查询',
+
+  // Japanese–Japanese dictionary
+  'jaDict.title': '日日词典',
+  'jaDict.description': '下载基于日语维基词典的词典，以日语查看释义和同义词（约 {size}）。',
+  'jaDict.download': '下载',
+  'jaDict.downloading': '正在下载… {percent}%',
+  'jaDict.installed': '已安装（{size}）',
+  'jaDict.updateAvailable': '有新版本可用。',
+  'jaDict.update': '更新',
+  'jaDict.delete': '删除',
+  'jaDict.error': '下载失败：{message}',
+  'jaDict.attribution': '日语维基词典（CC BY-SA）',
 
   // Common
   'common.cancel': '取消',

@@ -5,7 +5,8 @@ import { RecentBook } from '../utils/recentBooks';
 import { GoogleDriveBook, GoogleDriveSession } from '../utils/googleDriveBackup';
 import { GoogleDriveBackupPanel } from './GoogleDriveBackupPanel';
 import { BookCoverThumbnail } from './BookCoverThumbnail';
-import { t, AVAILABLE_LANGUAGES, UiLanguage } from '../utils/i18n';
+import { AVAILABLE_LANGUAGES } from '../utils/i18n';
+import { useLanguage, useT } from '../i18n/LanguageContext';
 import { ReaderSettingsState } from '../types/epub';
 
 interface Props {
@@ -26,7 +27,6 @@ interface Props {
   onDownloadDriveBook: (book: GoogleDriveBook) => void;
   onDeleteDriveBook: (book: GoogleDriveBook) => void;
   onRefreshDriveBooks: () => void;
-  language: UiLanguage;
   onUpdateSettings: (newSettings: Partial<ReaderSettingsState>) => void;
 }
 
@@ -48,9 +48,10 @@ export const FileDropZone: React.FC<Props> = ({
   onDownloadDriveBook,
   onDeleteDriveBook,
   onRefreshDriveBooks,
-  language = 'es',
   onUpdateSettings,
 }) => {
+  const t = useT();
+  const language = useLanguage();
   const [isDragOver, setIsDragOver] = useState(false);
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -61,7 +62,7 @@ export const FileDropZone: React.FC<Props> = ({
       if (file.name.endsWith('.epub') || file.type.includes('epub') || file.type.includes('zip')) {
         onFileLoaded(file);
       } else {
-        alert(t('dropzone.alert', language));
+        alert(t('dropzone.alert'));
       }
     }
   };
@@ -84,7 +85,7 @@ export const FileDropZone: React.FC<Props> = ({
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6 bg-indigo-50/70 dark:bg-indigo-950/40 p-3 rounded-2xl border border-indigo-100 dark:border-indigo-800/80">
           <div className="flex items-center gap-2 text-xs font-semibold text-indigo-700 dark:text-indigo-300">
             <Languages className="w-4 h-4" />
-            <span>{t('language.label', language)}</span>
+            <span>{t('language.label')}</span>
           </div>
           <div className="flex flex-wrap gap-1">
             {AVAILABLE_LANGUAGES.map((langItem) => (
@@ -107,14 +108,14 @@ export const FileDropZone: React.FC<Props> = ({
         {/* Brand & Badge */}
         <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-100 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 text-xs font-semibold mb-6">
           <BookOpen className="w-3.5 h-3.5" />
-          <span>{t('app.subtitle', language)}</span>
+          <span>{t('app.subtitle')}</span>
         </div>
 
         <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-mincho mb-3">
-          {t('app.title', language)}
+          {t('app.title')}
         </h1>
         <p className="text-sm sm:text-base text-zinc-600 dark:text-zinc-400 mb-8 max-w-md mx-auto">
-          {t('app.description', language)}
+          {t('app.description')}
         </p>
 
         <GoogleDriveBackupPanel
@@ -131,7 +132,6 @@ export const FileDropZone: React.FC<Props> = ({
           onDownloadBook={onDownloadDriveBook}
           onDeleteBook={onDeleteDriveBook}
           onRefreshBooks={onRefreshDriveBooks}
-          language={language}
         />
 
         {/* Drop Zone */}
@@ -162,10 +162,10 @@ export const FileDropZone: React.FC<Props> = ({
           </div>
 
           <div className="text-base font-semibold text-zinc-800 dark:text-zinc-200 mb-1">
-            {t('dropzone.dragPrefix', language)}<span className="text-indigo-600 dark:text-indigo-400">.epub</span>{t('dropzone.dragSuffix', language)}
+            {t('dropzone.dragPrefix')}<span className="text-indigo-600 dark:text-indigo-400">.epub</span>{t('dropzone.dragSuffix')}
           </div>
           <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
-            {t('dropzone.browse', language)}
+            {t('dropzone.browse')}
           </div>
 
           <button
@@ -173,7 +173,7 @@ export const FileDropZone: React.FC<Props> = ({
             className="flex min-h-11 w-full max-w-xs items-center justify-center gap-2 rounded-xl bg-indigo-600 px-3 py-2.5 text-center text-xs font-semibold text-white shadow-md transition-all hover:bg-indigo-700 active:scale-95"
           >
             <FileText className="h-4 w-4 shrink-0" />
-            <span className="min-w-0">{t('dropzone.selectBtn', language)}</span>
+            <span className="min-w-0">{t('dropzone.selectBtn')}</span>
           </button>
         </div>
 
@@ -181,10 +181,10 @@ export const FileDropZone: React.FC<Props> = ({
         <div className="mt-6 pt-6 border-t border-zinc-200 dark:border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="text-left">
             <div className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-              {t('sample.title', language)}
+              {t('sample.title')}
             </div>
             <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
-              {t('sample.subtitle', language)}
+              {t('sample.subtitle')}
             </div>
           </div>
 
@@ -195,7 +195,7 @@ export const FileDropZone: React.FC<Props> = ({
             className="flex min-h-11 w-full min-w-0 items-center justify-center gap-2 rounded-xl border border-zinc-300 bg-stone-100 px-3 py-2.5 text-center text-xs font-semibold text-zinc-800 shadow-sm transition-all hover:bg-stone-200 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700 sm:w-auto sm:max-w-full"
           >
             <Sparkles className="w-4 h-4 text-amber-500" />
-            <span className="min-w-0">{t('sample.btn', language)}</span>
+            <span className="min-w-0">{t('sample.btn')}</span>
           </button>
         </div>
 
@@ -203,7 +203,7 @@ export const FileDropZone: React.FC<Props> = ({
           <div className="mt-8 pt-6 border-t border-zinc-200 dark:border-zinc-800 text-left">
             <div className="flex items-center gap-2 mb-3">
               <Clock3 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-              <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">{t('recent.title', language)}</h2>
+              <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">{t('recent.title')}</h2>
             </div>
             <div className="space-y-2">
               {recentBooks.map((book) => (
@@ -229,7 +229,7 @@ export const FileDropZone: React.FC<Props> = ({
                     type="button"
                     onClick={() => onRemoveRecentBook(book)}
                     disabled={isLoading || isDriveBusy}
-                    title={t('dropzone.removeRecent', language)}
+                    title={t('dropzone.removeRecent')}
                     className="p-2 text-zinc-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
                   >
                     <Trash2 className="w-4 h-4" />

@@ -14,6 +14,9 @@ export const es: Record<string, string> = {
   'sample.btn': 'Cargar libro de prueba japonés',
   'recent.title': 'Libros recientes',
   'language.label': 'Idioma de la interfaz',
+  'settings.translationLanguage': 'Idioma de traducción',
+  'settings.translationLanguageAuto': 'Como la interfaz ({language})',
+  'settings.translationLanguageHint': 'Idioma al que se traduce el texto japonés y del diccionario bilingüe.',
 
   // ReaderSettings & Options
   'settings.title': 'Ajustes de Lectura',
@@ -158,7 +161,7 @@ export const es: Record<string, string> = {
   'translate.errorDict': 'No se pudo consultar el diccionario.',
   'translate.errorExplain': 'No se pudo generar la explicación.',
   'translate.originalJapanese': 'Texto original (japonés)',
-  'translate.targetTranslation': 'Traducción al español',
+  'translate.targetTranslation': 'Traducción ({language})',
   'translate.localJmdict': 'Diccionario JMDict local · español e inglés',
   'translate.explaining': 'Explicando…',
   'translate.translating': 'Traduciendo...',
@@ -265,6 +268,7 @@ export const es: Record<string, string> = {
   'glossary.baseForm': 'Forma base',
   'glossary.terms': 'Términos',
   'glossary.reading': 'Lectura',
+  'glossary.synonyms': 'Sinónimos',
   'glossary.notFound': 'No se encontró una entrada local para esta forma.',
   'glossary.noDefinition': 'Sin acepción encontrada.',
   'glossary.errorQuery': 'Error al consultar',
@@ -284,6 +288,18 @@ export const es: Record<string, string> = {
   'history.savedFavs': 'Favoritos guardados ({count}/{max})',
   'history.frequentTerms': 'Términos consultados frecuentemente',
   'history.queries': 'consultas',
+
+  // Japanese–Japanese dictionary
+  'jaDict.title': 'Diccionario japonés-japonés',
+  'jaDict.description': 'Descarga un diccionario basado en el Wiktionary japonés para ver definiciones y sinónimos en japonés (unos {size}).',
+  'jaDict.download': 'Descargar',
+  'jaDict.downloading': 'Descargando… {percent} %',
+  'jaDict.installed': 'Instalado ({size})',
+  'jaDict.updateAvailable': 'Hay una versión más reciente.',
+  'jaDict.update': 'Actualizar',
+  'jaDict.delete': 'Eliminar',
+  'jaDict.error': 'No se pudo descargar: {message}',
+  'jaDict.attribution': 'Wiktionary japonés (CC BY-SA)',
 
   // Common
   'common.cancel': 'Cancelar',

@@ -1,5 +1,5 @@
 import { AiProvider } from '../types/epub';
-import { UiLanguage } from './i18n';
+import { TranslationLanguage, UiLanguage } from './i18n';
 
 export const AI_PROVIDER_LABELS: Record<AiProvider, string> = {
   gemini: 'Gemini',
@@ -84,7 +84,7 @@ export async function resolveOpenRouterModel(selection: string): Promise<string>
   return latestModel;
 }
 
-const languageNames: Record<UiLanguage, string> = {
+const languageNames: Record<TranslationLanguage, string> = {
   es: 'español',
   en: 'English',
   fr: 'French',
@@ -95,7 +95,7 @@ const languageNames: Record<UiLanguage, string> = {
   vi: 'Vietnamese',
 };
 
-function translationPrompt(text: string, targetLanguage: UiLanguage = 'es'): string {
+function translationPrompt(text: string, targetLanguage: TranslationLanguage): string {
   const target = languageNames[targetLanguage] || 'English';
   if (targetLanguage === 'es') {
     return [
@@ -113,7 +113,21 @@ function translationPrompt(text: string, targetLanguage: UiLanguage = 'es'): str
   ].join('\n');
 }
 
-function explanationPrompt(text: string, targetLanguage: UiLanguage = 'es'): string {
+function explanationPrompt(text: string, targetLanguage: UiLanguage): string {
+  // With a Japanese interface there is nothing to translate into: the text is
+  // paraphrased and explained in plain Japanese, as a monolingual dictionary would.
+  if (targetLanguage === 'ja') {
+    return [
+      '次の日本語の文を、日本語学習者にもわかるやさしい日本語で言い換えてから、解説してください。',
+      '最初に言い換えた文を示し、そのあとで全体の意味、文法の構造、大事な活用、重要な語彙を説明してください。',
+      'ニュアンス、文体、文化的な背景は、役に立つときだけ補足してください。',
+      '難しい漢字を使うときは、読みをひらがなで（ ）に入れてください。ローマ字は使わないでください。',
+      '「言い換え」と「解説」の見出しを付け、短い箇条書きでまとめてください。あいまいな点について情報を作り上げないでください。',
+      '',
+      '日本語の文:',
+      text,
+    ].join('\n');
+  }
   const target = languageNames[targetLanguage] || 'English';
   if (targetLanguage === 'es') {
     return [
@@ -321,8 +335,8 @@ export async function translateWithAi(
   provider: AiProvider,
   apiKey: string,
   text: string,
-  openRouterModel?: string,
-  targetLanguage: UiLanguage = 'es',
+  openRouterModel: string | undefined,
+  targetLanguage: TranslationLanguage,
 ): Promise<string> {
   const target = languageNames[targetLanguage] || 'English';
   const systemMessage = targetLanguage === 'es'
@@ -342,13 +356,14 @@ export async function explainWithAi(
   provider: AiProvider,
   apiKey: string,
   text: string,
-  openRouterModel?: string,
-  targetLanguage: UiLanguage = 'es',
+  openRouterModel: string | undefined,
+  targetLanguage: UiLanguage,
 ): Promise<string> {
-  const target = languageNames[targetLanguage] || 'English';
-  const systemMessage = targetLanguage === 'es'
-    ? 'Eres un profesor experto de japonés que explica en español de forma clara y precisa.'
-    : `You are an expert Japanese teacher who explains clearly and accurately in ${target}.`;
+  const systemMessage = targetLanguage === 'ja'
+    ? 'あなたは、やさしい日本語で正確にわかりやすく説明する日本語の先生です。'
+    : targetLanguage === 'es'
+      ? 'Eres un profesor experto de japonés que explica en español de forma clara y precisa.'
+      : `You are an expert Japanese teacher who explains clearly and accurately in ${languageNames[targetLanguage] || 'English'}.`;
   return generateWithAi(
     provider,
     apiKey,

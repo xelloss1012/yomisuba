@@ -10,6 +10,7 @@ import {
 } from '../utils/aiTranslation';
 import { getCachedTranslation, saveCachedTranslation } from '../utils/translationCache';
 import { DictionaryEntry, getDictionarySearchTerms } from '../utils/dictionary';
+import { JAPANESE_DICTIONARY_SOURCE_URL } from '../utils/japaneseDictionary';
 import { speakJapanese } from '../utils/japaneseSpeech';
 import { MarkdownContent } from './MarkdownContent';
 import {
@@ -22,7 +23,8 @@ import {
   TranslationFavorite,
   TranslationFavoriteCandidate,
 } from '../utils/translationFavorites';
-import { t, UiLanguage } from '../utils/i18n';
+import { TRANSLATION_LANGUAGES } from '../utils/i18n';
+import { useDictionaryOptions, useLanguage, useT, useTranslationLanguage } from '../i18n/LanguageContext';
 
 interface Props {
   isOpen: boolean;
@@ -35,7 +37,6 @@ interface Props {
   aiApiKeys: Partial<Record<AiProvider, string>>;
   favorites: TranslationFavorite[];
   frequentSearchToken: number;
-  language?: UiLanguage;
   onSaveHistory: (kind: TranslationHistoryKind, query: string, response: string, provider?: AiProvider, data?: DictionaryHistoryData, hasFullMatch?: boolean) => void;
   onRecordFrequentQuery: (query: string, searchToken: string | number) => void;
   onToggleFavorite: (candidate: TranslationFavoriteCandidate) => void;
@@ -57,11 +58,14 @@ export const TranslationModal: React.FC<Props> = ({
   aiApiKeys,
   favorites,
   frequentSearchToken,
-  language = 'es',
   onSaveHistory,
   onRecordFrequentQuery,
   onToggleFavorite,
 }) => {
+  const t = useT();
+  const language = useLanguage();
+  const translationLanguage = useTranslationLanguage();
+  const dictionaryOptions = useDictionaryOptions();
   const [translatedText, setTranslatedText] = useState<string>('');
   const [translationError, setTranslationError] = useState(false);
   const [dictionaryTerms, setDictionaryTerms] = useState<{
@@ -118,7 +122,7 @@ export const TranslationModal: React.FC<Props> = ({
           const selection = openRouterModel.trim() || DEFAULT_OPENROUTER_MODEL;
           model = await resolveOpenRouterModel(selection);
         }
-        const cachedTranslation = getCachedTranslation(provider, selectedText, providerKey, model);
+        const cachedTranslation = getCachedTranslation(provider, translationLanguage, selectedText, providerKey, model);
         if (cachedTranslation) {
           if (!cancelled) {
             setTranslatedText(cachedTranslation);
@@ -133,21 +137,21 @@ export const TranslationModal: React.FC<Props> = ({
 
         let result: string;
         if (aiProvider && aiApiKey) {
-          result = await translateWithAi(aiProvider, aiApiKey, selectedText, model || openRouterModel, language);
+          result = await translateWithAi(aiProvider, aiApiKey, selectedText, model || openRouterModel, translationLanguage);
         } else {
-          const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${language}&dt=t&q=${encodeURIComponent(selectedText)}`;
+          const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${translationLanguage}&dt=t&q=${encodeURIComponent(selectedText)}`;
           const res = await fetch(url);
           const data = await res.json();
           if (data && data[0]) {
             result = data[0].map((item: [string]) => item[0]).join('');
           } else {
-            result = t('translate.errorTranslate', language);
+            result = t('translate.errorTranslate');
           }
         }
         if (cancelled) return;
         setTranslatedText(result);
         setTranslationError(false);
-        saveCachedTranslation(provider, selectedText, result, providerKey, model);
+        saveCachedTranslation(provider, translationLanguage, selectedText, result, providerKey, model);
         onSaveHistory(resultKind, selectedText, result, aiProvider);
         if (hasUsableTranslation(result)) {
           recordSuccessfulSearch(selectedText, searchId);
@@ -155,7 +159,7 @@ export const TranslationModal: React.FC<Props> = ({
       } catch {
         if (!cancelled) {
           setTranslationError(true);
-          setTranslatedText(t('translate.errorTranslate', language));
+          setTranslatedText(t('translate.errorTranslate'));
         }
       } finally {
         if (!cancelled) setIsLoading(false);
@@ -166,7 +170,7 @@ export const TranslationModal: React.FC<Props> = ({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, selectedText, aiProvider, aiApiKey, openRouterModel, availableAiProviders, frequentSearchToken, language, onSaveHistory, onRecordFrequentQuery]);
+  }, [isOpen, selectedText, aiProvider, aiApiKey, openRouterModel, availableAiProviders, frequentSearchToken, translationLanguage, onSaveHistory, onRecordFrequentQuery]);
 
   const lookupDictionary = useCallback(async (query: string) => {
     const trimmedQuery = query.trim();
@@ -177,7 +181,7 @@ export const TranslationModal: React.FC<Props> = ({
     setDictionaryError('');
     setIsDictionaryLoading(true);
     try {
-      const lookup = await getDictionarySearchTerms(trimmedQuery, language);
+      const lookup = await getDictionarySearchTerms(trimmedQuery, translationLanguage, dictionaryOptions);
       if (dictionaryRequestRef.current !== requestId) return;
       const terms = {
         query: trimmedQuery,
@@ -198,12 +202,12 @@ export const TranslationModal: React.FC<Props> = ({
       }
     } catch (error) {
       if (dictionaryRequestRef.current === requestId) {
-        setDictionaryError(error instanceof Error ? error.message : t('translate.errorDict', language));
+        setDictionaryError(error instanceof Error ? error.message : t('translate.errorDict'));
       }
     } finally {
       if (dictionaryRequestRef.current === requestId) setIsDictionaryLoading(false);
     }
-  }, [language, onSaveHistory]);
+  }, [dictionaryOptions, translationLanguage, onSaveHistory]);
 
   useEffect(() => {
     if (!isOpen || !selectedText) return;
@@ -222,7 +226,7 @@ export const TranslationModal: React.FC<Props> = ({
     try {
       await speakJapanese(selectedText);
     } catch (error) {
-      setSpeechError(error instanceof Error ? error.message : t('translate.errorExplain', language));
+      setSpeechError(error instanceof Error ? error.message : t('translate.errorExplain'));
     } finally {
       setIsSpeaking(false);
     }
@@ -232,7 +236,7 @@ export const TranslationModal: React.FC<Props> = ({
     if (!explanationProvider) return;
     const key = aiApiKeys[explanationProvider]?.trim();
     if (!key) {
-      setExplanationError(t('translate.explainPrompt', language));
+      setExplanationError(t('translate.explainPrompt'));
       return;
     }
     const requestId = explanationRequestRef.current + 1;
@@ -247,7 +251,7 @@ export const TranslationModal: React.FC<Props> = ({
       if (explanationRequestRef.current === requestId) setExplanation(result);
     } catch (error) {
       if (explanationRequestRef.current === requestId) {
-        setExplanationError(error instanceof Error ? error.message : t('translate.errorExplain', language));
+        setExplanationError(error instanceof Error ? error.message : t('translate.errorExplain'));
       }
     } finally {
       if (explanationRequestRef.current === requestId) setIsExplaining(false);
@@ -255,6 +259,10 @@ export const TranslationModal: React.FC<Props> = ({
   };
 
   if (!isOpen) return null;
+
+  const translationLabel = t('translate.targetTranslation', {
+    language: TRANSLATION_LANGUAGES.find((item) => item.code === translationLanguage)?.label || translationLanguage,
+  });
 
   const translationFavorite: TranslationFavoriteCandidate = {
     query: selectedText,
@@ -289,14 +297,14 @@ export const TranslationModal: React.FC<Props> = ({
           <div className="flex items-center gap-2">
             <Languages className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
             <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
-              {t('translate.title', language)}
+              {t('translate.title')}
             </h2>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="tap-area rounded-full p-2 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-            aria-label={t('nav.close', language)}
+            aria-label={t('nav.close')}
           >
             <X className="h-5 w-5" />
           </button>
@@ -307,7 +315,7 @@ export const TranslationModal: React.FC<Props> = ({
           <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-xl p-3.5 border border-zinc-200 dark:border-zinc-700/80">
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
-                {t('translate.originalJapanese', language)}
+                {t('translate.originalJapanese')}
               </span>
               <button
                 onClick={handleSpeak}
@@ -315,7 +323,7 @@ export const TranslationModal: React.FC<Props> = ({
                 className="flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-50"
               >
                 <Volume2 className={`w-3.5 h-3.5 ${isSpeaking ? 'animate-pulse text-amber-500' : ''}`} />
-                <span>{isSpeaking ? t('translate.playing', language) : t('common.listen', language)}</span>
+                <span>{isSpeaking ? t('translate.playing') : t('common.listen')}</span>
               </button>
             </div>
             <div className="text-base font-serif text-zinc-800 dark:text-zinc-200 break-words leading-relaxed select-text">
@@ -327,17 +335,19 @@ export const TranslationModal: React.FC<Props> = ({
           {/* Translation */}
           <div className="bg-indigo-50/40 dark:bg-indigo-950/20 rounded-xl p-3.5 border border-indigo-100 dark:border-indigo-900/40">
             <div className="text-[11px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 mb-1.5">
-              {aiProvider ? `${t('common.translate', language)} (${AI_PROVIDER_LABELS[aiProvider]})` : t('translate.targetTranslation', language)}
+              {aiProvider
+                ? `${translationLabel} · ${AI_PROVIDER_LABELS[aiProvider]}`
+                : translationLabel}
             </div>
             {isLoading ? (
               <div className="flex items-center gap-2 py-2 text-xs text-zinc-500">
                 <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
-                <span>{t('translate.translating', language)}</span>
+                <span>{t('translate.translating')}</span>
               </div>
             ) : (
               <div className="flex items-start gap-2">
                 <div className="min-w-0 flex-1 break-words text-sm leading-relaxed text-zinc-800 dark:text-zinc-200 select-text">
-                  {translatedText || t('translate.noTranslation', language)}
+                  {translatedText || t('translate.noTranslation')}
                 </div>
                 {translatedText && !translationError && (
                   <button
@@ -346,8 +356,8 @@ export const TranslationModal: React.FC<Props> = ({
                     className={`tap-area shrink-0 rounded-lg p-2 ${
                       isTranslationSaved ? 'text-amber-500' : 'text-zinc-400 hover:text-amber-500'
                     }`}
-                    aria-label={isTranslationSaved ? 'Quitar traducción de favoritos' : 'Marcar traducción como favorita'}
-                    title={isTranslationSaved ? 'Quitar de favoritos' : 'Marcar traducción como favorita'}
+                    aria-label={isTranslationSaved ? t('glossary.removeFav') : t('glossary.addFav')}
+                    title={isTranslationSaved ? t('glossary.removeFav') : t('glossary.addFav')}
                     aria-pressed={isTranslationSaved}
                   >
                     <Star className={`h-4 w-4 ${isTranslationSaved ? 'fill-current' : ''}`} />
@@ -362,7 +372,7 @@ export const TranslationModal: React.FC<Props> = ({
                     value={explanationProvider}
                     onChange={(event) => setExplanationProvider(event.target.value as AiProvider)}
                     className="min-w-0 flex-1 rounded-lg border border-indigo-200 bg-white px-2 py-2 text-xs text-zinc-700 dark:border-indigo-900 dark:bg-zinc-900 dark:text-zinc-200"
-                    aria-label="IA para explicar la traducción"
+                    aria-label={t('settings.aiProvider')}
                   >
                     {availableAiProviders.map((provider) => (
                       <option key={provider} value={provider}>{AI_PROVIDER_LABELS[provider]}</option>
@@ -374,12 +384,12 @@ export const TranslationModal: React.FC<Props> = ({
                   onClick={() => void handleExplain()}
                   disabled={isExplaining || availableAiProviders.length === 0}
                   className="flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  title={availableAiProviders.length ? 'Solicitar una explicación detallada a la IA' : 'Configura una IA en Ajustes'}
+                  title={availableAiProviders.length ? t('translate.explainBtn') : t('translate.explainPrompt')}
                 >
                   {isExplaining
                     ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     : <Sparkles className="h-3.5 w-3.5" />}
-                  {isExplaining ? t('translate.explaining', language) : t('translate.explainBtn', language)}
+                  {isExplaining ? t('translate.explaining') : t('translate.explainBtn')}
                   {availableAiProviders.length === 1 && (
                     <span className="font-normal opacity-80">
                       · {AI_PROVIDER_LABELS[availableAiProviders[0]]}
@@ -395,7 +405,7 @@ export const TranslationModal: React.FC<Props> = ({
               {explanation && (
                 <div className="mt-3 max-h-[32vh] overflow-y-auto rounded-lg bg-white/75 p-3 text-sm leading-relaxed text-zinc-800 dark:bg-zinc-900/70 dark:text-zinc-200">
                   <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-300">
-                    {t('translate.aiExplanation', language)} · {AI_PROVIDER_LABELS[explanationProvider as AiProvider]}
+                    {t('translate.aiExplanation')} · {AI_PROVIDER_LABELS[explanationProvider as AiProvider]}
                   </div>
                   <div className="break-words select-text">
                     <MarkdownContent content={explanation} />
@@ -406,8 +416,8 @@ export const TranslationModal: React.FC<Props> = ({
                     className={`tap-area mt-2 rounded-lg p-2 ${
                       isExplanationSaved ? 'text-amber-500' : 'text-zinc-400 hover:text-amber-500'
                     }`}
-                    aria-label={isExplanationSaved ? 'Quitar explicación de favoritos' : 'Marcar explicación como favorita'}
-                    title={isExplanationSaved ? 'Quitar de favoritos' : 'Marcar explicación como favorita'}
+                    aria-label={isExplanationSaved ? t('glossary.removeFav') : t('glossary.addFav')}
+                    title={isExplanationSaved ? t('glossary.removeFav') : t('glossary.addFav')}
                     aria-pressed={isExplanationSaved}
                   >
                     <Star className={`h-4 w-4 ${isExplanationSaved ? 'fill-current' : ''}`} />
@@ -420,15 +430,15 @@ export const TranslationModal: React.FC<Props> = ({
           {/* Local dictionary */}
           <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/60 dark:bg-emerald-950/20 p-3 text-xs text-emerald-900 dark:text-emerald-200 space-y-3">
             <div className="text-[10px] font-bold uppercase tracking-[0.12em] mb-1.5 text-emerald-700 dark:text-emerald-300">
-              {t('translate.localJmdict', language)}
+              {t('translate.localJmdict')}
             </div>
             <form onSubmit={handleDictionarySubmit} className="flex gap-2">
               <input
                 type="text"
                 value={dictionaryQuery}
                 onChange={(event) => setDictionaryQuery(event.target.value)}
-                placeholder={t('translate.inputPlaceholder', language)}
-                aria-label={t('translate.inputPlaceholder', language)}
+                placeholder={t('translate.inputPlaceholder')}
+                aria-label={t('translate.inputPlaceholder')}
                 className="min-w-0 flex-1 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-emerald-500 dark:border-emerald-900 dark:bg-zinc-900 dark:text-zinc-100"
               />
               <button
@@ -439,7 +449,7 @@ export const TranslationModal: React.FC<Props> = ({
                 {isDictionaryLoading
                   ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   : <Search className="h-3.5 w-3.5" />}
-                {t('translate.searchBtn', language)}
+                {t('translate.searchBtn')}
               </button>
             </form>
             {dictionaryError && (
@@ -447,14 +457,14 @@ export const TranslationModal: React.FC<Props> = ({
             )}
             {isDictionaryLoading && (
               <div className="flex items-center gap-2 text-zinc-600 dark:text-zinc-400">
-                <Loader2 className="h-4 w-4 animate-spin" /> {t('common.loading', language)}
+                <Loader2 className="h-4 w-4 animate-spin" /> {t('common.loading')}
               </div>
             )}
           {dictionaryTerms && (
               <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full bg-emerald-200/80 dark:bg-emerald-900/70 px-2 py-1 font-semibold">
-                  {t('glossary.baseForm', language)}: {dictionaryTerms.baseForm}
+                  {t('glossary.baseForm')}: {dictionaryTerms.baseForm}
                 </span>
                 {dictionaryTerms.searchTerms.filter((term) => term !== dictionaryTerms.baseForm).slice(0, 3).map((term) => (
                   <span key={term} className="rounded-full bg-white/70 dark:bg-zinc-900/70 px-2 py-1 text-[11px]">
@@ -469,7 +479,7 @@ export const TranslationModal: React.FC<Props> = ({
               )}
               {dictionaryTerms.entries.length === 0 ? (
                 <p className="text-zinc-600 dark:text-zinc-400">
-                  {t('translate.noEntries', language)}
+                  {t('translate.noEntries')}
                 </p>
               ) : (
                 <div className="space-y-2">
@@ -513,6 +523,14 @@ export const TranslationModal: React.FC<Props> = ({
                           </li>
                         ))}
                       </ol>
+                      {entry.synonyms?.length ? (
+                        <p className="mt-1.5 text-zinc-600 dark:text-zinc-400">
+                          <span className="mr-1 text-[10px] font-semibold uppercase text-emerald-700 dark:text-emerald-300">
+                            {t('glossary.synonyms')}
+                          </span>
+                          {entry.synonyms.join(' · ')}
+                        </p>
+                      ) : null}
                         </div>
                         <button
                           type="button"
@@ -520,8 +538,8 @@ export const TranslationModal: React.FC<Props> = ({
                           className={`tap-area shrink-0 rounded-lg p-2 ${
                             isDefinitionSaved ? 'text-amber-500' : 'text-zinc-400 hover:text-amber-500'
                           }`}
-                          aria-label={isDefinitionSaved ? 'Quitar de favoritos' : 'Marcar definición como favorita'}
-                          title={isDefinitionSaved ? 'Quitar de favoritos' : 'Marcar definición como favorita'}
+                          aria-label={isDefinitionSaved ? t('glossary.removeFav') : t('glossary.markFav')}
+                          title={isDefinitionSaved ? t('glossary.removeFav') : t('glossary.markFav')}
                           aria-pressed={isDefinitionSaved}
                         >
                           <Star className={`h-4 w-4 ${isDefinitionSaved ? 'fill-current' : ''}`} />
@@ -540,7 +558,7 @@ export const TranslationModal: React.FC<Props> = ({
                   rel="noreferrer"
                   className="underline"
                 >
-                  {t('translate.source', language)}
+                  {t('translate.source')}
                 </a>
                 {' · '}
                 <a
@@ -549,8 +567,31 @@ export const TranslationModal: React.FC<Props> = ({
                   rel="noreferrer"
                   className="underline"
                 >
-                  {t('translate.license', language)}
+                  {t('translate.license')}
                 </a>
+                {dictionaryTerms.entries.some((entry) => entry.language === 'ja') && (
+                  <>
+                    <br />
+                    {t('jaDict.attribution')} ·{' '}
+                    <a
+                      href={JAPANESE_DICTIONARY_SOURCE_URL}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline"
+                    >
+                      {t('translate.source')}
+                    </a>
+                    {' · '}
+                    <a
+                      href="https://creativecommons.org/licenses/by-sa/4.0/"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline"
+                    >
+                      {t('translate.license')}
+                    </a>
+                  </>
+                )}
               </p>
             </div>
           )}

@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { t } from '../utils/i18n';
+import { useDictionaryOptions, useT, useTranslationLanguage } from '../i18n/LanguageContext';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { AiProvider, PaginationMode, ParsedEpub, ReaderSettingsState } from '../types/epub';
@@ -299,6 +299,9 @@ export const EpubReader: React.FC<Props> = ({
   isBookUploaded = true,
   onUploadBook,
 }) => {
+  const t = useT();
+  const translationLanguage = useTranslationLanguage();
+  const dictionaryOptions = useDictionaryOptions();
   const [currentSpineIndex, setCurrentSpineIndex] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -1307,7 +1310,7 @@ export const EpubReader: React.FC<Props> = ({
       }, 500);
       return true;
     } catch {
-      showWordAnalysisError(t('reader.selectWordError', settings.language));
+      showWordAnalysisError(t('reader.selectWordError'));
       return false;
     }
   }, [showWordAnalysisError]);
@@ -2620,7 +2623,7 @@ export const EpubReader: React.FC<Props> = ({
 
     let cancelled = false;
     const timer = window.setTimeout(() => {
-      void getDictionarySearchTerms(query, settings.language)
+      void getDictionarySearchTerms(query, translationLanguage, dictionaryOptions)
         .then((lookup) => {
           if (cancelled) return;
           const hasEntries = lookup.entries.length > 0;
@@ -2644,7 +2647,7 @@ export const EpubReader: React.FC<Props> = ({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [frequentSearchToken, handleRecordFrequentQuery, handleSaveTranslationHistory, isSelectionAdjusting, isTranslationHistoryOpen, selectedText]);
+  }, [frequentSearchToken, handleRecordFrequentQuery, handleSaveTranslationHistory, isSelectionAdjusting, isTranslationHistoryOpen, selectedText, translationLanguage, dictionaryOptions]);
   useEffect(() => {
     if (!isLoadingChapter) {
       saveReadingPosition({
@@ -2806,7 +2809,7 @@ export const EpubReader: React.FC<Props> = ({
     );
     const chapterLabel = chapterIndex >= 0
       ? epub.toc[chapterIndex].label
-      : `${t('common.chapter', settings.language)} ${getDisplayChapter(position.spineIndex)}`;
+      : `${t('common.chapter')} ${getDisplayChapter(position.spineIndex)}`;
     const chapterTotal = currentCount || position.pageCount || 1;
     const bookPage = getGlobalPage(position.spineIndex, page) + 1;
     const chapterPageDisplay = formatChapterPageDisplay(page, chapterTotal, settings.paginationMode, printedPages, bookTotalPages, settings.language, chapterLabel);
@@ -3021,15 +3024,15 @@ export const EpubReader: React.FC<Props> = ({
     const pageLabel = !isBookmarksOpen
       ? undefined
       : location === undefined
-        ? t('reader.calculatingPage', settings.language)
+        ? t('reader.calculatingPage')
         : location === null
-          ? t('reader.locatePageError', settings.language)
+          ? t('reader.locatePageError')
           : isBookPaginationReady
             ? `${chapterPageDisplay} · ${bookPageDisplay}`
             : chapterPageDisplay;
     return {
       ...annotation,
-      chapterLabel: chapterName || `${t('common.section', settings.language)} ${annotation.spineIndex + 1}`,
+      chapterLabel: chapterName || `${t('common.section')} ${annotation.spineIndex + 1}`,
       pageLabel,
     };
   });
@@ -3057,7 +3060,7 @@ export const EpubReader: React.FC<Props> = ({
         null,
       );
       if (!target) {
-        showWordAnalysisError(t('reader.locateAnnotationError', settings.language));
+        showWordAnalysisError(t('reader.locateAnnotationError'));
         return;
       }
 
@@ -3082,7 +3085,7 @@ export const EpubReader: React.FC<Props> = ({
       }, 1300);
     } catch (error) {
       console.error('No se pudo abrir el subrayado guardado.', error);
-      showWordAnalysisError(t('reader.openAnnotationError', settings.language));
+      showWordAnalysisError(t('reader.openAnnotationError'));
     }
   }, [
     isVertical,
@@ -3303,7 +3306,7 @@ export const EpubReader: React.FC<Props> = ({
       // a "Cover" pointing at a file the spine never includes). Silently doing
       // nothing looks like a broken menu, so say what happened.
       logDebugRef.current(`toc unresolved ${href}`);
-      setTocError(t('reader.tocNotAvailable', settings.language));
+      setTocError(t('reader.tocNotAvailable'));
       window.setTimeout(() => setTocError(null), 3000);
       return;
     }
@@ -3461,7 +3464,7 @@ export const EpubReader: React.FC<Props> = ({
     const doc = iframe?.contentDocument;
     const scroller = doc?.getElementById('reader-scroller');
     if (!iframe || !doc || !scroller) {
-      showWordAnalysisError(t('reader.pageAccessError', settings.language));
+      showWordAnalysisError(t('reader.pageAccessError'));
       return;
     }
 
@@ -3503,7 +3506,7 @@ export const EpubReader: React.FC<Props> = ({
       }
 
       if (!pageText.trim()) {
-        throw new Error(t('reader.noVisibleText', settings.language));
+        throw new Error(t('reader.noVisibleText'));
       }
 
       const morphology = await tokenizeJapanese(pageText);
@@ -3648,8 +3651,8 @@ export const EpubReader: React.FC<Props> = ({
       if (request !== pageAnalysisRequestRef.current) return;
       showWordAnalysisError(
         error instanceof Error
-          ? t('reader.analysisError', settings.language).replace('{message}', error.message)
-          : t('reader.analysisGenericError', settings.language)
+          ? t('reader.analysisError').replace('{message}', error.message)
+          : t('reader.analysisGenericError')
       );
     } finally {
       if (request === pageAnalysisRequestRef.current) setIsAnalyzingPage(false);
@@ -3858,7 +3861,6 @@ export const EpubReader: React.FC<Props> = ({
         lastSyncedDate={lastSyncedDate}
         isBookUploaded={isBookUploaded}
         onUploadBook={onUploadBook}
-        language={settings.language}
       />
 
       {selectionEdgeIndicator && (
@@ -3915,10 +3917,10 @@ export const EpubReader: React.FC<Props> = ({
         aria-live="polite"
       >
         {isBookPaginationReady && isReaderPositioned
-          ? `${formatPageDisplay(globalPage, bookTotalPages, settings.paginationMode, printedPages, settings.language)} · ${t('footer.chapter', settings.language)}${displayChapter}/${displayChapterCount}`
+          ? `${formatPageDisplay(globalPage, bookTotalPages, settings.paginationMode, printedPages, settings.language)} · ${t('footer.chapter')}${displayChapter}/${displayChapterCount}`
           : isReaderPositioned
-            ? t('reader.calculatingPage', settings.language)
-            : t('common.loading', settings.language)}
+            ? t('reader.calculatingPage')
+            : t('common.loading')}
       </div>
 
       {/* Menu toggle & Sync badge in bottom-left when UI is hidden (!showUi), hidden when UI appears */}
@@ -3938,8 +3940,8 @@ export const EpubReader: React.FC<Props> = ({
             setDebugEnabled((enabled) => !enabled);
           }}
           className="tap-area-free p-2 rounded-full backdrop-blur-md shadow-md transition-colors bg-zinc-900/40 text-white/80"
-          title={t('nav.open', settings.language)}
-          aria-label={t('nav.open', settings.language)}
+          title={t('nav.open')}
+          aria-label={t('nav.open')}
         >
           <Menu className="w-4 h-4" />
         </button>
@@ -3954,7 +3956,6 @@ export const EpubReader: React.FC<Props> = ({
             isBookUploaded={isBookUploaded}
             onUploadBook={onUploadBook}
             align="left"
-            language={settings.language}
           />
         )}
       </div>
@@ -3964,8 +3965,8 @@ export const EpubReader: React.FC<Props> = ({
         <button
           onClick={() => setShowUi(false)}
           className="tap-area-free fixed z-[55] p-2 rounded-full backdrop-blur-md shadow-md transition-colors right-3 bottom-[118px] bg-white/90 text-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-200"
-          title={t('nav.close', settings.language)}
-          aria-label={t('nav.close', settings.language)}
+          title={t('nav.close')}
+          aria-label={t('nav.close')}
         >
           <X className="w-4 h-4" />
         </button>
@@ -3984,8 +3985,8 @@ export const EpubReader: React.FC<Props> = ({
             bottom: 'max(env(safe-area-inset-bottom, 4px), 4px)',
             right: 'max(calc(env(safe-area-inset-right, 4px) + 48px), 48px)',
           }}
-          title={isReaderFullscreen ? t('nav.exitFullscreen', settings.language) : t('nav.fullscreen', settings.language)}
-          aria-label={isReaderFullscreen ? t('nav.exitFullscreen', settings.language) : t('nav.fullscreen', settings.language)}
+          title={isReaderFullscreen ? t('nav.exitFullscreen') : t('nav.fullscreen')}
+          aria-label={isReaderFullscreen ? t('nav.exitFullscreen') : t('nav.fullscreen')}
           aria-pressed={isReaderFullscreen}
         >
           {isReaderFullscreen
@@ -4007,8 +4008,8 @@ export const EpubReader: React.FC<Props> = ({
             bottom: 'max(env(safe-area-inset-bottom, 4px), 4px)',
             right: 'max(env(safe-area-inset-right, 4px), 4px)',
           }}
-          title={isCurrentBookmarked ? t('reader.removeBookmark', settings.language) : t('reader.addBookmark', settings.language)}
-          aria-label={isCurrentBookmarked ? t('reader.removeBookmark', settings.language) : t('reader.addBookmark', settings.language)}
+          title={isCurrentBookmarked ? t('reader.removeBookmark') : t('reader.addBookmark')}
+          aria-label={isCurrentBookmarked ? t('reader.removeBookmark') : t('reader.addBookmark')}
           aria-pressed={isCurrentBookmarked}
         >
           {isCurrentBookmarked
@@ -4046,7 +4047,7 @@ export const EpubReader: React.FC<Props> = ({
             <div className="absolute inset-0 flex items-center justify-center bg-black/10 backdrop-blur-[2px] pointer-events-none">
               <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/90 dark:bg-zinc-800/90 shadow-lg text-xs font-medium text-zinc-700 dark:text-zinc-200">
                 <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
-                <span>{t('common.loading', settings.language)}</span>
+                <span>{t('common.loading')}</span>
               </div>
             </div>
           )}
@@ -4099,7 +4100,6 @@ export const EpubReader: React.FC<Props> = ({
         isAdjusting={isSelectionAdjusting || isTranslateOpen || isBookmarksOpen || isSearchOpen || isTranslationHistoryOpen || isPageGlossaryOpen || isTocOpen || isSettingsOpen || Boolean(imageViewerSrc)}
         dictionaryPreview={dictionaryPreview}
         isUnderlined={isSelectionUnderlined}
-        language={settings.language}
         onToggleUnderline={handleToggleUnderline}
         onClose={() => {
           selectedTextRef.current = '';
@@ -4137,7 +4137,6 @@ export const EpubReader: React.FC<Props> = ({
         aiApiKeys={settings.aiApiKeys}
         favorites={translationFavorites}
         frequentSearchToken={frequentSearchToken}
-        language={settings.language}
         onSaveHistory={handleSaveTranslationHistory}
         onRecordFrequentQuery={handleRecordFrequentQuery}
         onToggleFavorite={handleToggleTranslationFavorite}
@@ -4148,7 +4147,6 @@ export const EpubReader: React.FC<Props> = ({
         entries={translationHistory}
         favorites={translationFavorites}
         frequentQueries={frequentQueries}
-        language={settings.language}
         onClose={() => setIsTranslationHistoryOpen(false)}
         onRemove={handleRemoveTranslationHistoryEntry}
         onClear={handleClearTranslationHistory}
@@ -4161,7 +4159,6 @@ export const EpubReader: React.FC<Props> = ({
         isOpen={isPageGlossaryOpen}
         tokens={pageWords}
         favorites={translationFavorites}
-        language={settings.language}
         onClose={() => setIsPageGlossaryOpen(false)}
         onSelectWord={selectPageWord}
         onToggleFavorite={handleToggleTranslationFavorite}
@@ -4177,7 +4174,6 @@ export const EpubReader: React.FC<Props> = ({
         getPageLabel={getSearchPageLabel}
         getChapterLabel={(spineIndex) => spineLabels[spineIndex] || `Sección ${spineIndex + 1}`}
         recentSearches={recentSearches}
-        language={settings.language}
         onRememberSearch={handleRememberSearch}
         onRemoveRecent={handleRemoveRecentSearch}
         onClearRecents={handleClearRecentSearches}
@@ -4189,7 +4185,6 @@ export const EpubReader: React.FC<Props> = ({
         isOpen={isBookmarksOpen}
         bookmarks={bookmarkItems}
         annotations={annotationItems}
-        language={settings.language}
         onClose={() => setIsBookmarksOpen(false)}
         onSelect={handleSelectBookmark}
         onRemove={handleRemoveBookmark}
@@ -4210,7 +4205,6 @@ export const EpubReader: React.FC<Props> = ({
         displayChapterCount={displayChapterCount}
         direction={settings.progressionDirection}
         isVertical={isVertical}
-        language={settings.language}
         onPrevPage={handlePrevPage}
         onNextPage={handleNextPage}
         onSeekPage={handleSeekPage}
@@ -4235,7 +4229,7 @@ export const EpubReader: React.FC<Props> = ({
         >
           <img
             src={imageViewerSrc}
-            alt="Imagen ampliada"
+            alt={t('reader.zoomImageAlt')}
             draggable={false}
             className="max-w-[92vw] max-h-[82vh] select-none object-contain"
             style={{
@@ -4247,7 +4241,7 @@ export const EpubReader: React.FC<Props> = ({
             <button
               onClick={() => setImageViewerScale((scale) => Math.max(1, scale - 0.25))}
               className="rounded-lg p-2 hover:bg-white/10"
-              aria-label="Reducir zoom"
+              aria-label={t('reader.zoomOut')}
             >
               <Minus className="h-4 w-4" />
             </button>
@@ -4255,7 +4249,7 @@ export const EpubReader: React.FC<Props> = ({
             <button
               onClick={() => setImageViewerScale((scale) => Math.min(4, scale + 0.25))}
               className="rounded-lg p-2 hover:bg-white/10"
-              aria-label="Aumentar zoom"
+              aria-label={t('reader.zoomIn')}
             >
               <Plus className="h-4 w-4" />
             </button>
@@ -4265,11 +4259,11 @@ export const EpubReader: React.FC<Props> = ({
                 setImageViewerOffset({ x: 0, y: 0 });
               }}
               className="rounded-lg p-2 hover:bg-white/10"
-              aria-label="Restablecer imagen"
+              aria-label={t('reader.zoomReset')}
             >
               <RotateCcw className="h-4 w-4" />
             </button>
-            <button onClick={closeImageViewer} className="rounded-lg p-2 hover:bg-white/10" aria-label="Cerrar imagen">
+            <button onClick={closeImageViewer} className="rounded-lg p-2 hover:bg-white/10" aria-label={t('reader.zoomClose')}>
               <X className="h-4 w-4" />
             </button>
           </div>

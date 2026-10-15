@@ -6,6 +6,7 @@ import { extractEpubCoverBlob } from './epubParser';
 import { TranslationFavorite } from './translationFavorites';
 import { DictionaryHistoryData } from './translationHistory';
 import { FREQUENT_QUERIES_VERSION, FrequentQuery } from './frequentQueries';
+import { AVAILABLE_LANGUAGES, TRANSLATION_LANGUAGES } from './i18n';
 
 const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const DRIVE_SESSION_EXPECTED_KEY = 'ereader_google_drive_session_expected';
@@ -1044,7 +1045,9 @@ function isReaderSettings(value: unknown): value is ReaderSettingsState {
       ['gemini', 'openai', 'deepseek', 'openrouter'].includes(provider) && typeof key === 'string'
     )
     && typeof settings.openRouterModel === 'string'
-    && (settings.language === 'es' || settings.language === 'en' || settings.language === undefined);
+    && (settings.language === undefined || AVAILABLE_LANGUAGES.some(({ code }) => code === settings.language))
+    && (settings.translationLanguage === undefined
+      || TRANSLATION_LANGUAGES.some(({ code }) => code === settings.translationLanguage));
 }
 
 function isReadingPosition(value: unknown): value is ReaderBookBackup['position'] {

@@ -6,7 +6,7 @@ import {
   normalizeSearchQuery,
   SearchHit,
 } from '../utils/bookSearch';
-import { t, UiLanguage } from '../utils/i18n';
+import { useT } from '../i18n/LanguageContext';
 
 interface Props {
   isOpen: boolean;
@@ -21,7 +21,6 @@ interface Props {
   getPageLabel: (spineIndex: number, page: number) => string;
   getChapterLabel: (spineIndex: number) => string;
   recentSearches: string[];
-  language?: UiLanguage;
   onRememberSearch: (query: string) => void;
   onRemoveRecent: (query: string) => void;
   onClearRecents: () => void;
@@ -41,13 +40,13 @@ export const BookSearchModal: React.FC<Props> = ({
   getPageLabel,
   getChapterLabel,
   recentSearches,
-  language = 'es',
   onRememberSearch,
   onRemoveRecent,
   onClearRecents,
   onClose,
   onSelectHit,
 }) => {
+  const t = useT();
   const [input, setInput] = useState('');
   const [query, setQuery] = useState('');
   const [composing, setComposing] = useState(false);
@@ -200,14 +199,14 @@ export const BookSearchModal: React.FC<Props> = ({
           <div className="flex items-center gap-2">
             <Search className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
             <h2 id="book-search-title" className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
-              {t('search.title', language)}
+              {t('search.title')}
             </h2>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="tap-area rounded-full p-2 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-            aria-label={t('nav.close', language)}
+            aria-label={t('nav.close')}
           >
             <X className="h-5 w-5" />
           </button>
@@ -233,13 +232,13 @@ export const BookSearchModal: React.FC<Props> = ({
                 setComposing(false);
                 setInput(event.currentTarget.value);
               }}
-              placeholder={t('search.placeholder', language)}
+              placeholder={t('search.placeholder')}
               enterKeyHint="search"
               autoComplete="off"
               autoCorrect="off"
               spellCheck={false}
               className="min-w-0 flex-1 bg-transparent py-3 text-base text-zinc-900 outline-none placeholder:text-zinc-400 dark:text-zinc-100"
-              aria-label={t('search.placeholder', language)}
+              aria-label={t('search.placeholder')}
             />
             {input && (
               <button
@@ -250,7 +249,7 @@ export const BookSearchModal: React.FC<Props> = ({
                   inputRef.current?.focus();
                 }}
                 className="tap-area rounded-full p-1.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
-                aria-label={t('common.cancel', language)}
+                aria-label={t('common.cancel')}
               >
                 <X className="h-4 w-4" />
               </button>
@@ -260,16 +259,16 @@ export const BookSearchModal: React.FC<Props> = ({
             {isIndexing && (
               <>
                 <Loader2 className="h-3 w-3 animate-spin" />
-                <span>{t('search.preparing', language)} {indexedCount}/{spineCount}</span>
+                <span>{t('search.preparing')} {indexedCount}/{spineCount}</span>
               </>
             )}
             {!isIndexing && normalizedQuery && (
               <span>
                 {hits.length
                   ? truncated
-                    ? t('search.firstMatches', language).replace('{count}', String(MAX_SEARCH_HITS))
-                    : `${hits.length} ${hits.length === 1 ? t('search.match', language) : t('search.matches', language)}`
-                  : t('search.noResults', language)}
+                    ? t('search.firstMatches').replace('{count}', String(MAX_SEARCH_HITS))
+                    : `${hits.length} ${hits.length === 1 ? t('search.match') : t('search.matches')}`
+                  : t('search.noResults')}
               </span>
             )}
           </div>
@@ -282,14 +281,14 @@ export const BookSearchModal: React.FC<Props> = ({
                 <div className="mb-2 flex items-center justify-between px-1">
                   <span className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
                     <History className="h-3.5 w-3.5" />
-                    {t('search.recent', language)}
+                    {t('search.recent')}
                   </span>
                   <button
                     type="button"
                     onClick={onClearRecents}
                     className="tap-area rounded-lg px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
                   >
-                    {t('search.clearRecents', language)}
+                    {t('search.clearRecents')}
                   </button>
                 </div>
                 <ul className="space-y-1">
@@ -306,8 +305,8 @@ export const BookSearchModal: React.FC<Props> = ({
                         type="button"
                         onClick={() => onRemoveRecent(recent)}
                         className="tap-area rounded-lg p-2 text-zinc-400 hover:text-red-600 dark:hover:text-red-300"
-                        aria-label={`${t('common.delete', language)} "${recent}"`}
-                        title={t('common.delete', language)}
+                        aria-label={`${t('common.delete')} "${recent}"`}
+                        title={t('common.delete')}
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -317,7 +316,7 @@ export const BookSearchModal: React.FC<Props> = ({
               </div>
             ) : (
               <p className="px-5 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
-                {t('search.empty', language)}
+                {t('search.empty')}
               </p>
             )
           ) : (
@@ -354,7 +353,7 @@ export const BookSearchModal: React.FC<Props> = ({
                         >
                           {(() => {
                             const page = hitPagesRef.current.get(`${hit.spineIndex}:${hit.start}:${hit.length}`);
-                            return page === undefined ? `${t('pagination.pageShort', language)} …` : getPageLabel(hit.spineIndex, page);
+                            return page === undefined ? `${t('pagination.pageShort')} …` : getPageLabel(hit.spineIndex, page);
                           })()}
                         </span>
                       </button>

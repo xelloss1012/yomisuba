@@ -14,6 +14,9 @@ export const en: Record<string, string> = {
   'sample.btn': 'Load Japanese sample book',
   'recent.title': 'Recent books',
   'language.label': 'Interface Language',
+  'settings.translationLanguage': 'Translation language',
+  'settings.translationLanguageAuto': 'Same as interface ({language})',
+  'settings.translationLanguageHint': 'Language Japanese text is translated into, also used by the bilingual dictionary.',
 
   // ReaderSettings & Options
   'settings.title': 'Reading Settings',
@@ -158,7 +161,7 @@ export const en: Record<string, string> = {
   'translate.errorDict': 'Could not query dictionary.',
   'translate.errorExplain': 'Could not generate explanation.',
   'translate.originalJapanese': 'Original text (Japanese)',
-  'translate.targetTranslation': 'English translation',
+  'translate.targetTranslation': 'Translation ({language})',
   'translate.localJmdict': 'Local JMDict dictionary · Spanish & English',
   'translate.explaining': 'Explaining...',
   'translate.translating': 'Translating...',
@@ -265,6 +268,7 @@ export const en: Record<string, string> = {
   'glossary.baseForm': 'Base form',
   'glossary.terms': 'Terms',
   'glossary.reading': 'Reading',
+  'glossary.synonyms': 'Synonyms',
   'glossary.notFound': 'No local entry found for this form.',
   'glossary.noDefinition': 'No definition found.',
   'glossary.errorQuery': 'Error querying',
@@ -284,6 +288,18 @@ export const en: Record<string, string> = {
   'history.savedFavs': 'Saved favorites ({count}/{max})',
   'history.frequentTerms': 'Frequently consulted terms',
   'history.queries': 'queries',
+
+  // Japanese–Japanese dictionary
+  'jaDict.title': 'Japanese–Japanese dictionary',
+  'jaDict.description': 'Download a dictionary based on the Japanese Wiktionary to see definitions and synonyms in Japanese (about {size}).',
+  'jaDict.download': 'Download',
+  'jaDict.downloading': 'Downloading… {percent}%',
+  'jaDict.installed': 'Installed ({size})',
+  'jaDict.updateAvailable': 'A newer version is available.',
+  'jaDict.update': 'Update',
+  'jaDict.delete': 'Delete',
+  'jaDict.error': 'Could not download: {message}',
+  'jaDict.attribution': 'Japanese Wiktionary (CC BY-SA)',
 
   // Common
   'common.cancel': 'Cancel',

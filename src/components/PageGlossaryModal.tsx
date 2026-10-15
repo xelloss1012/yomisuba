@@ -11,7 +11,7 @@ import {
   TranslationFavorite,
   TranslationFavoriteCandidate,
 } from '../utils/translationFavorites';
-import { t, UiLanguage } from '../utils/i18n';
+import { useDictionaryOptions, useT, useTranslationLanguage } from '../i18n/LanguageContext';
 
 export interface PageWordToken extends JapaneseMorphologicalToken {
   range: Range;
@@ -25,7 +25,6 @@ interface Props {
   isOpen: boolean;
   tokens: PageWordToken[];
   favorites: TranslationFavorite[];
-  language?: UiLanguage;
   onClose: () => void;
   onSelectWord: (token: PageWordToken) => void;
   onToggleFavorite: (candidate: TranslationFavoriteCandidate) => void;
@@ -60,11 +59,13 @@ export const PageGlossaryModal: React.FC<Props> = ({
   isOpen,
   tokens,
   favorites,
-  language = 'es',
   onClose,
   onSelectWord,
   onToggleFavorite,
 }) => {
+  const t = useT();
+  const translationLanguage = useTranslationLanguage();
+  const dictionaryOptions = useDictionaryOptions();
   const [search, setSearch] = useState('');
   const [lookups, setLookups] = useState<Record<string, DictionaryLookup | string>>({});
   const [completed, setCompleted] = useState(0);
@@ -102,12 +103,13 @@ export const PageGlossaryModal: React.FC<Props> = ({
               item.token.basic_form !== '*'
                 ? item.token.basic_form
                 : item.token.surface_form,
-              language
+              translationLanguage,
+              dictionaryOptions,
             );
           } catch (error) {
             results[item.key] = error instanceof Error
               ? error.message
-              : t('glossary.errorQuery', language);
+              : t('glossary.errorQuery');
           }
           if (!cancelled) setCompleted((count) => count + 1);
         }
@@ -123,7 +125,7 @@ export const PageGlossaryModal: React.FC<Props> = ({
     return () => {
       cancelled = true;
     };
-  }, [words, isOpen, language]);
+  }, [words, isOpen, translationLanguage, dictionaryOptions]);
 
   const visibleWords = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -153,7 +155,7 @@ export const PageGlossaryModal: React.FC<Props> = ({
           <div className="flex min-w-0 items-center gap-2">
             <BookOpen className="h-5 w-5 shrink-0 text-indigo-600 dark:text-indigo-400" />
             <h2 id="page-glossary-title" className="truncate text-base font-semibold text-zinc-900 dark:text-zinc-100">
-              {t('glossary.title', language)}
+              {t('glossary.title')}
             </h2>
             <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
               {words.length}
@@ -163,7 +165,7 @@ export const PageGlossaryModal: React.FC<Props> = ({
             type="button"
             onClick={onClose}
             className="tap-area rounded-full p-2 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-            aria-label={t('nav.close', language)}
+            aria-label={t('nav.close')}
           >
             <X className="h-5 w-5" />
           </button>
@@ -174,17 +176,17 @@ export const PageGlossaryModal: React.FC<Props> = ({
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder={t('glossary.filter', language)}
+            placeholder={t('glossary.filter')}
             className="w-full rounded-xl border border-zinc-200 bg-zinc-50 py-2 pl-9 pr-3 text-sm text-zinc-900 outline-none focus:border-indigo-400 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
           />
         </label>
 
         <div className="flex items-center justify-between px-4 py-2 text-[11px] text-zinc-500 dark:text-zinc-400">
-          <span>{t('glossary.instruction', language)}</span>
+          <span>{t('glossary.instruction')}</span>
           {completed < words.length && (
             <span className="flex shrink-0 items-center gap-1">
               <Loader2 className="h-3 w-3 animate-spin" />
-              {t('translate.dictionary', language)} {completed}/{words.length}
+              {t('translate.dictionary')} {completed}/{words.length}
             </span>
           )}
         </div>
@@ -233,7 +235,7 @@ export const PageGlossaryModal: React.FC<Props> = ({
                   </span>
                   {token.basic_form && token.basic_form !== '*' && token.basic_form !== token.surface_form && (
                     <span className="mt-0.5 block text-[11px] text-zinc-500 dark:text-zinc-400">
-                      {t('glossary.baseForm', language)}: {token.basic_form}
+                      {t('glossary.baseForm')}: {token.basic_form}
                     </span>
                   )}
                   {entry && firstSense && (
@@ -249,11 +251,11 @@ export const PageGlossaryModal: React.FC<Props> = ({
                     </span>
                   )}
                   {lookup && typeof lookup !== 'string' && !entry && (
-                    <span className="mt-1 block text-xs text-zinc-400">{t('glossary.noDefinition', language)}</span>
+                    <span className="mt-1 block text-xs text-zinc-400">{t('glossary.noDefinition')}</span>
                   )}
                   {typeof lookup === 'string' && (
                     <span className="mt-1 block text-xs text-rose-600 dark:text-rose-300">
-                      {t('glossary.errorQuery', language)}: {lookup}
+                      {t('glossary.errorQuery')}: {lookup}
                     </span>
                   )}
                   {entry && lookup && typeof lookup !== 'string' && lookup.englishFallbackError && (
@@ -269,8 +271,8 @@ export const PageGlossaryModal: React.FC<Props> = ({
                     className={`tap-area mt-1 shrink-0 rounded-lg p-2 ${
                       favorite ? 'text-amber-500' : 'text-zinc-400 hover:text-amber-500'
                     }`}
-                    aria-label={favorite ? t('glossary.removeFav', language) : t('glossary.addFav', language)}
-                    title={favorite ? t('glossary.removeFav', language) : t('glossary.markFav', language)}
+                    aria-label={favorite ? t('glossary.removeFav') : t('glossary.addFav')}
+                    title={favorite ? t('glossary.removeFav') : t('glossary.markFav')}
                     aria-pressed={favorite}
                   >
                     <Star className={`h-4 w-4 ${favorite ? 'fill-current' : ''}`} />
@@ -281,7 +283,7 @@ export const PageGlossaryModal: React.FC<Props> = ({
           })}
           {visibleWords.length === 0 && (
             <li className="py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
-              {t('glossary.empty', language)}
+              {t('glossary.empty')}
             </li>
           )}
         </ul>
