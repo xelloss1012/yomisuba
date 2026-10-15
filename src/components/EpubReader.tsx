@@ -1955,7 +1955,9 @@ export const EpubReader: React.FC<Props> = ({
           return token ? selectPageWord(token) : false;
         };
 
-        const onEnd = (cx: number, cy: number, allowTapNavigation = true) => {
+        // Returns true when the gesture selected a word in analysis mode, so the
+        // touch path can cancel the browser's compatibility mouse events.
+        const onEnd = (cx: number, cy: number, allowTapNavigation = true): boolean => {
           const dt = Date.now() - st;
           const dx = cx - sx;
 
@@ -1978,7 +1980,7 @@ export const EpubReader: React.FC<Props> = ({
             } else {
               if (dx < 0) doNextRef.current(); else doPrevRef.current();
             }
-            return;
+            return false;
           }
 
           if (gestureAdjustmentEnabled && moved) {
@@ -1989,13 +1991,13 @@ export const EpubReader: React.FC<Props> = ({
             }
             updatePagination();
             setTimeout(() => { moved = false; }, 50);
-            return;
+            return false;
           }
 
           const sel = iframe.contentWindow?.getSelection()?.toString().trim();
           const isTap = (allowTapNavigation || wordSelectionModeRef.current) && !moved && dt < 300;
           if (isTap && wordSelectionModeRef.current && !openOverlayRef.current) {
-            if (selectWordAtPoint(cx, cy)) return;
+            if (selectWordAtPoint(cx, cy)) return true;
           }
           if (isTap && (selectionOrOverlayAtStart || sel || selectedTextRef.current.trim() || openOverlayRef.current)) {
             iframe.contentWindow?.getSelection()?.removeAllRanges();
@@ -2010,18 +2012,19 @@ export const EpubReader: React.FC<Props> = ({
             setIsSettingsOpen(false);
             setIsTranslateOpen(false);
             setImageViewerSrc(null);
-            return;
+            return false;
           }
-          if (sel) { handleSelection(); return; }
+          if (sel) { handleSelection(); return false; }
 
           if (isTap) {
-            if (Date.now() - lastSelectionTime.current < 400) return;
+            if (Date.now() - lastSelectionTime.current < 400) return false;
             const vw = iframe.clientWidth || window.innerWidth;
             const ratio = cx / vw;
             if (ratio >= 0.28 && ratio <= 0.72) {
               setShowUi(p => !p);
             }
           }
+          return false;
         };
 
         logDebugRef.current('listeners ok');
@@ -2166,14 +2169,20 @@ export const EpubReader: React.FC<Props> = ({
             onMove(e.touches[0].clientX, e.touches[0].clientY);
           }
         }, { passive: true });
+        // Not passive: a tap that selects a word reveals the selection menu right
+        // under the finger, and the browser would finish the gesture with its
+        // compatibility mousedown/click at those coordinates — hit-tested from the
+        // top document, so they would land on the menu and press a button.
+        // Cancelling this touchend stops the browser from emitting them at all.
         doc.addEventListener('touchend', (e) => {
           countDebugRef.current('tend');
           lastTouchEndAt = Date.now();
           if (!isNativeAndroid) pointerActiveRef.current = false;
           if (e.changedTouches[0]) {
-            onEnd(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+            const selectedWord = onEnd(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+            if (selectedWord && e.cancelable) e.preventDefault();
           }
-        }, { passive: true });
+        }, { passive: false });
         doc.addEventListener('touchcancel', () => {
           countDebugRef.current('tcancel');
           nativeSelectionTookOverRef.current = true;
