@@ -1,5 +1,7 @@
 import TokenizerWorker from './tokenizer.worker?worker&inline';
-import jmdictEntries from '../data/jmdict-spa.json';
+// Both bundled dictionaries ship gzip-compressed and are only decompressed and
+// indexed by the first lookup that needs them, so they cost nothing at startup.
+import spanishDictionaryUrl from '../data/jmdict-es.json.gz?inline';
 import englishDictionaryUrl from '../data/jmdict-en.json.gz?inline';
 import { TranslationLanguage, UiLanguage } from './i18n';
 import {
@@ -56,7 +58,6 @@ interface CompactEntry {
   i?: 1;
 }
 
-const entries = jmdictEntries as CompactEntry[];
 export interface JapaneseMorphologicalToken {
   surface_form: string;
   pos: string;
@@ -72,6 +73,7 @@ interface TokenizerClient {
   tokenize(input: string): Promise<JapaneseMorphologicalToken[]>;
 }
 let tokenizerPromise: Promise<TokenizerClient> | null = null;
+let spanishIndexPromise: Promise<DictionaryIndex> | null = null;
 let englishIndexPromise: Promise<DictionaryIndex> | null = null;
 const optionalIndexPromises = new Map<OptionalDictionaryId, Promise<DictionaryIndex | null>>();
 // Installing or removing a dictionary invalidates its cached index.
@@ -388,26 +390,29 @@ const createIndex = (source: CompactEntry[]): DictionaryIndex => {
   return { byForm, forms: [...byForm.keys()].sort() };
 };
 
-const spanishIndex = createIndex(entries);
-
-const getEnglishIndex = async (): Promise<DictionaryIndex> => {
-  if (!englishIndexPromise) {
-    englishIndexPromise = (async () => {
-      const response = await fetch(englishDictionaryUrl);
-      if (!response.ok) {
-        throw new Error(`No se pudo cargar JMdict inglés (HTTP ${response.status}).`);
-      }
-      if (!response.body || typeof DecompressionStream === 'undefined') {
-        throw new Error('Este navegador no admite la carga comprimida del diccionario inglés.');
-      }
-      const decompressed = response.body.pipeThrough(new DecompressionStream('gzip'));
-      const loadedEntries = await new Response(decompressed).json() as CompactEntry[];
-      if (!Array.isArray(loadedEntries)) {
-        throw new Error('El archivo local de JMdict inglés no tiene un formato válido.');
-      }
-      return createIndex(loadedEntries);
-    })();
+const loadBundledIndex = async (url: string, name: string): Promise<DictionaryIndex> => {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`No se pudo cargar JMdict ${name} (HTTP ${response.status}).`);
   }
+  if (!response.body || typeof DecompressionStream === 'undefined') {
+    throw new Error(`Este navegador no admite la carga comprimida del diccionario ${name}.`);
+  }
+  const decompressed = response.body.pipeThrough(new DecompressionStream('gzip'));
+  const loadedEntries = await new Response(decompressed).json() as CompactEntry[];
+  if (!Array.isArray(loadedEntries)) {
+    throw new Error(`El archivo local de JMdict ${name} no tiene un formato válido.`);
+  }
+  return createIndex(loadedEntries);
+};
+
+const getSpanishIndex = (): Promise<DictionaryIndex> => {
+  if (!spanishIndexPromise) spanishIndexPromise = loadBundledIndex(spanishDictionaryUrl, 'español');
+  return spanishIndexPromise;
+};
+
+const getEnglishIndex = (): Promise<DictionaryIndex> => {
+  if (!englishIndexPromise) englishIndexPromise = loadBundledIndex(englishDictionaryUrl, 'inglés');
   return englishIndexPromise;
 };
 
@@ -617,16 +622,23 @@ export const getDictionarySearchTerms = async (
 
   type RankedMatch = { entry: CompactEntry; score: number; exactText?: boolean };
   const resultsByLanguage = new Map<UiLanguage, RankedMatch[]>();
-  resultsByLanguage.set('es', findRawEntries(directTerms, filteredWhole, filteredSub, spanishIndex));
   let englishFallbackError: string | undefined;
+  const [spanishIndex, englishIndex] = await Promise.allSettled([getSpanishIndex(), getEnglishIndex()]);
 
-  try {
-    const englishIndex = await getEnglishIndex();
-    resultsByLanguage.set('en', findRawEntries(directTerms, filteredWhole, filteredSub, englishIndex));
-  } catch (error) {
+  if (spanishIndex.status === 'fulfilled') {
+    resultsByLanguage.set('es', findRawEntries(directTerms, filteredWhole, filteredSub, spanishIndex.value));
+  } else {
+    // Retried on the next lookup; English still answers meanwhile.
+    spanishIndexPromise = null;
+    console.error('[dictionary] Spanish dictionary error:', spanishIndex.reason);
+  }
+
+  if (englishIndex.status === 'fulfilled') {
+    resultsByLanguage.set('en', findRawEntries(directTerms, filteredWhole, filteredSub, englishIndex.value));
+  } else {
     englishIndexPromise = null;
-    englishFallbackError = error instanceof Error
-      ? error.message
+    englishFallbackError = englishIndex.reason instanceof Error
+      ? englishIndex.reason.message
       : 'No se pudo cargar el complemento inglés de JMdict.';
   }
 
