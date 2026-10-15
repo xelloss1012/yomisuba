@@ -9,8 +9,8 @@ export interface DictionaryHistorySense {
 }
 
 export interface DictionaryHistoryEntry {
-  /** `ja` comes from the optional Japanese–Japanese dictionary. */
-  language: 'es' | 'en' | 'ja';
+  /** Language of the glosses; `ja` is the optional Japanese–Japanese dictionary. */
+  language: UiLanguage;
   kanji: string[];
   kana: string[];
   senses: DictionaryHistorySense[];

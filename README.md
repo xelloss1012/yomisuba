@@ -211,6 +211,6 @@ El código de EReader se distribuye bajo la [licencia MIT](LICENSE).
 Los datos de diccionario mantienen su propia licencia, que no es la del código:
 
 - **JMdict/EDICT** (`src/data/`): © Electronic Dictionary Research and Development Group (EDRDG), [CC BY-SA 4.0](https://www.edrdg.org/edrdg/licence.html).
-- **Diccionario japonés-japonés** (descarga opcional desde [ereader-dictionaries](https://github.com/xelloss1012/ereader-dictionaries)): adaptado del [Wiktionary japonés](https://ja.wiktionary.org/), [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
+- **Diccionarios opcionales** (descarga desde [ereader-dictionaries](https://github.com/xelloss1012/ereader-dictionaries)): francés y alemán derivados de JMdict (CC BY-SA 4.0, EDRDG); japonés-japonés, chino, coreano, italiano y vietnamita adaptados de las ediciones correspondientes de Wiktionary ([CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)).
 
 Las dependencias de npm conservan sus licencias respectivas.

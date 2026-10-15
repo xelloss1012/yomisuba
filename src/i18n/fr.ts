@@ -289,17 +289,20 @@ export const fr: Record<string, string> = {
   'history.frequentTerms': 'Termes fréquemment consultés',
   'history.queries': 'requêtes',
 
-  // Japanese–Japanese dictionary
-  'jaDict.title': 'Dictionnaire japonais-japonais',
-  'jaDict.description': 'Téléchargez un dictionnaire basé sur le Wiktionnaire japonais pour voir les définitions et synonymes en japonais (environ {size}).',
-  'jaDict.download': 'Télécharger',
-  'jaDict.downloading': 'Téléchargement… {percent} %',
-  'jaDict.installed': 'Installé ({size})',
-  'jaDict.updateAvailable': 'Une version plus récente est disponible.',
-  'jaDict.update': 'Mettre à jour',
-  'jaDict.delete': 'Supprimer',
-  'jaDict.error': 'Échec du téléchargement : {message}',
-  'jaDict.attribution': 'Wiktionnaire japonais (CC BY-SA)',
+  // Downloadable dictionaries
+  'dict.titleMonolingual': 'Dictionnaire japonais-japonais',
+  'dict.title': 'Dictionnaire japonais-{language}',
+  'dict.descriptionMonolingual': 'Définitions et synonymes en japonais pour {entries} mots (environ {size}).',
+  'dict.description': 'Définitions en {language} pour {entries} mots japonais (environ {size}).',
+  'dict.download': 'Télécharger',
+  'dict.downloading': 'Téléchargement… {percent} %',
+  'dict.installed': 'Installé ({size})',
+  'dict.updateAvailable': 'Une version plus récente est disponible.',
+  'dict.update': 'Mettre à jour',
+  'dict.delete': 'Supprimer',
+  'dict.error': 'Échec du téléchargement : {message}',
+  'dict.sectionTitle': 'Dictionnaires téléchargeables',
+  'dict.sectionHint': "Enregistrés sur cet appareil et conservés lors des mises à jour de l'app. Ils ne sont pas copiés sur Google Drive.",
 
   // Common
   'common.cancel': 'Annuler',

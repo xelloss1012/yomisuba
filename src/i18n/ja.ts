@@ -289,17 +289,20 @@ export const ja: Record<string, string> = {
   'history.frequentTerms': 'よく調べる語',
   'history.queries': '回',
 
-  // Japanese–Japanese dictionary
-  'jaDict.title': '国語辞典',
-  'jaDict.description': 'Wiktionary日本語版をもとにした辞書をダウンロードすると、日本語の定義と類義語が表示されます（約{size}）。',
-  'jaDict.download': 'ダウンロード',
-  'jaDict.downloading': 'ダウンロード中… {percent}%',
-  'jaDict.installed': 'インストール済み（{size}）',
-  'jaDict.updateAvailable': '新しい版があります。',
-  'jaDict.update': '更新',
-  'jaDict.delete': '削除',
-  'jaDict.error': 'ダウンロードできませんでした: {message}',
-  'jaDict.attribution': 'Wiktionary日本語版（CC BY-SA）',
+  // Downloadable dictionaries
+  'dict.titleMonolingual': '国語辞典',
+  'dict.title': '日本語・{language}辞書',
+  'dict.descriptionMonolingual': '{entries}語の日本語の定義と類義語（約{size}）。',
+  'dict.description': '日本語{entries}語の{language}の定義（約{size}）。',
+  'dict.download': 'ダウンロード',
+  'dict.downloading': 'ダウンロード中… {percent}%',
+  'dict.installed': 'インストール済み（{size}）',
+  'dict.updateAvailable': '新しい版があります。',
+  'dict.update': '更新',
+  'dict.delete': '削除',
+  'dict.error': 'ダウンロードできませんでした: {message}',
+  'dict.sectionTitle': 'ダウンロードできる辞書',
+  'dict.sectionHint': 'この端末に保存され、アプリを更新しても残ります。Googleドライブにはコピーされません。',
 
   // Common
   'common.cancel': 'キャンセル',

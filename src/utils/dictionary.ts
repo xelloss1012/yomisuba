@@ -1,8 +1,13 @@
 import TokenizerWorker from './tokenizer.worker?worker&inline';
 import jmdictEntries from '../data/jmdict-spa.json';
 import englishDictionaryUrl from '../data/jmdict-en.json.gz?inline';
-import { TranslationLanguage } from './i18n';
-import { loadJapaneseDictionaryEntries, onJapaneseDictionaryChange } from './japaneseDictionary';
+import { TranslationLanguage, UiLanguage } from './i18n';
+import {
+  isOptionalDictionaryId,
+  loadOptionalDictionaryEntries,
+  onOptionalDictionaryChange,
+  OptionalDictionaryId,
+} from './optionalDictionaries';
 
 export interface DictionarySense {
   partOfSpeech: string[];
@@ -11,8 +16,11 @@ export interface DictionarySense {
 
 export interface DictionaryEntry {
   id: string;
-  /** `ja` is the optional Japanese–Japanese dictionary: glosses are Japanese definitions. */
-  language: 'es' | 'en' | 'ja';
+  /**
+   * Language of the glosses. `es` and `en` are bundled; the others come from
+   * optional dictionaries, `ja` being the Japanese–Japanese one (definitions).
+   */
+  language: UiLanguage;
   kanji: string[];
   kana: string[];
   senses: DictionarySense[];
@@ -42,8 +50,10 @@ interface CompactEntry {
   k: string[];
   r: string[];
   s: Array<{ p: string[]; g: string[] }>;
-  /** Synonyms (Japanese–Japanese dictionary only). */
+  /** Synonyms (Wiktionary-based dictionaries only). */
   y?: string[];
+  /** The word conjugates (Wiktionary-based dictionaries, whose parts of speech are localised). */
+  i?: 1;
 }
 
 const entries = jmdictEntries as CompactEntry[];
@@ -63,9 +73,9 @@ interface TokenizerClient {
 }
 let tokenizerPromise: Promise<TokenizerClient> | null = null;
 let englishIndexPromise: Promise<DictionaryIndex> | null = null;
-let japaneseIndexPromise: Promise<DictionaryIndex | null> | null = null;
-// Installing or removing the Japanese dictionary invalidates the cached index.
-onJapaneseDictionaryChange(() => { japaneseIndexPromise = null; });
+const optionalIndexPromises = new Map<OptionalDictionaryId, Promise<DictionaryIndex | null>>();
+// Installing or removing a dictionary invalidates its cached index.
+onOptionalDictionaryChange((id) => { optionalIndexPromises.delete(id); });
 
 interface DictionaryIndex {
   byForm: Map<string, CompactEntry[]>;
@@ -401,24 +411,28 @@ const getEnglishIndex = async (): Promise<DictionaryIndex> => {
   return englishIndexPromise;
 };
 
-/** Index of the downloaded Japanese–Japanese dictionary, or null when it is not installed. */
-const getJapaneseIndex = (): Promise<DictionaryIndex | null> => {
-  if (!japaneseIndexPromise) {
-    japaneseIndexPromise = loadJapaneseDictionaryEntries()
+/** Index of a downloaded optional dictionary, or null when it is not installed. */
+const getOptionalIndex = (id: OptionalDictionaryId): Promise<DictionaryIndex | null> => {
+  let promise = optionalIndexPromises.get(id);
+  if (!promise) {
+    promise = loadOptionalDictionaryEntries(id)
       .then((loadedEntries) => (loadedEntries ? createIndex(loadedEntries) : null))
       .catch((error) => {
-        japaneseIndexPromise = null;
+        optionalIndexPromises.delete(id);
         throw error;
       });
+    optionalIndexPromises.set(id, promise);
   }
-  return japaneseIndexPromise;
+  return promise;
 };
 
-// Parts of speech of the Japanese–Japanese dictionary that conjugate.
+// Parts of speech of the Japanese–Japanese dictionary that conjugate (files
+// published before the builder added `i` only carry these).
 const JAPANESE_INFLECTABLE_POS = new Set(['動詞', '形容詞', '形容動詞', '助動詞']);
 const JAPANESE_EXPRESSION_POS = new Set(['成句', '慣用句', 'ことわざ']);
 
 const isInflectableEntry = (entry: CompactEntry, form: string): boolean => {
+  if (entry.i) return true;
   return entry.s.some((sense) =>
     sense.p.some((pos) => {
       if (JAPANESE_INFLECTABLE_POS.has(pos)) return true;
@@ -601,13 +615,14 @@ export const getDictionarySearchTerms = async (
     ...filteredSub,
   ]).filter((term) => term.length > 0);
 
-  const spanishResults = findRawEntries(directTerms, filteredWhole, filteredSub, spanishIndex);
-  let englishResults: Array<{ entry: CompactEntry; score: number; exactText?: boolean }> = [];
+  type RankedMatch = { entry: CompactEntry; score: number; exactText?: boolean };
+  const resultsByLanguage = new Map<UiLanguage, RankedMatch[]>();
+  resultsByLanguage.set('es', findRawEntries(directTerms, filteredWhole, filteredSub, spanishIndex));
   let englishFallbackError: string | undefined;
 
   try {
     const englishIndex = await getEnglishIndex();
-    englishResults = findRawEntries(directTerms, filteredWhole, filteredSub, englishIndex);
+    resultsByLanguage.set('en', findRawEntries(directTerms, filteredWhole, filteredSub, englishIndex));
   } catch (error) {
     englishIndexPromise = null;
     englishFallbackError = error instanceof Error
@@ -615,63 +630,52 @@ export const getDictionarySearchTerms = async (
       : 'No se pudo cargar el complemento inglés de JMdict.';
   }
 
-  let japaneseResults: Array<{ entry: CompactEntry; score: number; exactText?: boolean }> = [];
-  if (includeJapanese) {
+  // Downloaded dictionaries that apply: the translation language's own one and,
+  // with a Japanese interface, the Japanese–Japanese one. One that is not
+  // installed resolves to no index and simply takes no part.
+  const optionalIds = unique([
+    includeJapanese ? 'ja' : '',
+    isOptionalDictionaryId(language) ? language : '',
+  ]) as OptionalDictionaryId[];
+  await Promise.all(optionalIds.map(async (id) => {
     try {
-      const japaneseIndex = await getJapaneseIndex();
-      if (japaneseIndex) japaneseResults = findRawEntries(directTerms, filteredWhole, filteredSub, japaneseIndex);
+      const index = await getOptionalIndex(id);
+      if (index) resultsByLanguage.set(id, findRawEntries(directTerms, filteredWhole, filteredSub, index));
     } catch (error) {
-      // The bilingual dictionaries still answer if the downloaded one is unreadable.
-      console.error('[dictionary] Japanese dictionary error:', error);
+      // The bundled dictionaries still answer if a downloaded one is unreadable.
+      console.error(`[dictionary] ${id} dictionary error:`, error);
     }
-  }
-
-  const preferEnglish = language !== 'es';
-  const preferredDictLang = language === 'es' ? 'es' : 'en';
-  const otherDictLang = preferredDictLang === 'es' ? 'en' : 'es';
-
-  const combined = [
-    ...spanishResults.map((m) => ({
-      entry: toEntry(m.entry, 'es'),
-      score: m.score,
-      priority: m.score === 0 ? (preferEnglish ? 1 : 0) : (preferEnglish ? 3 : 2),
-    })),
-    ...englishResults
-      .map((m) => ({
-        entry: toEntry(m.entry, 'en'),
-        score: m.score,
-        priority: m.score === 0 ? (preferEnglish ? 0 : 1) : (preferEnglish ? 2 : 3),
-      })),
-  ].sort((left, right) => {
-    if (left.priority !== right.priority) {
-      return left.priority - right.priority;
-    }
-    return left.score - right.score;
-  });
-
-  // Japanese definitions go first: whoever installed the monolingual dictionary
-  // reads the interface in Japanese and wants them before the translations.
-  const japaneseCombined = japaneseResults.map((m) => ({
-    entry: toEntry(m.entry, 'ja'),
-    score: m.score,
-    priority: m.score === 0 ? -1 : 2,
   }));
 
-  const topEntries = [
-    ...japaneseCombined.slice(0, 20),
-    ...combined.filter((item) => item.entry.language === preferredDictLang).slice(0, 20),
-    ...combined.filter((item) => item.entry.language === otherDictLang).slice(0, 20),
-  ].sort((left, right) => {
-    if (left.priority !== right.priority) {
-      return left.priority - right.priority;
-    }
-    return left.score - right.score;
-  });
+  // Dictionaries in order of preference: Japanese definitions first (searched
+  // only with a Japanese interface), then the translation language's own
+  // dictionary, then English, then Spanish. A language without a dictionary of
+  // its own falls back to English. Every exact match comes before every partial
+  // one, so an exact English entry still beats a partial match in the preferred
+  // dictionary.
+  const preferred: UiLanguage = resultsByLanguage.has(language) ? language : 'en';
+  const order = (unique(['ja', preferred, 'en', 'es']) as UiLanguage[])
+    .filter((dictionaryLanguage) => resultsByLanguage.has(dictionaryLanguage));
+  const byPriority = (
+    left: { priority: number; score: number },
+    right: { priority: number; score: number },
+  ) => left.priority - right.priority || left.score - right.score;
+
+  const topEntries = order.flatMap((dictionaryLanguage, index) =>
+    (resultsByLanguage.get(dictionaryLanguage) || [])
+      .map((match) => ({
+        entry: toEntry(match.entry, dictionaryLanguage),
+        score: match.score,
+        priority: match.score === 0 ? index : order.length + index,
+      }))
+      .sort(byPriority)
+      .slice(0, 20)
+  ).sort(byPriority);
   const hasCompleteMatch = topEntries.some((item) => item.score === 0);
 
-  let hasCompleteTextMatch = spanishResults.some((m) => m.exactText)
-    || englishResults.some((m) => m.exactText)
-    || japaneseResults.some((m) => m.exactText);
+  let hasCompleteTextMatch = [...resultsByLanguage.values()].some((results) =>
+    results.some((match) => match.exactText)
+  );
 
   // If the tokenizer was unavailable (e.g. in Node tests), we fall back to
   // hasCompleteMatch because guessBaseForms and direct matches are always

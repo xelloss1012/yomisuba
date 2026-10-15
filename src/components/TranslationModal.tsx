@@ -10,7 +10,7 @@ import {
 } from '../utils/aiTranslation';
 import { getCachedTranslation, saveCachedTranslation } from '../utils/translationCache';
 import { DictionaryEntry, getDictionarySearchTerms } from '../utils/dictionary';
-import { JAPANESE_DICTIONARY_SOURCE_URL } from '../utils/japaneseDictionary';
+import { isOptionalDictionaryId, JMDICT_SOURCE, OPTIONAL_DICTIONARIES } from '../utils/optionalDictionaries';
 import { speakJapanese } from '../utils/japaneseSpeech';
 import { MarkdownContent } from './MarkdownContent';
 import {
@@ -569,29 +569,25 @@ export const TranslationModal: React.FC<Props> = ({
                 >
                   {t('translate.license')}
                 </a>
-                {dictionaryTerms.entries.some((entry) => entry.language === 'ja') && (
-                  <>
-                    <br />
-                    {t('jaDict.attribution')} ·{' '}
-                    <a
-                      href={JAPANESE_DICTIONARY_SOURCE_URL}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="underline"
-                    >
-                      {t('translate.source')}
-                    </a>
-                    {' · '}
-                    <a
-                      href="https://creativecommons.org/licenses/by-sa/4.0/"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="underline"
-                    >
-                      {t('translate.license')}
-                    </a>
-                  </>
-                )}
+                {/* Downloaded dictionaries credit their own source and license. JMdict
+                    based ones are already covered by the line above. */}
+                {[...new Set(dictionaryTerms.entries.map((entry) => entry.language))]
+                  .filter(isOptionalDictionaryId)
+                  .map((id) => OPTIONAL_DICTIONARIES[id])
+                  .filter((info) => info.source !== JMDICT_SOURCE)
+                  .map((info) => (
+                    <React.Fragment key={info.id}>
+                      <br />
+                      {info.source.label} ·{' '}
+                      <a href={info.source.url} target="_blank" rel="noreferrer" className="underline">
+                        {t('translate.source')}
+                      </a>
+                      {' · '}
+                      <a href={info.license.url} target="_blank" rel="noreferrer" className="underline">
+                        {t('translate.license')}
+                      </a>
+                    </React.Fragment>
+                  ))}
               </p>
             </div>
           )}

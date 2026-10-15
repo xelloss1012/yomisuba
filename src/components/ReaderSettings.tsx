@@ -9,7 +9,7 @@ import {
   TranslationLanguage,
 } from '../utils/i18n';
 import { useT } from '../i18n/LanguageContext';
-import { JapaneseDictionaryPanel } from './JapaneseDictionaryPanel';
+import { DownloadableDictionariesSection } from './OptionalDictionaryPanel';
 
 interface Props {
   isOpen: boolean;
@@ -119,7 +119,7 @@ export const ReaderSettings: React.FC<Props> = ({
             <span className="mt-1 block text-[10px] text-zinc-500 dark:text-zinc-400">
               {t('settings.translationLanguageHint')}
             </span>
-            {settings.language === 'ja' && <JapaneseDictionaryPanel />}
+            <DownloadableDictionariesSection />
           </div>
 
           {/* Dirección y Modo de Escritura (Japonés vertical vs horizontal) */}

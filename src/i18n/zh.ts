@@ -289,17 +289,20 @@ export const zh: Record<string, string> = {
   'history.frequentTerms': '频繁查询的术语',
   'history.queries': '次查询',
 
-  // Japanese–Japanese dictionary
-  'jaDict.title': '日日词典',
-  'jaDict.description': '下载基于日语维基词典的词典，以日语查看释义和同义词（约 {size}）。',
-  'jaDict.download': '下载',
-  'jaDict.downloading': '正在下载… {percent}%',
-  'jaDict.installed': '已安装（{size}）',
-  'jaDict.updateAvailable': '有新版本可用。',
-  'jaDict.update': '更新',
-  'jaDict.delete': '删除',
-  'jaDict.error': '下载失败：{message}',
-  'jaDict.attribution': '日语维基词典（CC BY-SA）',
+  // Downloadable dictionaries
+  'dict.titleMonolingual': '日日词典',
+  'dict.title': '日语-{language}词典',
+  'dict.descriptionMonolingual': '{entries} 个词的日语释义和同义词（约 {size}）。',
+  'dict.description': '{entries} 个日语词的{language}释义（约 {size}）。',
+  'dict.download': '下载',
+  'dict.downloading': '正在下载… {percent}%',
+  'dict.installed': '已安装（{size}）',
+  'dict.updateAvailable': '有新版本可用。',
+  'dict.update': '更新',
+  'dict.delete': '删除',
+  'dict.error': '下载失败：{message}',
+  'dict.sectionTitle': '可下载的词典',
+  'dict.sectionHint': '保存在此设备上，更新应用后仍会保留。不会复制到 Google Drive。',
 
   // Common
   'common.cancel': '取消',

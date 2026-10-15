@@ -289,17 +289,20 @@ export const vi: Record<string, string> = {
   'history.frequentTerms': 'Các thuật ngữ tra cứu thường xuyên',
   'history.queries': 'truy vấn',
 
-  // Japanese–Japanese dictionary
-  'jaDict.title': 'Từ điển Nhật–Nhật',
-  'jaDict.description': 'Tải từ điển dựa trên Wiktionary tiếng Nhật để xem định nghĩa và từ đồng nghĩa bằng tiếng Nhật (khoảng {size}).',
-  'jaDict.download': 'Tải xuống',
-  'jaDict.downloading': 'Đang tải… {percent}%',
-  'jaDict.installed': 'Đã cài ({size})',
-  'jaDict.updateAvailable': 'Có phiên bản mới hơn.',
-  'jaDict.update': 'Cập nhật',
-  'jaDict.delete': 'Xóa',
-  'jaDict.error': 'Không tải được: {message}',
-  'jaDict.attribution': 'Wiktionary tiếng Nhật (CC BY-SA)',
+  // Downloadable dictionaries
+  'dict.titleMonolingual': 'Từ điển Nhật–Nhật',
+  'dict.title': 'Từ điển Nhật–{language}',
+  'dict.descriptionMonolingual': 'Định nghĩa và từ đồng nghĩa bằng tiếng Nhật cho {entries} từ (khoảng {size}).',
+  'dict.description': 'Định nghĩa bằng {language} cho {entries} từ tiếng Nhật (khoảng {size}).',
+  'dict.download': 'Tải xuống',
+  'dict.downloading': 'Đang tải… {percent}%',
+  'dict.installed': 'Đã cài ({size})',
+  'dict.updateAvailable': 'Có phiên bản mới hơn.',
+  'dict.update': 'Cập nhật',
+  'dict.delete': 'Xóa',
+  'dict.error': 'Không tải được: {message}',
+  'dict.sectionTitle': 'Từ điển có thể tải xuống',
+  'dict.sectionHint': 'Lưu trên thiết bị này và được giữ lại khi cập nhật ứng dụng. Không được sao chép lên Google Drive.',
 
   // Common
   'common.cancel': 'Hủy',

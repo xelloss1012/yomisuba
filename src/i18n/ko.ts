@@ -289,17 +289,20 @@ export const ko: Record<string, string> = {
   'history.frequentTerms': '자주 조회한 용어',
   'history.queries': '회 조회',
 
-  // Japanese–Japanese dictionary
-  'jaDict.title': '일일 사전',
-  'jaDict.description': '일본어 위키낱말사전을 바탕으로 한 사전을 내려받아 일본어 정의와 동의어를 볼 수 있습니다 (약 {size}).',
-  'jaDict.download': '다운로드',
-  'jaDict.downloading': '다운로드 중… {percent}%',
-  'jaDict.installed': '설치됨 ({size})',
-  'jaDict.updateAvailable': '새 버전이 있습니다.',
-  'jaDict.update': '업데이트',
-  'jaDict.delete': '삭제',
-  'jaDict.error': '다운로드하지 못했습니다: {message}',
-  'jaDict.attribution': '일본어 위키낱말사전 (CC BY-SA)',
+  // Downloadable dictionaries
+  'dict.titleMonolingual': '일일 사전',
+  'dict.title': '일본어-{language} 사전',
+  'dict.descriptionMonolingual': '{entries}개 단어의 일본어 정의와 동의어 (약 {size}).',
+  'dict.description': '일본어 단어 {entries}개의 {language} 정의 (약 {size}).',
+  'dict.download': '다운로드',
+  'dict.downloading': '다운로드 중… {percent}%',
+  'dict.installed': '설치됨 ({size})',
+  'dict.updateAvailable': '새 버전이 있습니다.',
+  'dict.update': '업데이트',
+  'dict.delete': '삭제',
+  'dict.error': '다운로드하지 못했습니다: {message}',
+  'dict.sectionTitle': '다운로드 가능한 사전',
+  'dict.sectionHint': '이 기기에 저장되며 앱을 업데이트해도 유지됩니다. Google Drive에는 복사되지 않습니다.',
 
   // Common
   'common.cancel': '취소',

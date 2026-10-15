@@ -289,17 +289,20 @@ export const en: Record<string, string> = {
   'history.frequentTerms': 'Frequently consulted terms',
   'history.queries': 'queries',
 
-  // Japanese–Japanese dictionary
-  'jaDict.title': 'Japanese–Japanese dictionary',
-  'jaDict.description': 'Download a dictionary based on the Japanese Wiktionary to see definitions and synonyms in Japanese (about {size}).',
-  'jaDict.download': 'Download',
-  'jaDict.downloading': 'Downloading… {percent}%',
-  'jaDict.installed': 'Installed ({size})',
-  'jaDict.updateAvailable': 'A newer version is available.',
-  'jaDict.update': 'Update',
-  'jaDict.delete': 'Delete',
-  'jaDict.error': 'Could not download: {message}',
-  'jaDict.attribution': 'Japanese Wiktionary (CC BY-SA)',
+  // Downloadable dictionaries
+  'dict.titleMonolingual': 'Japanese–Japanese dictionary',
+  'dict.title': 'Japanese–{language} dictionary',
+  'dict.descriptionMonolingual': 'Japanese definitions and synonyms for {entries} words (about {size}).',
+  'dict.description': '{language} definitions for {entries} Japanese words (about {size}).',
+  'dict.download': 'Download',
+  'dict.downloading': 'Downloading… {percent}%',
+  'dict.installed': 'Installed ({size})',
+  'dict.updateAvailable': 'A newer version is available.',
+  'dict.update': 'Update',
+  'dict.delete': 'Delete',
+  'dict.error': 'Could not download: {message}',
+  'dict.sectionTitle': 'Downloadable dictionaries',
+  'dict.sectionHint': 'Stored on this device and kept when the app updates. They are not copied to Google Drive.',
 
   // Common
   'common.cancel': 'Cancel',

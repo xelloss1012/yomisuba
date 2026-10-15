@@ -64,6 +64,20 @@ const translations: Record<UiLanguage, Record<string, string>> = {
 };
 
 /**
+ * Name of a language in the interface language ("alemán", "ドイツ語"), falling
+ * back to its own name when the runtime has no Intl.DisplayNames.
+ */
+export const languageName = (code: UiLanguage, interfaceLanguage: UiLanguage): string => {
+  try {
+    const name = new Intl.DisplayNames([interfaceLanguage], { type: 'language' }).of(code);
+    if (name && name !== code) return name;
+  } catch {
+    // Older runtimes: use the endonym below.
+  }
+  return AVAILABLE_LANGUAGES.find((item) => item.code === code)?.label || code;
+};
+
+/**
  * Translation for code outside React components, which must say which language
  * it wants. Components use `useT()` from `i18n/LanguageContext` instead.
  */
