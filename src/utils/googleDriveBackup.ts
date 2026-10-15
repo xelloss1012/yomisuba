@@ -1112,7 +1112,9 @@ function isReaderSettings(value: unknown): value is ReaderSettingsState {
     && (settings.translationLanguage === undefined
       || TRANSLATION_LANGUAGES.some(({ code }) => code === settings.translationLanguage))
     && (settings.studyLevel === undefined || [1, 2, 3, 4, 5].includes(settings.studyLevel))
-    && (settings.furiganaMode === undefined || FURIGANA_MODES.includes(settings.furiganaMode));
+    && (settings.furiganaMode === undefined || FURIGANA_MODES.includes(settings.furiganaMode))
+    && (settings.furiganaShownMode === undefined
+      || FURIGANA_MODES.some((mode) => mode !== 'hidden' && mode === settings.furiganaShownMode));
 }
 
 function isReadingPosition(value: unknown): value is ReaderBookBackup['position'] {

@@ -1013,9 +1013,15 @@ export const EpubReader: React.FC<Props> = ({
       color: ${themeColors.generatedFurigana};
       opacity: 0.9;
       pointer-events: none;
+      /* Measured from the middle of the kanji, not from the edge of its line box:
+         that box is 1.1–1.5em wide depending on the font, so readings drifted
+         a few pixels from the book's own <rt>, which Chrome sets ≈0.79em from
+         the middle of the base in every font and size. 1em here is 0.52 of
+         the base, so 50% + 1em puts the reading's centre at 0.5 + 0.26 + 0.02
+         ≈ 0.79em, the same line as a real <rt>. */
       ${isVertical
-        ? 'left: 100%; top: 50%; transform: translateY(-50%); margin-left: 0.08em;'
-        : 'bottom: 100%; left: 50%; transform: translateX(-50%); margin-bottom: 0.08em;'}
+        ? 'left: calc(50% + 1em); top: 50%; transform: translateY(-50%);'
+        : 'bottom: calc(50% + 1em); left: 50%; transform: translateX(-50%);'}
     }
     ruby rt::after {
       content: attr(data-rt);

@@ -16,6 +16,8 @@ export type FuriganaMode = 'original' | 'hidden' | 'always' | 'difficult';
 
 export const FURIGANA_MODES: FuriganaMode[] = ['original', 'hidden', 'always', 'difficult'];
 
+export type VisibleFuriganaMode = Exclude<FuriganaMode, 'hidden'>;
+
 /** Settings saved before the modes existed only carry `showFurigana`. */
 export const resolveFuriganaMode = (settings: { furiganaMode?: FuriganaMode; showFurigana: boolean }): FuriganaMode =>
   settings.furiganaMode ?? (settings.showFurigana ? 'original' : 'hidden');
@@ -26,8 +28,21 @@ export const applyFuriganaClasses = (scroller: Element, mode: FuriganaMode) => {
   scroller.classList.toggle('furigana-difficult', mode === 'difficult');
 };
 
-/** Settings for a mode, keeping the older showFurigana flag consistent with it. */
-export const furiganaModeSettings = (mode: FuriganaMode) => ({ furiganaMode: mode, showFurigana: mode !== 'hidden' });
+/**
+ * Settings for a mode, keeping the older showFurigana flag consistent with it.
+ * A visible mode is also remembered, so hiding the furigana and showing it
+ * again returns to it instead of to "original".
+ */
+export const furiganaModeSettings = (mode: FuriganaMode) =>
+  mode === 'hidden'
+    ? { furiganaMode: mode, showFurigana: false }
+    : { furiganaMode: mode, showFurigana: true, furiganaShownMode: mode };
+
+/** The mode the show button brings back. */
+export const shownFuriganaMode = (settings: { furiganaShownMode?: VisibleFuriganaMode }): VisibleFuriganaMode =>
+  settings.furiganaShownMode && settings.furiganaShownMode !== ('hidden' as FuriganaMode)
+    ? settings.furiganaShownMode
+    : 'original';
 
 /** Modes that rewrite the chapter (and so need Kuromoji and the level data). */
 export const furiganaModeAnnotates = (mode: FuriganaMode) => mode === 'always' || mode === 'difficult';

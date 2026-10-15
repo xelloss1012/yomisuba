@@ -13,7 +13,7 @@ const server = await createServer({
 });
 
 try {
-  const { alignReading, resolveFuriganaMode, furiganaModeSettings } = await server.ssrLoadModule('/src/utils/furigana.ts');
+  const { alignReading, resolveFuriganaMode, furiganaModeSettings, shownFuriganaMode } = await server.ssrLoadModule('/src/utils/furigana.ts');
   const show = (segments) => segments && segments.map(({ text, reading }) => (reading ? `${text}(${reading})` : text)).join('');
 
   // Okurigana stays bare; each kanji run gets its part of the reading.
@@ -36,9 +36,14 @@ try {
   assert.equal(resolveFuriganaMode({ showFurigana: false }), 'hidden');
   assert.equal(resolveFuriganaMode({ showFurigana: false, furiganaMode: 'always' }), 'always');
   assert.deepEqual(furiganaModeSettings('hidden'), { furiganaMode: 'hidden', showFurigana: false });
-  assert.deepEqual(furiganaModeSettings('difficult'), { furiganaMode: 'difficult', showFurigana: true });
+  assert.deepEqual(furiganaModeSettings('difficult'), { furiganaMode: 'difficult', showFurigana: true, furiganaShownMode: 'difficult' });
+  // Hiding keeps the last visible mode, which showing brings back.
+  const hidden = { ...furiganaModeSettings('always'), ...furiganaModeSettings('hidden') };
+  assert.equal(hidden.furiganaMode, 'hidden');
+  assert.equal(shownFuriganaMode(hidden), 'always');
+  assert.equal(shownFuriganaMode({}), 'original');
 
-  console.log('PASS: furigana readings align over kanji runs, leave okurigana bare, refuse readings that do not fit, and modes resolve from older settings.');
+  console.log('PASS: furigana readings align over kanji runs, leave okurigana bare, refuse readings that do not fit, modes resolve from older settings and showing returns to the last visible mode.');
 } finally {
   await server.close();
 }

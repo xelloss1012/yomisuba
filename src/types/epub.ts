@@ -1,6 +1,6 @@
 import { TranslationLanguage, UiLanguage } from '../utils/i18n';
 import type { JlptLevel } from '../utils/wordLevels';
-import type { FuriganaMode } from '../utils/furigana';
+import type { FuriganaMode, VisibleFuriganaMode } from '../utils/furigana';
 
 export type WritingMode = 'vertical-rl' | 'horizontal-tb' | 'auto';
 export type ProgressionDirection = 'rtl' | 'ltr' | 'auto';
@@ -63,6 +63,8 @@ export interface ReaderSettingsState {
   showFurigana: boolean;
   /** Unset in settings saved before the modes existed; see resolveFuriganaMode. */
   furiganaMode?: FuriganaMode;
+  /** The last visible mode, which the reader's show/hide furigana button goes back to. */
+  furiganaShownMode?: VisibleFuriganaMode;
   autoAnalyzePage: boolean;
   autoRotate: boolean;
   theme: ReaderTheme;

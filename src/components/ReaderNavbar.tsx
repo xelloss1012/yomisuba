@@ -4,7 +4,7 @@ import { GoogleDriveSession } from '../utils/googleDriveBackup';
 import { SyncStatusBadge } from './SyncStatusBadge';
 import { SyncErrorState } from '../utils/i18n';
 import { useT } from '../i18n/LanguageContext';
-import { furiganaModeSettings, resolveFuriganaMode } from '../utils/furigana';
+import { furiganaModeSettings, resolveFuriganaMode, shownFuriganaMode } from '../utils/furigana';
 import {
   Menu,
   SlidersHorizontal,
@@ -186,7 +186,7 @@ export const ReaderNavbar: React.FC<Props> = ({
             </button>
             <button
               type="button"
-              onClick={() => onUpdateSettings(furiganaModeSettings(furiganaVisible ? 'hidden' : 'original'))}
+              onClick={() => onUpdateSettings(furiganaModeSettings(furiganaVisible ? 'hidden' : shownFuriganaMode(settings)))}
               title={furiganaVisible ? t('nav.hideFurigana') : t('nav.showFurigana')}
               aria-label={furiganaVisible ? t('nav.hideFurigana') : t('nav.showFurigana')}
               aria-pressed={furiganaVisible}
