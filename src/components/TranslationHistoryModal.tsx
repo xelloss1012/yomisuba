@@ -20,6 +20,8 @@ import {
 } from '../utils/frequentQueries';
 import { UiLanguage } from '../utils/i18n';
 import { Translate, useLanguage, useT } from '../i18n/LanguageContext';
+import { classifyWord } from '../utils/wordLevels';
+import { useWordLevels, WordLevelBadge } from './WordLevelBadge';
 
 interface Props {
   isOpen: boolean;
@@ -78,6 +80,7 @@ export const TranslationHistoryModal: React.FC<Props> = ({
 }) => {
   const t = useT();
   const language = useLanguage();
+  const wordLevels = useWordLevels();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'history' | 'favorites' | 'frequent'>('history');
 
@@ -272,6 +275,11 @@ export const TranslationHistoryModal: React.FC<Props> = ({
                           <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
                             {item.query}
                           </span>
+                          {/* Only words the level data knows: a phrase or sentence that is not
+                              listed is not a "rare word". */}
+                          {wordLevels && (
+                            <WordLevelBadge level={classifyWord(wordLevels, item.data?.baseForm || item.query)} />
+                          )}
                           {item.kind && (
                             <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
                               {getKindLabel({ kind: item.kind, provider: item.provider }, t)}

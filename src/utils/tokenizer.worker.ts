@@ -150,6 +150,7 @@ scope.onmessage = (event: MessageEvent) => {
     const tokens = tokenizer
       ? tokenizer.tokenize(message.text).map((token) => ({
           surface_form: token.surface_form,
+          word_position: token.word_position,
           pos: token.pos,
           pos_detail_1: token.pos_detail_1,
           pos_detail_2: token.pos_detail_2,

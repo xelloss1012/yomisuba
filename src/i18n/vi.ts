@@ -17,6 +17,9 @@ export const vi: Record<string, string> = {
   'settings.translationLanguage': 'Ngôn ngữ dịch',
   'settings.translationLanguageAuto': 'Giống giao diện ({language})',
   'settings.translationLanguageHint': 'Ngôn ngữ dùng để dịch văn bản tiếng Nhật, cũng dùng cho từ điển song ngữ.',
+  'settings.studyLevel': 'Trình độ của tôi (JLPT)',
+  'settings.studyLevelNone': 'Chưa chọn',
+  'settings.studyLevelHint': 'Cho phép ẩn trong bảng từ những từ bạn lẽ ra đã biết.',
 
   // ReaderSettings & Options
   'settings.title': 'Cài đặt đọc',
@@ -35,8 +38,16 @@ export const vi: Record<string, string> = {
   'settings.printedHint': 'Số trang trong bản in để tính toán mức độ tương đương gần đúng.',
   'settings.autoRotate': 'Cho phép tự động xoay',
   'settings.autoRotateHint': 'Cho phép chuyển đổi giữa dọc và ngang khi xoay điện thoại. Khi tắt, ứng dụng giữ nguyên chiều dọc.',
-  'settings.furigana': 'Hiển thị furigana',
-  'settings.furiganaHint': 'Hiển thị hoặc ẩn hướng dẫn đọc trên kanji.',
+  'settings.furigana': 'Furigana',
+  'settings.furigana.original': 'Nguyên bản',
+  'settings.furigana.hidden': 'Ẩn',
+  'settings.furigana.always': 'Luôn hiện',
+  'settings.furigana.difficult': 'Chỉ từ khó',
+  'settings.furiganaHint.original': 'Như trong sách.',
+  'settings.furiganaHint.hidden': 'Không hiện cách đọc trên kanji.',
+  'settings.furiganaHint.always': 'Thêm cách đọc cho mọi từ có kanji chưa có cách đọc.',
+  'settings.furiganaHint.difficult': 'Chỉ ở những từ trên trình độ của bạn ({level}), dù sách có ghi cách đọc hay không.',
+  'settings.furiganaGeneratedNote': 'Cách đọc tự động hiện bằng tông màu khác và có thể sai, nhất là với tên riêng.',
   'settings.autoAnalyze': 'Tự động phân tích trang',
   'settings.autoAnalyzeHint': 'Tự động phân tích và liệt kê từ vựng trang khi lật trang.',
   'settings.nightMode': 'Chế độ ban đêm tự động',
@@ -276,6 +287,9 @@ export const vi: Record<string, string> = {
   'glossary.removeFav': 'Xóa khỏi mục yêu thích',
   'glossary.addFav': 'Thêm vào mục yêu thích',
   'glossary.markFav': 'Đánh dấu định nghĩa là yêu thích',
+  'glossary.sortPage': 'Thứ tự trên trang',
+  'glossary.sortUseful': 'Hữu ích nhất trước',
+  'glossary.hideKnown': 'Ẩn trình độ của tôi',
 
   // TranslationHistoryModal
   'history.title': 'Lịch sử & Yêu thích',
@@ -288,6 +302,18 @@ export const vi: Record<string, string> = {
   'history.savedFavs': 'Mục yêu thích đã lưu ({count}/{max})',
   'history.frequentTerms': 'Các thuật ngữ tra cứu thường xuyên',
   'history.queries': 'truy vấn',
+
+  // Word levels
+  'level.basic': 'Cơ bản',
+  'level.common': 'Thông dụng',
+  'level.uncommon': 'Ít dùng',
+  'level.rare': 'Hiếm',
+  'level.hintJlpt': 'Từ vựng JLPT {level} (danh sách không chính thức)',
+  'level.hintBasic': 'Thuộc ~3.000 từ thường gặp nhất',
+  'level.hintCommon': 'Từ thông dụng',
+  'level.hintUncommon': 'Từ ít gặp',
+  'level.hintRare': 'Không có dữ liệu tần suất và có kanji ngoài nhóm thông dụng',
+  'level.sources': 'Cấp độ: JMdict (EDRDG), danh sách JLPT của J. Waller và KANJIDIC2',
 
   // Downloadable dictionaries
   'dict.titleMonolingual': 'Từ điển Nhật–Nhật',

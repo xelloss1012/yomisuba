@@ -213,4 +213,6 @@ Los datos de diccionario mantienen su propia licencia, que no es la del código:
 - **JMdict/EDICT** (`src/data/`): © Electronic Dictionary Research and Development Group (EDRDG), [CC BY-SA 4.0](https://www.edrdg.org/edrdg/licence.html).
 - **Diccionarios opcionales** (descarga desde [ereader-dictionaries](https://github.com/xelloss1012/ereader-dictionaries)): francés y alemán derivados de JMdict (CC BY-SA 4.0, EDRDG); japonés-japonés, chino, coreano, italiano y vietnamita adaptados de las ediciones correspondientes de Wiktionary ([CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)).
 
+- **Niveles de vocabulario** (`src/data/word-levels.json.gz`): marcas de frecuencia de JMdict (EDRDG, CC BY-SA 4.0), listas de vocabulario y kanji del JLPT de Jonathan Waller ([tanos.co.uk](http://www.tanos.co.uk/jlpt/), CC BY, en la versión de [Bluskyo/JLPT_Vocabulary](https://github.com/Bluskyo/JLPT_Vocabulary)) y KANJIDIC2 (EDRDG, CC BY-SA 4.0). Las listas JLPT no son oficiales.
+
 Las dependencias de npm conservan sus licencias respectivas.

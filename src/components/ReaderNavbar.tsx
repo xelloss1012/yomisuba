@@ -4,6 +4,7 @@ import { GoogleDriveSession } from '../utils/googleDriveBackup';
 import { SyncStatusBadge } from './SyncStatusBadge';
 import { SyncErrorState } from '../utils/i18n';
 import { useT } from '../i18n/LanguageContext';
+import { furiganaModeSettings, resolveFuriganaMode } from '../utils/furigana';
 import {
   Menu,
   SlidersHorizontal,
@@ -80,6 +81,7 @@ export const ReaderNavbar: React.FC<Props> = ({
 }) => {
   const t = useT();
   const isVertical = settings.writingMode === 'vertical-rl';
+  const furiganaVisible = resolveFuriganaMode(settings) !== 'hidden';
   const isAnalyzerActive = settings.autoAnalyzePage || isWordSelectionMode;
   const analyzerTitle = settings.autoAnalyzePage
     ? t('nav.analyzerOn')
@@ -184,17 +186,17 @@ export const ReaderNavbar: React.FC<Props> = ({
             </button>
             <button
               type="button"
-              onClick={() => onUpdateSettings({ showFurigana: !settings.showFurigana })}
-              title={settings.showFurigana ? t('nav.hideFurigana') : t('nav.showFurigana')}
-              aria-label={settings.showFurigana ? t('nav.hideFurigana') : t('nav.showFurigana')}
-              aria-pressed={settings.showFurigana}
+              onClick={() => onUpdateSettings(furiganaModeSettings(furiganaVisible ? 'hidden' : 'original'))}
+              title={furiganaVisible ? t('nav.hideFurigana') : t('nav.showFurigana')}
+              aria-label={furiganaVisible ? t('nav.hideFurigana') : t('nav.showFurigana')}
+              aria-pressed={furiganaVisible}
               className={`tap-area rounded-lg p-2 transition-colors ${
-                settings.showFurigana
+                furiganaVisible
                   ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300'
                   : 'text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800'
               }`}
             >
-              {settings.showFurigana
+              {furiganaVisible
                 ? <Eye className="h-4 w-4" />
                 : <EyeOff className="h-4 w-4" />}
             </button>

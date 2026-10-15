@@ -12,6 +12,8 @@ import {
   TranslationFavoriteCandidate,
 } from '../utils/translationFavorites';
 import { useDictionaryOptions, useT, useTranslationLanguage } from '../i18n/LanguageContext';
+import { classifyWord, difficultyOf, isWithinLevel, JlptLevel, WordLevel } from '../utils/wordLevels';
+import { useWordLevels, WordLevelBadge } from './WordLevelBadge';
 
 export interface PageWordToken extends JapaneseMorphologicalToken {
   range: Range;
@@ -24,6 +26,8 @@ export type PageWordCategory = 'noun' | 'verb' | 'adjective' | 'particle' | 'oth
 interface Props {
   isOpen: boolean;
   tokens: PageWordToken[];
+  /** The reader's JLPT level, to hide the words they should already know. */
+  studyLevel?: JlptLevel;
   favorites: TranslationFavorite[];
   onClose: () => void;
   onSelectWord: (token: PageWordToken) => void;
@@ -34,6 +38,34 @@ interface GlossaryItem {
   key: string;
   token: PageWordToken;
 }
+
+type SortMode = 'page' | 'useful';
+const SORT_STORAGE_KEY = 'ereader_glossary_sort';
+const HIDE_KNOWN_STORAGE_KEY = 'ereader_glossary_hide_known';
+
+const readPreference = (key: string) => {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+
+const writePreference = (key: string, value: string) => {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Only a convenience: the glossary works without it.
+  }
+};
+
+// Parts of speech that are grammar rather than vocabulary: they get no level.
+const GRAMMAR_POS = new Set(['助詞', '助動詞', '記号', '接続詞', '感動詞']);
+
+const lookupForm = (token: PageWordToken) =>
+  !token.joinedSuffix && !token.joinedConjugation && token.basic_form && token.basic_form !== '*'
+    ? token.basic_form
+    : token.surface_form;
 
 const getTokenKey = (token: JapaneseMorphologicalToken) =>
   `${token.surface_form}\u0000${token.basic_form || ''}\u0000${token.pos}`;
@@ -58,6 +90,7 @@ const categoryBadgeClasses: Record<PageWordCategory, string> = {
 export const PageGlossaryModal: React.FC<Props> = ({
   isOpen,
   tokens,
+  studyLevel,
   favorites,
   onClose,
   onSelectWord,
@@ -69,6 +102,11 @@ export const PageGlossaryModal: React.FC<Props> = ({
   const [search, setSearch] = useState('');
   const [lookups, setLookups] = useState<Record<string, DictionaryLookup | string>>({});
   const [completed, setCompleted] = useState(0);
+  const wordLevels = useWordLevels();
+  const [sortMode, setSortMode] = useState<SortMode>(() =>
+    readPreference(SORT_STORAGE_KEY) === 'useful' ? 'useful' : 'page'
+  );
+  const [hideKnown, setHideKnown] = useState(() => readPreference(HIDE_KNOWN_STORAGE_KEY) === '1');
 
   const words = useMemo(() => {
     const unique = new Map<string, GlossaryItem>();
@@ -97,12 +135,7 @@ export const PageGlossaryModal: React.FC<Props> = ({
           if (!item) return;
           try {
             results[item.key] = await getDictionarySearchTerms(
-              !item.token.joinedSuffix &&
-              !item.token.joinedConjugation &&
-              item.token.basic_form &&
-              item.token.basic_form !== '*'
-                ? item.token.basic_form
-                : item.token.surface_form,
+              lookupForm(item.token),
               translationLanguage,
               dictionaryOptions,
             );
@@ -127,15 +160,55 @@ export const PageGlossaryModal: React.FC<Props> = ({
     };
   }, [words, isOpen, translationLanguage, dictionaryOptions]);
 
+  const levels = useMemo(() => {
+    const result = new Map<string, WordLevel | null>();
+    if (!wordLevels) return result;
+    for (const { key, token } of words) {
+      result.set(key, GRAMMAR_POS.has(token.pos)
+        ? null
+        : classifyWord(wordLevels, lookupForm(token), { fallback: true }));
+    }
+    return result;
+  }, [wordLevels, words]);
+
+  // Words the reader should already know: grammar, and vocabulary within their level.
+  const known = useMemo(() => {
+    const result = new Set<string>();
+    if (!studyLevel || !wordLevels) return result;
+    for (const { key, token } of words) {
+      if (GRAMMAR_POS.has(token.pos) || isWithinLevel(wordLevels, lookupForm(token), levels.get(key) ?? null, studyLevel)) {
+        result.add(key);
+      }
+    }
+    return result;
+  }, [levels, studyLevel, wordLevels, words]);
+
   const visibleWords = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (!term) return words;
-    return words.filter(({ token }) =>
-      token.surface_form.toLowerCase().includes(term) ||
-      (token.reading && token.reading.toLowerCase().includes(term)) ||
-      (token.basic_form && token.basic_form.toLowerCase().includes(term))
+    const filtered = words.filter(({ key, token }) =>
+      (!hideKnown || !known.has(key)) &&
+      (!term ||
+        token.surface_form.toLowerCase().includes(term) ||
+        (token.reading && token.reading.toLowerCase().includes(term)) ||
+        (token.basic_form && token.basic_form.toLowerCase().includes(term)))
     );
-  }, [search, words]);
+    if (sortMode === 'page') return filtered;
+    // Most useful first; words without a level (grammar) go last, page order breaks ties.
+    const rank = ({ key }: GlossaryItem) => {
+      const level = levels.get(key);
+      return level ? difficultyOf(level) : Number.POSITIVE_INFINITY;
+    };
+    return [...filtered].sort((left, right) => rank(left) - rank(right));
+  }, [search, words, hideKnown, known, sortMode, levels]);
+
+  const changeSortMode = (mode: SortMode) => {
+    setSortMode(mode);
+    writePreference(SORT_STORAGE_KEY, mode);
+  };
+  const toggleHideKnown = () => {
+    writePreference(HIDE_KNOWN_STORAGE_KEY, hideKnown ? '0' : '1');
+    setHideKnown(!hideKnown);
+  };
 
   if (!isOpen) return null;
 
@@ -181,6 +254,24 @@ export const PageGlossaryModal: React.FC<Props> = ({
           />
         </label>
 
+        <div className="mx-3 mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+          <select
+            value={sortMode}
+            onChange={(event) => changeSortMode(event.target.value as SortMode)}
+            aria-label={t('glossary.sortUseful')}
+            className="rounded-lg border border-zinc-200 bg-zinc-50 px-2 py-1 text-zinc-700 outline-none focus:border-indigo-400 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
+          >
+            <option value="page">{t('glossary.sortPage')}</option>
+            <option value="useful">{t('glossary.sortUseful')}</option>
+          </select>
+          {studyLevel && (
+            <label className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
+              <input type="checkbox" checked={hideKnown} onChange={toggleHideKnown} />
+              {t('glossary.hideKnown')} (N{studyLevel} · {known.size})
+            </label>
+          )}
+        </div>
+
         <div className="flex items-center justify-between px-4 py-2 text-[11px] text-zinc-500 dark:text-zinc-400">
           <span>{t('glossary.instruction')}</span>
           {completed < words.length && (
@@ -196,12 +287,7 @@ export const PageGlossaryModal: React.FC<Props> = ({
             const lookup = lookups[key];
             const entry = lookup && typeof lookup !== 'string' ? lookup.entries[0] : undefined;
             const firstSense = entry?.senses[0];
-            const query = !token.joinedSuffix &&
-              !token.joinedConjugation &&
-              token.basic_form &&
-              token.basic_form !== '*'
-                ? token.basic_form
-                : token.surface_form;
+            const query = lookupForm(token);
             const candidate: TranslationFavoriteCandidate | null =
               lookup && typeof lookup !== 'string' && lookup.entries.length
                 ? {
@@ -229,8 +315,11 @@ export const PageGlossaryModal: React.FC<Props> = ({
                     {token.reading && token.reading !== token.surface_form && (
                       <span className="text-xs text-zinc-500 dark:text-zinc-400">{token.reading}</span>
                     )}
-                    <span className={`ml-auto rounded px-1.5 py-0.5 text-[10px] ${categoryBadgeClasses[getPageWordCategory(token)]}`}>
-                      {token.pos}
+                    <span className="ml-auto flex items-center gap-1">
+                      <WordLevelBadge level={levels.get(key) ?? null} />
+                      <span className={`rounded px-1.5 py-0.5 text-[10px] ${categoryBadgeClasses[getPageWordCategory(token)]}`}>
+                        {token.pos}
+                      </span>
                     </span>
                   </span>
                   {token.basic_form && token.basic_form !== '*' && token.basic_form !== token.surface_form && (
@@ -287,6 +376,9 @@ export const PageGlossaryModal: React.FC<Props> = ({
             </li>
           )}
         </ul>
+        <p className="border-t border-zinc-200 px-4 py-2 text-[10px] text-zinc-400 dark:border-zinc-800">
+          {t('level.sources')}
+        </p>
       </section>
     </div>
   );

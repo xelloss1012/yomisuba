@@ -17,6 +17,9 @@ export const it: Record<string, string> = {
   'settings.translationLanguage': 'Lingua di traduzione',
   'settings.translationLanguageAuto': "Come l'interfaccia ({language})",
   'settings.translationLanguageHint': 'Lingua in cui viene tradotto il testo giapponese, usata anche dal dizionario bilingue.',
+  'settings.studyLevel': 'Il mio livello (JLPT)',
+  'settings.studyLevelNone': 'Non indicato',
+  'settings.studyLevelHint': 'Permette di nascondere nel glossario le parole che dovresti già conoscere.',
 
   // ReaderSettings & Options
   'settings.title': 'Impostazioni di Lettura',
@@ -35,8 +38,16 @@ export const it: Record<string, string> = {
   'settings.printedHint': 'Numero di pagine dell’edizione a stampa per calcolare l’equivalenza approssimativa.',
   'settings.autoRotate': 'Consenti rotazione automatica',
   'settings.autoRotateHint': 'Consente di passare tra verticale e orizzontale ruotando il telefono. Se disattivato, l’app rimane in verticale.',
-  'settings.furigana': 'Mostra furigana',
-  'settings.furiganaHint': 'Mostra o nasconde la lettura sopra i kanji.',
+  'settings.furigana': 'Furigana',
+  'settings.furigana.original': 'Originale',
+  'settings.furigana.hidden': 'Nascondi',
+  'settings.furigana.always': 'Sempre',
+  'settings.furigana.difficult': 'Solo difficili',
+  'settings.furiganaHint.original': 'Come lo fornisce il libro.',
+  'settings.furiganaHint.hidden': 'Nessuna lettura sopra i kanji.',
+  'settings.furiganaHint.always': 'Aggiunge la lettura a tutte le parole con kanji che non ce l’hanno.',
+  'settings.furiganaHint.difficult': 'Solo sulle parole sopra il tuo livello ({level}), che il libro dia la lettura o no.',
+  'settings.furiganaGeneratedNote': 'Le letture automatiche appaiono in un altro tono e possono contenere errori, soprattutto nei nomi propri.',
   'settings.autoAnalyze': 'Analisi automatica della pagina',
   'settings.autoAnalyzeHint': 'Analizza ed elenca automaticamente il vocabolo della pagina al cambio.',
   'settings.nightMode': 'Modalità notte automatica',
@@ -276,6 +287,9 @@ export const it: Record<string, string> = {
   'glossary.removeFav': 'Rimuovi dai preferiti',
   'glossary.addFav': 'Aggiungi ai preferiti',
   'glossary.markFav': 'Segna definizione come preferita',
+  'glossary.sortPage': 'Ordine della pagina',
+  'glossary.sortUseful': 'Prima le più utili',
+  'glossary.hideKnown': 'Nascondi il mio livello',
 
   // TranslationHistoryModal
   'history.title': 'Cronologia e Preferiti',
@@ -288,6 +302,18 @@ export const it: Record<string, string> = {
   'history.savedFavs': 'Preferiti salvati ({count}/{max})',
   'history.frequentTerms': 'Termini consultati frequentemente',
   'history.queries': 'ricerche',
+
+  // Word levels
+  'level.basic': 'Di base',
+  'level.common': 'Comune',
+  'level.uncommon': 'Poco comune',
+  'level.rare': 'Rara',
+  'level.hintJlpt': 'Vocabolario JLPT {level} (liste indicative)',
+  'level.hintBasic': 'Tra le ~3.000 parole più frequenti',
+  'level.hintCommon': 'Parola di uso comune',
+  'level.hintUncommon': 'Parola poco frequente',
+  'level.hintRare': "Senza dati di frequenza e con kanji fuori dall'uso generale",
+  'level.sources': 'Livelli: JMdict (EDRDG), liste JLPT di J. Waller e KANJIDIC2',
 
   // Downloadable dictionaries
   'dict.titleMonolingual': 'Dizionario giapponese-giapponese',

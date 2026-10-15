@@ -1,4 +1,6 @@
 import { TranslationLanguage, UiLanguage } from '../utils/i18n';
+import type { JlptLevel } from '../utils/wordLevels';
+import type { FuriganaMode } from '../utils/furigana';
 
 export type WritingMode = 'vertical-rl' | 'horizontal-tb' | 'auto';
 export type ProgressionDirection = 'rtl' | 'ltr' | 'auto';
@@ -57,7 +59,10 @@ export interface ReaderSettingsState {
   fontSize: number; // in pixels
   lineHeight: number; // multiplier e.g. 1.8
   fontFamily: FontFamily;
+  /** Kept alongside furiganaMode for settings saved before it: true unless the mode is "hidden". */
   showFurigana: boolean;
+  /** Unset in settings saved before the modes existed; see resolveFuriganaMode. */
+  furiganaMode?: FuriganaMode;
   autoAnalyzePage: boolean;
   autoRotate: boolean;
   theme: ReaderTheme;
@@ -69,4 +74,6 @@ export interface ReaderSettingsState {
   language: UiLanguage;
   /** Target of translations; unset means "follow the interface" (see resolveTranslationLanguage). */
   translationLanguage?: TranslationLanguage;
+  /** The reader's JLPT level (5 = N5 … 1 = N1); unset when they have not said. */
+  studyLevel?: JlptLevel;
 }

@@ -11,6 +11,8 @@ import {
 import { getCachedTranslation, saveCachedTranslation } from '../utils/translationCache';
 import { DictionaryEntry, getDictionarySearchTerms } from '../utils/dictionary';
 import { isOptionalDictionaryId, JMDICT_SOURCE, OPTIONAL_DICTIONARIES } from '../utils/optionalDictionaries';
+import { classifyEntry } from '../utils/wordLevels';
+import { useWordLevels, WordLevelBadge } from './WordLevelBadge';
 import { speakJapanese } from '../utils/japaneseSpeech';
 import { MarkdownContent } from './MarkdownContent';
 import {
@@ -66,6 +68,7 @@ export const TranslationModal: React.FC<Props> = ({
   const language = useLanguage();
   const translationLanguage = useTranslationLanguage();
   const dictionaryOptions = useDictionaryOptions();
+  const wordLevels = useWordLevels();
   const [translatedText, setTranslatedText] = useState<string>('');
   const [translationError, setTranslationError] = useState(false);
   const [dictionaryTerms, setDictionaryTerms] = useState<{
@@ -507,6 +510,7 @@ export const TranslationModal: React.FC<Props> = ({
                         <span className="rounded bg-emerald-100 px-1 py-0.5 text-[9px] font-bold uppercase text-emerald-800 dark:bg-emerald-900/70 dark:text-emerald-200">
                           {entry.language}
                         </span>
+                        {wordLevels && <WordLevelBadge level={classifyEntry(wordLevels, entry)} />}
                         {entry.kana.length > 0 && (
                           <span className="text-zinc-500 dark:text-zinc-400">{entry.kana.join(' · ')}</span>
                         )}

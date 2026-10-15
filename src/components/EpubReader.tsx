@@ -67,6 +67,13 @@ import {
   warmUpDictionary,
 } from '../utils/dictionary';
 import {
+  annotateFurigana,
+  applyFuriganaClasses,
+  furiganaModeAnnotates,
+  resolveFuriganaMode,
+} from '../utils/furigana';
+import { loadWordLevels } from '../utils/wordLevels';
+import {
   getPageWordCategory,
   PageGlossaryModal,
   PageWordCategory,
@@ -786,10 +793,10 @@ export const EpubReader: React.FC<Props> = ({
   }, [markReaderDataChanged]);
 
   const themeColors = useMemo(() => ({
-    light: { bg: '#ffffff', text: '#18181b' },
-    paper: { bg: '#faf7f0', text: '#2c2825' },
-    sepia: { bg: '#f4ede4', text: '#433428' },
-    dark: { bg: '#18181b', text: '#e4e4e7' },
+    light: { bg: '#ffffff', text: '#18181b', generatedFurigana: '#a0612b' },
+    paper: { bg: '#faf7f0', text: '#2c2825', generatedFurigana: '#a0612b' },
+    sepia: { bg: '#f4ede4', text: '#433428', generatedFurigana: '#9a5420' },
+    dark: { bg: '#18181b', text: '#e4e4e7', generatedFurigana: '#d9a066' },
   }[settings.theme]), [settings.theme]);
 
   const getFontFamilyCss = useCallback((font: string) => {
@@ -987,8 +994,27 @@ export const EpubReader: React.FC<Props> = ({
       font-weight: 400;
       pointer-events: none;
     }
-    #reader-scroller.hide-furigana ruby rt {
+    #reader-scroller.hide-furigana ruby rt,
+    #reader-scroller.furigana-difficult ruby[data-furigana-easy] rt {
       visibility: hidden;
+    }
+    /* Generated furigana (utils/furigana.ts). Absolutely positioned, so it never
+       takes space in the line: the layout, and the pagination measured on the
+       plain chapter, stay identical. A different tone marks it as automatic. */
+    .gf { position: relative; }
+    .gf::after {
+      content: attr(data-gf);
+      position: absolute;
+      font-size: 0.52em;
+      line-height: 1;
+      font-weight: 400;
+      white-space: nowrap;
+      color: ${themeColors.generatedFurigana};
+      opacity: 0.9;
+      pointer-events: none;
+      ${isVertical
+        ? 'left: 100%; top: 50%; transform: translateY(-50%); margin-left: 0.08em;'
+        : 'bottom: 100%; left: 50%; transform: translateX(-50%); margin-bottom: 0.08em;'}
     }
     ruby rt::after {
       content: attr(data-rt);
@@ -1004,7 +1030,7 @@ export const EpubReader: React.FC<Props> = ({
 </head>
 <body>
   <div id="reader-viewport">
-    <div id="reader-scroller" class="${settings.showFurigana ? '' : 'hide-furigana'}">${bodyContent}</div>
+    <div id="reader-scroller">${bodyContent}</div>
   </div>
 </body>
 </html>`;
@@ -1020,7 +1046,8 @@ export const EpubReader: React.FC<Props> = ({
   const paginationCacheKey = useCallback((viewportWidth: number, viewportHeight: number) => {
     const layout = buildChapterDocument('').html
       .split(themeColors.bg).join('#bg')
-      .split(themeColors.text).join('#fg');
+      .split(themeColors.text).join('#fg')
+      .split(themeColors.generatedFurigana).join('#gf');
     return [
       PAGINATION_CACHE_VERSION,
       hashString(layout),
@@ -1536,6 +1563,45 @@ export const EpubReader: React.FC<Props> = ({
       window.removeEventListener('contextmenu', handleWindowContextMenu, { capture: true });
     };
   }, []);
+  // ─── FURIGANA ─────────────────────────────────────────────────────────────────
+  const furiganaMode = resolveFuriganaMode(settings);
+  const furiganaModeRef = useRef(furiganaMode);
+  furiganaModeRef.current = furiganaMode;
+  const studyLevelRef = useRef(settings.studyLevel);
+  studyLevelRef.current = settings.studyLevel;
+  // Annotated chapters by spine index, mode and level: going back to a chapter
+  // does not tokenize it again. Bounded, since each holds a whole chapter.
+  const furiganaCacheRef = useRef(new Map<string, string>());
+  useEffect(() => { furiganaCacheRef.current.clear(); }, [epub]);
+
+  /**
+   * The chapter with generated readings when the mode asks for them. Any
+   * failure (tokenizer, level data) falls back to the book's own text.
+   */
+  const getChapterWithFurigana = useCallback(async (spineIndex: number, rawHtml: string) => {
+    const mode = furiganaModeRef.current;
+    if (!furiganaModeAnnotates(mode)) return rawHtml;
+    const studyLevel = studyLevelRef.current;
+    const key = `${spineIndex}|${mode}|${studyLevel ?? ''}`;
+    const cache = furiganaCacheRef.current;
+    const cached = cache.get(key);
+    if (cached) return cached;
+    try {
+      const annotated = await annotateFurigana(rawHtml, {
+        mode,
+        studyLevel,
+        tokenize: tokenizeJapanese,
+        levels: await loadWordLevels().catch(() => null),
+      });
+      cache.set(key, annotated);
+      if (cache.size > 6) cache.delete(cache.keys().next().value as string);
+      return annotated;
+    } catch (error) {
+      console.error('[furigana] could not annotate the chapter:', error);
+      return rawHtml;
+    }
+  }, []);
+
   // ─── LOAD CHAPTER ─────────────────────────────────────────────────────────────
   const loadChapter = useCallback(
     async (
@@ -1565,7 +1631,7 @@ export const EpubReader: React.FC<Props> = ({
 
       try {
         const item = epub.spine[spineIndex];
-        const rawHtml = await epub.getChapterContent(item.href);
+        const rawHtml = await getChapterWithFurigana(spineIndex, await epub.getChapterContent(item.href));
 
         const iframe = iframeRef.current;
         if (!iframe) return;
@@ -1581,6 +1647,7 @@ export const EpubReader: React.FC<Props> = ({
         if (isVertical) wrapVerticalPunctuation(doc);
 
         const scroller = doc.getElementById('reader-scroller');
+        if (scroller) applyFuriganaClasses(scroller, furiganaModeRef.current);
         if (scroller) {
           applyTextAnnotations(
             scroller,
@@ -2413,7 +2480,7 @@ export const EpubReader: React.FC<Props> = ({
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [epub, settings, isVertical, isRtl, isNativeAndroid, themeColors, updatePagination, handleSelection, selectPageWord]
+    [epub, settings, isVertical, isRtl, isNativeAndroid, themeColors, updatePagination, handleSelection, selectPageWord, getChapterWithFurigana]
   );
 
   useEffect(() => {
@@ -3208,8 +3275,22 @@ export const EpubReader: React.FC<Props> = ({
 
   useLayoutEffect(() => {
     const scroller = iframeRef.current?.contentDocument?.getElementById('reader-scroller');
-    scroller?.classList.toggle('hide-furigana', !settings.showFurigana);
-  }, [settings.showFurigana]);
+    if (scroller) applyFuriganaClasses(scroller, furiganaMode);
+  }, [furiganaMode]);
+
+  // Generated readings are written into the chapter, so switching to or from a
+  // mode that generates them (or changing the level that decides them) reloads
+  // it. The layout does not change, so the reader stays on the same page.
+  const lastFuriganaSignatureRef = useRef<string | null>(null);
+  useEffect(() => {
+    const signature = furiganaModeAnnotates(furiganaMode) ? `${furiganaMode}|${settings.studyLevel ?? ''}` : 'book';
+    if (lastFuriganaSignatureRef.current === signature) return;
+    const isFirstRun = lastFuriganaSignatureRef.current === null;
+    lastFuriganaSignatureRef.current = signature;
+    if (isFirstRun) return;
+    loadChapter(currentSpineRef.current, currentPageRef.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [furiganaMode, settings.studyLevel]);
 
   // Initial load. The chapter opens first and the whole-book measurement runs
   // afterwards, in the background.
@@ -4158,6 +4239,7 @@ export const EpubReader: React.FC<Props> = ({
       <PageGlossaryModal
         isOpen={isPageGlossaryOpen}
         tokens={pageWords}
+        studyLevel={settings.studyLevel}
         favorites={translationFavorites}
         onClose={() => setIsPageGlossaryOpen(false)}
         onSelectWord={selectPageWord}

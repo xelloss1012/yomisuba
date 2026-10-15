@@ -1,6 +1,7 @@
 declare module 'kuromoji' {
   export interface KuromojiToken {
     surface_form: string;
+    word_position: number;
     pos: string;
     pos_detail_1?: string;
     pos_detail_2?: string;

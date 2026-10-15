@@ -17,6 +17,9 @@ export const ja: Record<string, string> = {
   'settings.translationLanguage': '翻訳先の言語',
   'settings.translationLanguageAuto': '表示言語に合わせる（{language}）',
   'settings.translationLanguageHint': '日本語の文を翻訳する言語です。二か国語辞書にも使われます。',
+  'settings.studyLevel': '自分のレベル（JLPT）',
+  'settings.studyLevelNone': '未設定',
+  'settings.studyLevelHint': 'すでに知っているはずの語を語彙一覧で隠せます。',
 
   // ReaderSettings & Options
   'settings.title': '表示設定',
@@ -35,8 +38,16 @@ export const ja: Record<string, string> = {
   'settings.printedHint': '紙の版のページ数を入力すると、おおよそのページ位置を計算します。',
   'settings.autoRotate': '自動回転を許可',
   'settings.autoRotateHint': '端末を回すと縦書きと横書きを切り替えます。無効にすると縦向きのままです。',
-  'settings.furigana': 'ふりがなを表示',
-  'settings.furiganaHint': '漢字の読みがなを表示・非表示にします。',
+  'settings.furigana': 'ふりがな',
+  'settings.furigana.original': '本のまま',
+  'settings.furigana.hidden': '表示しない',
+  'settings.furigana.always': 'すべて',
+  'settings.furigana.difficult': '難しい語だけ',
+  'settings.furiganaHint.original': '本に付いているとおりに表示します。',
+  'settings.furiganaHint.hidden': '漢字の読みを表示しません。',
+  'settings.furiganaHint.always': '読みが付いていない漢字のすべての語に読みを付けます。',
+  'settings.furiganaHint.difficult': '本に読みがあるかどうかにかかわらず、自分のレベル（{level}）より難しい語だけに表示します。',
+  'settings.furiganaGeneratedNote': '自動の読みは別の色で表示され、特に固有名詞では誤ることがあります。',
   'settings.autoAnalyze': 'ページの自動解析',
   'settings.autoAnalyzeHint': 'ページをめくるたびに語彙を自動で解析して一覧にします。',
   'settings.nightMode': '自動ナイトモード',
@@ -276,6 +287,9 @@ export const ja: Record<string, string> = {
   'glossary.removeFav': 'お気に入りから外す',
   'glossary.addFav': 'お気に入りに追加',
   'glossary.markFav': '定義をお気に入りにする',
+  'glossary.sortPage': 'ページ順',
+  'glossary.sortUseful': '役に立つ順',
+  'glossary.hideKnown': '自分のレベルを隠す',
 
   // TranslationHistoryModal
   'history.title': '履歴とお気に入り',
@@ -288,6 +302,18 @@ export const ja: Record<string, string> = {
   'history.savedFavs': '保存したお気に入り ({count}/{max})',
   'history.frequentTerms': 'よく調べる語',
   'history.queries': '回',
+
+  // Word levels
+  'level.basic': '基本',
+  'level.common': 'よく使う',
+  'level.uncommon': 'あまり使わない',
+  'level.rare': 'まれ',
+  'level.hintJlpt': 'JLPT {level} の語彙（非公式リスト）',
+  'level.hintBasic': '最もよく使われる約3,000語のひとつ',
+  'level.hintCommon': 'よく使われる語',
+  'level.hintUncommon': 'あまり使われない語',
+  'level.hintRare': '頻度のデータがなく、常用漢字以外の漢字を含む',
+  'level.sources': 'レベル: JMdict（EDRDG）、J. WallerのJLPTリスト、KANJIDIC2',
 
   // Downloadable dictionaries
   'dict.titleMonolingual': '国語辞典',

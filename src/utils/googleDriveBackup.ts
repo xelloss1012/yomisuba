@@ -7,6 +7,7 @@ import { TranslationFavorite } from './translationFavorites';
 import { DictionaryHistoryData } from './translationHistory';
 import { FREQUENT_QUERIES_VERSION, FrequentQuery } from './frequentQueries';
 import { AVAILABLE_LANGUAGES, TRANSLATION_LANGUAGES } from './i18n';
+import { FURIGANA_MODES } from './furigana';
 
 const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const DRIVE_SESSION_EXPECTED_KEY = 'ereader_google_drive_session_expected';
@@ -1047,7 +1048,9 @@ function isReaderSettings(value: unknown): value is ReaderSettingsState {
     && typeof settings.openRouterModel === 'string'
     && (settings.language === undefined || AVAILABLE_LANGUAGES.some(({ code }) => code === settings.language))
     && (settings.translationLanguage === undefined
-      || TRANSLATION_LANGUAGES.some(({ code }) => code === settings.translationLanguage));
+      || TRANSLATION_LANGUAGES.some(({ code }) => code === settings.translationLanguage))
+    && (settings.studyLevel === undefined || [1, 2, 3, 4, 5].includes(settings.studyLevel))
+    && (settings.furiganaMode === undefined || FURIGANA_MODES.includes(settings.furiganaMode));
 }
 
 function isReadingPosition(value: unknown): value is ReaderBookBackup['position'] {

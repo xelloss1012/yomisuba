@@ -60,6 +60,8 @@ interface CompactEntry {
 
 export interface JapaneseMorphologicalToken {
   surface_form: string;
+  /** 1-based offset of the token in the tokenized text. */
+  word_position?: number;
   pos: string;
   pos_detail_1?: string;
   pos_detail_2?: string;

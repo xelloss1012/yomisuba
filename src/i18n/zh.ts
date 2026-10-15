@@ -17,6 +17,9 @@ export const zh: Record<string, string> = {
   'settings.translationLanguage': '翻译语言',
   'settings.translationLanguageAuto': '与界面相同（{language}）',
   'settings.translationLanguageHint': '日语文本翻译成的语言，双语词典也使用该语言。',
+  'settings.studyLevel': '我的水平（JLPT）',
+  'settings.studyLevelNone': '未设置',
+  'settings.studyLevelHint': '可在词汇表中隐藏你应该已经掌握的词。',
 
   // ReaderSettings & Options
   'settings.title': '阅读设置',
@@ -35,8 +38,16 @@ export const zh: Record<string, string> = {
   'settings.printedHint': '印刷版图书的页数，用于计算近似的等效页码。',
   'settings.autoRotate': '允许自动旋转',
   'settings.autoRotateHint': '允许在旋转手机时在竖排和横排之间切换。禁用时，应用保持竖排。',
-  'settings.furigana': '显示假名注音',
-  'settings.furiganaHint': '在汉字上方显示或隐藏注音。',
+  'settings.furigana': '注音假名',
+  'settings.furigana.original': '原样',
+  'settings.furigana.hidden': '隐藏',
+  'settings.furigana.always': '全部',
+  'settings.furigana.difficult': '仅难词',
+  'settings.furiganaHint.original': '按书中原有的注音显示。',
+  'settings.furiganaHint.hidden': '不在汉字上显示读音。',
+  'settings.furiganaHint.always': '为所有没有注音的汉字词添加读音。',
+  'settings.furiganaHint.difficult': '仅为高于你水平（{level}）的词显示读音，无论书中是否有注音。',
+  'settings.furiganaGeneratedNote': '自动生成的读音以不同色调显示，可能有误，尤其是专有名词。',
   'settings.autoAnalyze': '页面自动分析',
   'settings.autoAnalyzeHint': '翻页时自动分析并列出页面词汇。',
   'settings.nightMode': '自动夜间模式',
@@ -276,6 +287,9 @@ export const zh: Record<string, string> = {
   'glossary.removeFav': '移出收藏',
   'glossary.addFav': '加入收藏',
   'glossary.markFav': '将释义标记为收藏',
+  'glossary.sortPage': '按页面顺序',
+  'glossary.sortUseful': '最有用的优先',
+  'glossary.hideKnown': '隐藏我的水平以内的词',
 
   // TranslationHistoryModal
   'history.title': '历史与收藏',
@@ -288,6 +302,18 @@ export const zh: Record<string, string> = {
   'history.savedFavs': '已保存收藏 ({count}/{max})',
   'history.frequentTerms': '频繁查询的术语',
   'history.queries': '次查询',
+
+  // Word levels
+  'level.basic': '基础',
+  'level.common': '常用',
+  'level.uncommon': '少用',
+  'level.rare': '罕见',
+  'level.hintJlpt': 'JLPT {level} 词汇（非官方列表）',
+  'level.hintBasic': '最常用的约 3,000 个词之一',
+  'level.hintCommon': '常用词',
+  'level.hintUncommon': '不常用的词',
+  'level.hintRare': '没有频率数据，且含有常用汉字以外的汉字',
+  'level.sources': '等级：JMdict（EDRDG）、J. Waller 的 JLPT 列表和 KANJIDIC2',
 
   // Downloadable dictionaries
   'dict.titleMonolingual': '日日词典',

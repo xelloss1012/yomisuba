@@ -17,6 +17,9 @@ export const ko: Record<string, string> = {
   'settings.translationLanguage': '번역 언어',
   'settings.translationLanguageAuto': '인터페이스와 동일 ({language})',
   'settings.translationLanguageHint': '일본어 텍스트를 번역할 언어이며, 이중 언어 사전에도 사용됩니다.',
+  'settings.studyLevel': '내 수준 (JLPT)',
+  'settings.studyLevelNone': '설정 안 함',
+  'settings.studyLevelHint': '단어장에서 이미 알아야 할 단어를 숨길 수 있습니다.',
 
   // ReaderSettings & Options
   'settings.title': '읽기 설정',
@@ -35,8 +38,16 @@ export const ko: Record<string, string> = {
   'settings.printedHint': '대략적인 일치 여부를 계산하기 위한 인쇄본의 페이지 수입니다.',
   'settings.autoRotate': '자동 회전 허용',
   'settings.autoRotateHint': '휴대폰을 회전할 때 세로와 가로 간 전환을 허용합니다. 비활성화하면 앱이 세로로 유지됩니다.',
-  'settings.furigana': '후리가나 표시',
-  'settings.furiganaHint': '간지 위에 읽기 보조 표시를 하거나 숨깁니다.',
+  'settings.furigana': '후리가나',
+  'settings.furigana.original': '원본',
+  'settings.furigana.hidden': '숨기기',
+  'settings.furigana.always': '항상',
+  'settings.furigana.difficult': '어려운 단어만',
+  'settings.furiganaHint.original': '책에 있는 그대로 표시합니다.',
+  'settings.furiganaHint.hidden': '한자 위에 읽기를 표시하지 않습니다.',
+  'settings.furiganaHint.always': '읽기가 없는 모든 한자 단어에 읽기를 추가합니다.',
+  'settings.furiganaHint.difficult': '책에 읽기가 있든 없든 내 수준({level})보다 어려운 단어에만 표시합니다.',
+  'settings.furiganaGeneratedNote': '자동 읽기는 다른 색조로 표시되며, 특히 고유명사에서 틀릴 수 있습니다.',
   'settings.autoAnalyze': '페이지 자동 분석',
   'settings.autoAnalyzeHint': '페이지를 넘길 때 페이지 단어를 자동으로 분석하고 나열합니다.',
   'settings.nightMode': '자동 야간 모드',
@@ -276,6 +287,9 @@ export const ko: Record<string, string> = {
   'glossary.removeFav': '즐겨찾기에서 제거',
   'glossary.addFav': '즐겨찾기에 추가',
   'glossary.markFav': '정의를 즐겨찾기로 표시',
+  'glossary.sortPage': '페이지 순서',
+  'glossary.sortUseful': '유용한 단어 먼저',
+  'glossary.hideKnown': '내 수준 숨기기',
 
   // TranslationHistoryModal
   'history.title': '기록 및 즐겨찾기',
@@ -288,6 +302,18 @@ export const ko: Record<string, string> = {
   'history.savedFavs': '저장된 즐겨찾기 ({count}/{max})',
   'history.frequentTerms': '자주 조회한 용어',
   'history.queries': '회 조회',
+
+  // Word levels
+  'level.basic': '기초',
+  'level.common': '자주 쓰임',
+  'level.uncommon': '드물게 쓰임',
+  'level.rare': '희귀',
+  'level.hintJlpt': 'JLPT {level} 어휘 (비공식 목록)',
+  'level.hintBasic': '가장 자주 쓰이는 약 3,000단어 중 하나',
+  'level.hintCommon': '자주 쓰이는 단어',
+  'level.hintUncommon': '드물게 쓰이는 단어',
+  'level.hintRare': '빈도 정보가 없고 상용 한자 외의 한자가 들어 있음',
+  'level.sources': '등급: JMdict(EDRDG), J. Waller의 JLPT 목록, KANJIDIC2',
 
   // Downloadable dictionaries
   'dict.titleMonolingual': '일일 사전',

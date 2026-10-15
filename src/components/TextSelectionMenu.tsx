@@ -5,6 +5,9 @@ import { AI_PROVIDER_LABELS } from '../utils/aiTranslation';
 import { DictionaryLookup } from '../utils/dictionary';
 import { speakJapanese } from '../utils/japaneseSpeech';
 import { useT } from '../i18n/LanguageContext';
+import { isOptionalDictionaryId, JMDICT_SOURCE, OPTIONAL_DICTIONARIES } from '../utils/optionalDictionaries';
+import { classifyEntry } from '../utils/wordLevels';
+import { useWordLevels, WordLevelBadge } from './WordLevelBadge';
 
 export interface SelectionPosition {
   x: number;
@@ -43,6 +46,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
   onOpenAiTranslate,
 }) => {
   const t = useT();
+  const wordLevels = useWordLevels();
   const [copied, setCopied] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [speechError, setSpeechError] = useState('');
@@ -156,6 +160,7 @@ export const TextSelectionMenu: React.FC<Props> = ({
               <span className="rounded bg-emerald-900/80 px-1 py-0.5 text-[9px] font-bold uppercase text-emerald-200">
                 {dictionaryPreview.entries[0].language}
               </span>
+              {wordLevels && <WordLevelBadge level={classifyEntry(wordLevels, dictionaryPreview.entries[0])} />}
             </span>
             <span className="mt-0.5 block line-clamp-2 text-xs leading-relaxed text-zinc-200">
               {dictionaryPreview.entries[0].senses
@@ -163,7 +168,11 @@ export const TextSelectionMenu: React.FC<Props> = ({
                 .map((sense) => sense.glosses.join('; '))
                 .join(' · ')}
             </span>
-            <span className="mt-1 block text-[9px] text-zinc-400">JMdict/EDICT © EDRDG</span>
+            <span className="mt-1 block text-[9px] text-zinc-400">
+              {isOptionalDictionaryId(dictionaryPreview.entries[0].language)
+                ? OPTIONAL_DICTIONARIES[dictionaryPreview.entries[0].language].source.label
+                : JMDICT_SOURCE.label}
+            </span>
           </button>
         )}
 

@@ -10,6 +10,13 @@ import {
 } from '../utils/i18n';
 import { useT } from '../i18n/LanguageContext';
 import { DownloadableDictionariesSection } from './OptionalDictionaryPanel';
+import type { JlptLevel } from '../utils/wordLevels';
+import {
+  FURIGANA_MODES,
+  furiganaModeAnnotates,
+  furiganaModeSettings,
+  resolveFuriganaMode,
+} from '../utils/furigana';
 
 interface Props {
   isOpen: boolean;
@@ -32,6 +39,7 @@ export const ReaderSettings: React.FC<Props> = ({
 }) => {
   const t = useT();
   if (!isOpen) return null;
+  const furiganaMode = resolveFuriganaMode(settings);
 
   const themes: { id: ReaderTheme; label: string; bg: string; text: string; border: string }[] = [
     { id: 'light', label: t('settings.themeLight'), bg: 'bg-white', text: 'text-zinc-900', border: 'border-zinc-300' },
@@ -118,6 +126,24 @@ export const ReaderSettings: React.FC<Props> = ({
             </select>
             <span className="mt-1 block text-[10px] text-zinc-500 dark:text-zinc-400">
               {t('settings.translationLanguageHint')}
+            </span>
+            <span className="mt-3 block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+              {t('settings.studyLevel')}
+            </span>
+            <select
+              value={settings.studyLevel ?? ''}
+              onChange={(event) => onUpdateSettings({
+                studyLevel: event.target.value ? Number(event.target.value) as JlptLevel : undefined,
+              })}
+              className="w-full rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-2 text-xs text-zinc-800 dark:text-zinc-200 outline-none focus:border-indigo-500"
+            >
+              <option value="">{t('settings.studyLevelNone')}</option>
+              {([5, 4, 3, 2, 1] as const).map((level) => (
+                <option key={level} value={level}>N{level}</option>
+              ))}
+            </select>
+            <span className="mt-1 block text-[10px] text-zinc-500 dark:text-zinc-400">
+              {t('settings.studyLevelHint')}
             </span>
             <DownloadableDictionariesSection />
           </div>
@@ -232,20 +258,36 @@ export const ReaderSettings: React.FC<Props> = ({
             </span>
           </label>
 
-          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-zinc-200 dark:border-zinc-700 p-3 text-zinc-700 dark:text-zinc-300">
-            <input
-              type="checkbox"
-              checked={settings.showFurigana}
-              onChange={(event) => onUpdateSettings({ showFurigana: event.target.checked })}
-              className="mt-0.5 h-4 w-4 accent-indigo-600"
-            />
-            <span>
-              <span className="block text-sm font-medium">{t('settings.furigana')}</span>
-              <span className="mt-0.5 block text-xs text-zinc-500 dark:text-zinc-400">
-                {t('settings.furiganaHint')}
-              </span>
+          <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 p-3 text-zinc-700 dark:text-zinc-300">
+            <span className="block text-sm font-medium">{t('settings.furigana')}</span>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              {FURIGANA_MODES.map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => onUpdateSettings(furiganaModeSettings(mode))}
+                  aria-pressed={furiganaMode === mode}
+                  className={`rounded-xl border px-2 py-1.5 text-xs font-semibold transition-all ${
+                    furiganaMode === mode
+                      ? 'border-indigo-600 bg-indigo-50/70 text-indigo-700 dark:bg-indigo-950/40 dark:border-indigo-500 dark:text-indigo-300'
+                      : 'border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800/60'
+                  }`}
+                >
+                  {t(`settings.furigana.${mode}`)}
+                </button>
+              ))}
+            </div>
+            <span className="mt-2 block text-xs text-zinc-500 dark:text-zinc-400">
+              {t(`settings.furiganaHint.${furiganaMode}`, {
+                level: settings.studyLevel ? `N${settings.studyLevel}` : 'N5',
+              })}
             </span>
-          </label>
+            {furiganaModeAnnotates(furiganaMode) && (
+              <span className="mt-1 block text-[11px] text-amber-700 dark:text-amber-300">
+                {t('settings.furiganaGeneratedNote')}
+              </span>
+            )}
+          </div>
 
           <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-zinc-200 dark:border-zinc-700 p-3 text-zinc-700 dark:text-zinc-300">
             <input
