@@ -118,6 +118,7 @@ Se conservan las 6 entradas más recientes, de modo que rotar el dispositivo o c
 ### 3. Selección de Texto y Menú Contextual (`src/components/TextSelectionMenu.tsx` / `TranslationModal.tsx`)
 - **Escucha Nativa**: Escucha `selectionchange` en el documento del iframe.
 - **Posicionamiento**: Calcula la posición absoluta de las coordenadas del rango de selección (`range.getBoundingClientRect()`) y muestra la barra flotante.
+- **Clic fantasma**: en modo de análisis, tocar una palabra hace aparecer el menú justo bajo el dedo (en móvil va anclado al borde inferior) y el navegador termina el gesto con su `click` de compatibilidad en esas mismas coordenadas. El hit-test se relanza desde el documento principal, así que ese clic da en el menú que aún no existía al empezar el toque y abría el diccionario o la traducción sin querer. El menú sólo acepta el `click` si un `pointerdown` o `keydown` propio le precedió en los últimos 1000 ms; el resto se descarta en fase de captura, antes de que llegue a ningún botón.
 - **Herramientas de Selección**:
   - **Copiar**: Copia el texto al portapapeles.
   - **Traducir**: Llama a la API de traducción e integra la respuesta en un modal.

@@ -1,3 +1,14 @@
+import { HISTORY_DEDUP_WINDOW_MS } from './translationHistory';
+
+/**
+ * A term consulted again inside this window is the *same* consultation as the
+ * previous one (the user tapped several times or re-selected the text), so the
+ * counter must not grow. It is deliberately the same window the history uses
+ * (`HISTORY_DEDUP_WINDOW_MS`) so both lists always agree on what "consulted
+ * just now" means.
+ */
+export const FREQUENT_QUERIES_DEDUP_WINDOW_MS = HISTORY_DEDUP_WINDOW_MS;
+
 export interface FrequentQuery {
   key: string;
   query: string;
@@ -57,8 +68,14 @@ export const recordFrequentQuery = (
 
   const now = Date.now();
   const existing = queries.find((item) => item.key === key);
+  // Mirror of the history de-duplication: a repeat inside the window refreshes
+  // the existing entry instead of registering a new query. Only `updatedAt`
+  // slides forward, so the window stays anchored to the latest consultation
+  // exactly like `queriedAt` does for the history entry.
+  const isRepeat =
+    existing !== undefined && now - existing.updatedAt < FREQUENT_QUERIES_DEDUP_WINDOW_MS;
   const nextQuery: FrequentQuery = existing
-    ? { ...existing, count: existing.count + 1, updatedAt: now }
+    ? { ...existing, count: existing.count + (isRepeat ? 0 : 1), updatedAt: now }
     : { key, query: trimmedQuery, count: 1, updatedAt: now };
   const next = sortFrequentQueries([
     nextQuery,

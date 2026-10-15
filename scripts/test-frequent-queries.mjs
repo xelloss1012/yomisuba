@@ -20,8 +20,14 @@ const server = await createServer({
 });
 
 try {
-  const { readFrequentQueries, recordFrequentQuery } =
+  const { readFrequentQueries, recordFrequentQuery, FREQUENT_QUERIES_DEDUP_WINDOW_MS } =
     await server.ssrLoadModule('/src/utils/frequentQueries.ts');
+  const { HISTORY_DEDUP_WINDOW_MS } = await server.ssrLoadModule('/src/utils/translationHistory.ts');
+  assert.equal(
+    FREQUENT_QUERIES_DEDUP_WINDOW_MS,
+    HISTORY_DEDUP_WINDOW_MS,
+    'frequent queries and history must share the same de-dup window',
+  );
   const key = 'test-frequent-queries';
   storage.set(key, JSON.stringify([{ key: 'antiguo', query: 'antiguo', count: 35, updatedAt: Date.now() }]));
   let queries = readFrequentQueries(key);
@@ -31,14 +37,33 @@ try {
   queries = recordFrequentQuery(key, queries, '  猫  ');
   queries = recordFrequentQuery(key, queries, '猫が好き');
 
+  // The repeat inside the de-dup window refreshes the entry but must not add a
+  // query — same rule the history applies to its entries. With equal counts the
+  // list falls back to `updatedAt`, so the last recorded term comes first.
   assert.deepEqual(
     queries.map(({ query, count }) => ({ query, count })),
-    [{ query: '猫', count: 2 }, { query: '猫が好き', count: 1 }],
+    [{ query: '猫が好き', count: 1 }, { query: '猫', count: 1 }],
   );
-  assert.equal(readFrequentQueries(key)[0].count, 2);
+  assert.equal(readFrequentQueries(key).find((item) => item.key === '猫')?.count, 1);
   assert.equal(storage.get(`${key}_version`), '2');
 
-  console.log('PASS: frequent queries normalize, count, sort, and persist.');
+  // The window slides: a repeat keeps the count and pushes `updatedAt` forward,
+  // so the next repeat is measured from the last consultation.
+  const windowKey = 'test-frequent-queries-window';
+  const inside = [{ key: '猫', query: '猫', count: 3, updatedAt: Date.now() - HISTORY_DEDUP_WINDOW_MS / 2 }];
+  const slid = recordFrequentQuery(windowKey, inside, '猫');
+  assert.equal(slid.length, 1);
+  assert.equal(slid[0].count, 3, 'repeat inside the window must not increment');
+  assert.ok(slid[0].updatedAt > inside[0].updatedAt, 'the window slides forward');
+
+  // Outside the window the same term is a new consultation again.
+  const stale = [
+    { key: '猫', query: '猫', count: 3, updatedAt: Date.now() - HISTORY_DEDUP_WINDOW_MS - 1000 },
+  ];
+  const grown = recordFrequentQuery(windowKey, stale, '猫');
+  assert.equal(grown[0].count, 4, 'outside the window the query counts again');
+
+  console.log('PASS: frequent queries normalize, de-dup within the window, count, sort, and persist.');
 } finally {
   await server.close();
 }

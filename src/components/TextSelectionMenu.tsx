@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Copy, Languages, Volume2, Search, BookOpen, Check, X, Underline, TextSearch } from 'lucide-react';
 import { AiProvider } from '../types/epub';
 import { AI_PROVIDER_LABELS } from '../utils/aiTranslation';
@@ -12,6 +12,18 @@ export interface SelectionPosition {
   width: number;
   height: number;
 }
+
+/**
+ * A tap that selects a word reveals this menu exactly where the finger was (on
+ * phones it is docked against the bottom edge), and the browser then finishes
+ * the gesture by firing its compatibility `click` at those same coordinates.
+ * Hit-testing starts again from the top document, so that click lands on the
+ * menu that was not there when the touch began and opens the dictionary or the
+ * translation by accident. A genuine activation always arrives right after a
+ * `pointerdown` (or a `keydown` for keyboard users) on the menu itself, so any
+ * other click is swallowed before it can reach a button.
+ */
+const MENU_INTERACTION_WINDOW_MS = 1000;
 
 interface Props {
   selectedText: string;
@@ -47,6 +59,21 @@ export const TextSelectionMenu: React.FC<Props> = ({
   const [copied, setCopied] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [speechError, setSpeechError] = useState('');
+  const lastInteractionAtRef = useRef(0);
+
+  // Records the moment the user actually interacted *with the menu*. A click
+  // without such a preceding event is the leftover of the gesture that opened
+  // the menu, not a new decision by the user.
+  const markMenuInteraction = () => {
+    lastInteractionAtRef.current = Date.now();
+  };
+
+  const handleClickCapture = (event: React.MouseEvent) => {
+    if (Date.now() - lastInteractionAtRef.current <= MENU_INTERACTION_WINDOW_MS) return;
+    // Swallowed during capture so it never reaches the buttons below.
+    event.preventDefault();
+    event.stopPropagation();
+  };
 
   if (!selectedText.trim()) return null;
 
@@ -124,6 +151,9 @@ export const TextSelectionMenu: React.FC<Props> = ({
     <div
       data-selection-menu
       style={style}
+      onPointerDownCapture={markMenuInteraction}
+      onKeyDownCapture={markMenuInteraction}
+      onClickCapture={handleClickCapture}
       className={`z-[60] select-none transition-opacity ${
         isAdjusting ? 'duration-0 opacity-0 pointer-events-none' : 'duration-200 opacity-100 pointer-events-auto'
       } ${isMobile ? 'max-w-md mx-auto shadow-2xl' : 'shadow-2xl'}`}
