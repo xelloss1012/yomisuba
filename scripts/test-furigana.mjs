@@ -13,7 +13,7 @@ const server = await createServer({
 });
 
 try {
-  const { alignReading, resolveFuriganaMode, furiganaModeSettings, shownFuriganaMode } = await server.ssrLoadModule('/src/utils/furigana.ts');
+  const { alignReading, resolveFuriganaMode, furiganaModeSettings, shownFuriganaMode, splitReading } = await server.ssrLoadModule('/src/utils/furigana.ts');
   const show = (segments) => segments && segments.map(({ text, reading }) => (reading ? `${text}(${reading})` : text)).join('');
 
   // Okurigana stays bare; each kanji run gets its part of the reading.
@@ -31,6 +31,14 @@ try {
   assert.equal(alignReading('食べる', 'ノム'), null, 'a reading that contradicts the okurigana');
   assert.equal(alignReading('3人', 'サンニン'), null, 'digits are not guessed');
 
+  // A word broken across lines shares its reading by kanji, never starting a
+  // share with a small kana or a long vowel mark.
+  assert.deepEqual(splitReading('せいそく', [1, 1]), ['せい', 'そく']);
+  assert.deepEqual(splitReading('さんじゅうまん', [2, 1]), ['さんじゅう', 'まん']);
+  assert.deepEqual(splitReading('じゃちぼうぎゃく', [1, 3]), ['じゃ', 'ちぼうぎゃく']);
+  assert.deepEqual(splitReading('しょうちゅう', [1, 1]), ['しょう', 'ちゅう']);
+  assert.deepEqual(splitReading('め', [1, 1]), ['め', ''], 'a reading shorter than its pieces');
+
   // Settings saved before the modes keep their meaning.
   assert.equal(resolveFuriganaMode({ showFurigana: true }), 'original');
   assert.equal(resolveFuriganaMode({ showFurigana: false }), 'hidden');
@@ -43,7 +51,7 @@ try {
   assert.equal(shownFuriganaMode(hidden), 'always');
   assert.equal(shownFuriganaMode({}), 'original');
 
-  console.log('PASS: furigana readings align over kanji runs, leave okurigana bare, refuse readings that do not fit, modes resolve from older settings and showing returns to the last visible mode.');
+  console.log('PASS: furigana readings align over kanji runs, leave okurigana bare, refuse readings that do not fit, share out over line breaks, modes resolve from older settings and showing returns to the last visible mode.');
 } finally {
   await server.close();
 }

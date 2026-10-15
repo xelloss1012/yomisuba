@@ -70,6 +70,7 @@ import {
   annotateFurigana,
   applyFuriganaClasses,
   furiganaModeAnnotates,
+  splitBrokenReadings,
   resolveFuriganaMode,
 } from '../utils/furigana';
 import { loadWordLevels } from '../utils/wordLevels';
@@ -2227,14 +2228,28 @@ export const EpubReader: React.FC<Props> = ({
             logDebugRef.current('selection menu revealed after native contextmenu');
           }, 0);
         });
+        // After a tap the browser replays it as mousemove/mousedown/mouseup.
+        // The touch handlers already dealt with it, and when that tap showed
+        // or hid the controls the frame has been rescaled in between, so the
+        // replay lands at other coordinates (a tap at x=100 came back at 53)
+        // and read as a drag that left the page shifted sideways.
+        const isTouchReplay = (e: MouseEvent) =>
+          Date.now() - lastTouchEndAt < 700 ||
+          Boolean((e as MouseEvent & { sourceCapabilities?: { firesTouchEvents?: boolean } })
+            .sourceCapabilities?.firesTouchEvents);
         doc.addEventListener('mousedown', (e) => {
+          if (isTouchReplay(e)) return;
           pointerActiveRef.current = true;
           onStart(e.clientX, e.clientY);
         });
-        doc.addEventListener('mousemove', (e) => onMove(e.clientX, e.clientY));
+        doc.addEventListener('mousemove', (e) => {
+          if (isTouchReplay(e)) return;
+          onMove(e.clientX, e.clientY);
+        });
         doc.addEventListener('mouseup', (e) => {
+          // Still the end of the press for the selection code, replay or not.
           pointerActiveRef.current = false;
-          if (Date.now() - lastTouchEndAt < 700) return;
+          if (isTouchReplay(e)) return;
           onEnd(e.clientX, e.clientY);
         });
         doc.addEventListener('dblclick', (e) => {
@@ -3867,6 +3882,38 @@ export const EpubReader: React.FC<Props> = ({
       void setReaderFullscreen(false);
     }
   }, []);
+
+  // Generated readings of words broken across two lines are split per line
+  // once the chapter is laid out, again when web fonts arrive or the frame is
+  // resized. Declared before the re-analysis below so that it runs on the final DOM.
+  useEffect(() => {
+    if (isLoadingChapter || !furiganaModeAnnotates(furiganaMode)) return;
+    const doc = iframeRef.current?.contentDocument;
+    const scroller = doc?.getElementById('reader-scroller');
+    if (!doc || !scroller) return;
+    const run = () => {
+      if (iframeRef.current?.contentDocument !== doc || !splitBrokenReadings(scroller)) return;
+      // The split replaces text nodes, so underlines are resolved again.
+      positionLocatorRef.current = null;
+      applyTextAnnotations(
+        scroller,
+        textAnnotationsRef.current.filter((annotation) => annotation.spineIndex === currentSpineRef.current)
+      );
+    };
+    run();
+    void doc.fonts?.ready.then(run);
+    const win = doc.defaultView;
+    let timer: number | undefined;
+    const onResize = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(run, 300);
+    };
+    win?.addEventListener('resize', onResize);
+    return () => {
+      window.clearTimeout(timer);
+      win?.removeEventListener('resize', onResize);
+    };
+  }, [furiganaMode, isLoadingChapter]);
 
   // A page that was analysed before its chapter was reloaded in place.
   useEffect(() => {

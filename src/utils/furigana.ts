@@ -212,3 +212,85 @@ export const annotateFurigana = async (rawHtml: string, options: FuriganaOptions
 
   return `<!DOCTYPE html>${doc.documentElement.outerHTML}`;
 };
+
+// Kana that cannot start a reading's share: they belong to the mora before them.
+const DEPENDENT_KANA = /[ぁぃぅぇぉゃゅょゎっァィゥェォャュョヮッー]/;
+
+/**
+ * Shares a reading out over the pieces of a word split across lines, in
+ * proportion to the kanji in each piece and never starting a share with a small
+ * kana or a long vowel mark: 生息 split 生|息 reads せい|そく. A guess (the true
+ * split of 今日 is not 今|日), but only for the few words that break.
+ */
+export const splitReading = (reading: string, counts: number[]): string[] => {
+  const chars = [...reading];
+  const total = counts.reduce((sum, count) => sum + count, 0);
+  const parts: string[] = [];
+  let start = 0;
+  let seen = 0;
+  for (let index = 0; index < counts.length - 1; index += 1) {
+    seen += counts[index];
+    let cut = Math.round((chars.length * seen) / total);
+    while (cut < chars.length && DEPENDENT_KANA.test(chars[cut])) cut += 1;
+    // Every piece keeps at least one kana while there are kana left.
+    const lowest = Math.min(start + 1, chars.length);
+    const highest = Math.max(lowest, chars.length - (counts.length - 1 - index));
+    cut = Math.min(Math.max(cut, lowest), highest);
+    parts.push(chars.slice(start, cut).join(''));
+    start = cut;
+  }
+  parts.push(chars.slice(start).join(''));
+  return parts;
+};
+
+/**
+ * Generated readings are positioned against their word's box, and a word that
+ * breaks across two lines gets one box spanning both, which put its reading
+ * between the lines, over the text. Once the chapter is laid out, each such
+ * word is split into one span per line with its share of the reading. Splitting
+ * an inline element does not move any line break, so the layout stays the same.
+ */
+export const splitBrokenReadings = (root: Element): number => {
+  const doc = root.ownerDocument;
+  let split = 0;
+  for (const span of [...root.querySelectorAll<HTMLElement>('span.gf')]) {
+    const lines = span.getClientRects();
+    const text = span.firstChild;
+    if (lines.length < 2 || !text || text.nodeType !== Node.TEXT_NODE || span.childNodes.length !== 1) continue;
+    const data = (text as Text).data;
+    // Which line each character sits on, as runs of consecutive characters.
+    const runs: Array<{ line: number; text: string }> = [];
+    const range = doc.createRange();
+    for (let offset = 0; offset < data.length; offset += 1) {
+      range.setStart(text, offset);
+      range.setEnd(text, offset + 1);
+      const box = range.getBoundingClientRect();
+      const x = box.left + box.width / 2;
+      const y = box.top + box.height / 2;
+      let line = 0;
+      for (let index = 0; index < lines.length; index += 1) {
+        const rect = lines[index];
+        if (x >= rect.left - 1 && x <= rect.right + 1 && y >= rect.top - 1 && y <= rect.bottom + 1) {
+          line = index;
+          break;
+        }
+      }
+      const last = runs[runs.length - 1];
+      if (last && last.line === line) last.text += data[offset];
+      else runs.push({ line, text: data[offset] });
+    }
+    if (runs.length < 2) continue;
+    const readings = splitReading(span.dataset.gf || '', runs.map((run) => run.text.length));
+    const fragment = doc.createDocumentFragment();
+    runs.forEach((run, index) => {
+      const piece = doc.createElement('span');
+      piece.className = 'gf';
+      piece.dataset.gf = readings[index];
+      piece.textContent = run.text;
+      fragment.append(piece);
+    });
+    span.replaceWith(fragment);
+    split += 1;
+  }
+  return split;
+};
