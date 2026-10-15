@@ -2016,13 +2016,12 @@ export const EpubReader: React.FC<Props> = ({
           }
           if (sel) { handleSelection(); return false; }
 
+          // Any tap on an empty spot toggles the header and footer, across the
+          // whole width: taps do not turn pages (swipes do), so the sides have no
+          // other use, and on dense pages a gap near the centre is hard to find.
           if (isTap) {
             if (Date.now() - lastSelectionTime.current < 400) return false;
-            const vw = iframe.clientWidth || window.innerWidth;
-            const ratio = cx / vw;
-            if (ratio >= 0.28 && ratio <= 0.72) {
-              setShowUi(p => !p);
-            }
+            setShowUi(p => !p);
           }
           return false;
         };
