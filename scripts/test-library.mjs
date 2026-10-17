@@ -36,7 +36,10 @@ const server = await createServer({
 
 try {
   const library = await server.ssrLoadModule('/src/utils/libraryCatalog.ts');
-  const { parseLibraryCatalog, fetchLibraryCatalog, downloadLibraryBook, libraryDescription, genresInCatalog } = library;
+  const {
+    parseLibraryCatalog, fetchLibraryCatalog, downloadLibraryBook, libraryDescription, genresInCatalog,
+    filterLibraryBooks, sortLibraryBooks, NO_LIBRARY_FILTERS,
+  } = library;
 
   // A well-formed entry keeps what the screen shows.
   const [book] = parseLibraryCatalog({ schema: 1, books: [entry()] });
@@ -109,6 +112,50 @@ try {
 
   // Genres follow the library's order, and only those that have a book.
   assert.deepEqual(genresInCatalog(books), ['mystery', 'humor', 'drama']);
+
+  // Searching, filtering and sorting.
+  const shelf = parseLibraryCatalog({
+    schema: 2,
+    books: [
+      entry({ id: 'a', slug: 'a', file: 'books/a.epub', cover: 'covers/a.png', title: '坊っちゃん', titleReading: 'ぼっちゃん', author: '夏目漱石', genres: ['humor'], characters: 88000, level: { score: 4 }, description: { ja: '日本語', es: 'Profesor en Shikoku', en: 'Teacher in Shikoku' } }),
+      entry({ id: 'b', slug: 'b', file: 'books/b.epub', cover: 'covers/b.png', title: 'ダゴン', titleReading: 'だごん', author: 'ハワード・フィリップス・ラヴクラフト', genres: ['horror'], characters: 5000, level: { score: 5 }, description: { ja: '怪奇', es: 'Bote a la deriva', en: 'Boat adrift' }, license: { id: 'cc-by', name: 'CC BY 2.1 JP', url: 'https://creativecommons.org/licenses/by/2.1/jp/' } }),
+      entry({ id: 'c', slug: 'c', file: 'books/c.epub', cover: 'covers/c.png', title: 'ＲＵＲ', titleReading: 'あーるゆーあーる', author: 'カレル・チャペック', genres: ['scifi', 'drama'], characters: 54000, level: { score: 4 }, description: { ja: '戯曲', es: 'Fábrica de robots', en: 'Robot factory' }, license: { id: 'cc-by', name: 'CC BY 2.1 JP', url: 'https://creativecommons.org/licenses/by/2.1/jp/' } }),
+      entry({ id: 'd', slug: 'd', file: 'books/d.epub', cover: 'covers/d.png', title: 'よだかの星', titleReading: 'よだかのほし', author: '宮沢賢治', genres: ['children', 'fantasy'], characters: 5000, level: { score: 2 }, description: { ja: '童話', es: 'Chotacabras', en: 'Nighthawk' } }),
+    ],
+  });
+  const ids = (list) => list.map((item) => item.id).join(',');
+  const find = (filters, language = 'es') => ids(filterLibraryBooks(shelf, { ...NO_LIBRARY_FILTERS, ...filters }, language));
+  assert.equal(find({}), 'a,b,c,d');
+  assert.equal(find({ query: '坊っちゃん' }), 'a');
+  assert.equal(find({ query: 'ぼっちゃん' }), 'a', 'by the reading');
+  assert.equal(find({ query: 'ボッチャン' }), 'a', 'katakana and hiragana are the same to a search');
+  assert.equal(find({ query: 'ダゴン' }), 'b');
+  assert.equal(find({ query: 'だごん' }), 'b');
+  assert.equal(find({ query: 'rur' }), 'c', 'full-width and half-width letters match');
+  assert.equal(find({ query: 'ＲＵＲ' }), 'c');
+  assert.equal(find({ query: 'ラヴクラフト' }), 'b', 'by author');
+  assert.equal(find({ query: 'ワード ラヴ' }), 'b', 'every word must match, in any order');
+  assert.equal(find({ query: 'ワード 宮沢' }), '', 'a word that matches no book empties the list');
+  assert.equal(find({ query: 'shikoku' }, 'es'), 'a', 'description, ignoring case');
+  assert.equal(find({ query: 'chotacabras' }, 'es'), 'd');
+  assert.equal(find({ query: 'chotacabras' }, 'en'), '', 'the description searched is the one shown');
+  assert.equal(find({ query: '  ' }), 'a,b,c,d', 'a blank search shows everything');
+  assert.equal(find({ genre: 'drama' }), 'c');
+  assert.equal(find({ genre: 'fantasy' }), 'd');
+  assert.equal(find({ license: 'public-domain' }), 'a,d');
+  assert.equal(find({ license: 'free' }), 'b,c');
+  assert.equal(find({ difficulty: 4 }), 'a,c');
+  assert.equal(find({ difficulty: 5, license: 'free' }), 'b');
+  assert.equal(find({ difficulty: 2, license: 'free' }), '');
+  assert.equal(find({ genre: 'scifi', query: 'robot' }, 'en'), 'c');
+
+  assert.equal(ids(sortLibraryBooks(shelf, 'catalog')), 'a,b,c,d');
+  assert.notEqual(sortLibraryBooks(shelf, 'catalog'), shelf, 'a copy, so the catalog itself is never reordered');
+  assert.equal(ids(sortLibraryBooks(shelf, 'easiest')), 'd,a,c,b', 'ties (a and c) keep the catalog order');
+  assert.equal(ids(sortLibraryBooks(shelf, 'hardest')), 'b,a,c,d');
+  assert.equal(ids(sortLibraryBooks(shelf, 'shortest')), 'b,d,c,a', 'b and d tie, and keep the catalog order');
+  assert.equal(ids(sortLibraryBooks(shelf, 'longest')), 'a,c,b,d');
+  assert.equal(ids(shelf), 'a,b,c,d', 'sorting leaves the original order alone');
 
   // Fetching the catalog and a book.
   published.set('catalog.json', JSON.stringify({ schema: 1, books: [entry()] }));

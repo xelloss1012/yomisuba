@@ -151,6 +151,53 @@ export async function fetchLibraryCatalog(signal?: AbortSignal): Promise<Library
 export const libraryDescription = (book: LibraryBook, language: UiLanguage): string =>
   book.description[language] || book.description.en || book.description.ja || '';
 
+export type LibrarySort = 'catalog' | 'easiest' | 'hardest' | 'shortest' | 'longest';
+
+export interface LibraryFilters {
+  query: string;
+  genre: 'all' | LibraryGenre;
+  /** `free`: any Creative Commons licence. */
+  license: 'all' | 'public-domain' | 'free';
+  difficulty: 'all' | LibraryDifficulty;
+}
+
+export const NO_LIBRARY_FILTERS: LibraryFilters = { query: '', genre: 'all', license: 'all', difficulty: 'all' };
+
+/** Lower case, full-width forms folded and katakana written as hiragana, so ぼっちゃん finds ボッチャン and 坊っちゃん. */
+const searchForm = (text: string) =>
+  text.normalize('NFKC').toLowerCase().replace(/[ァ-ヶ]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0x60));
+
+/**
+ * The books that pass the filters. A search needs every word it has to appear in the title, its
+ * reading, the author or the description (in the interface language).
+ */
+export function filterLibraryBooks(books: LibraryBook[], filters: LibraryFilters, language: UiLanguage): LibraryBook[] {
+  const terms = searchForm(filters.query).split(/\s+/).filter(Boolean);
+  return books.filter((book) => {
+    if (filters.genre !== 'all' && !book.genres.includes(filters.genre)) return false;
+    if (filters.license !== 'all' && (filters.license === 'public-domain') !== (book.license.id === 'public-domain')) return false;
+    if (filters.difficulty !== 'all' && book.difficulty !== filters.difficulty) return false;
+    if (!terms.length) return true;
+    const haystack = searchForm(`${book.title} ${book.titleReading} ${book.author} ${libraryDescription(book, language)}`);
+    return terms.every((term) => haystack.includes(term));
+  });
+}
+
+/** A sorted copy; books that tie keep the catalog's order. */
+export function sortLibraryBooks(books: LibraryBook[], sort: LibrarySort): LibraryBook[] {
+  const key: Record<Exclude<LibrarySort, 'catalog'>, (book: LibraryBook) => number> = {
+    easiest: (book) => book.difficulty,
+    hardest: (book) => -book.difficulty,
+    shortest: (book) => book.characters,
+    longest: (book) => -book.characters,
+  };
+  if (sort === 'catalog') return [...books];
+  return books
+    .map((book, index) => ({ book, index }))
+    .sort((left, right) => key[sort](left.book) - key[sort](right.book) || left.index - right.index)
+    .map(({ book }) => book);
+}
+
 /** Genres of the catalog, in the library's order, that at least one book has. */
 export const genresInCatalog = (books: LibraryBook[]): LibraryGenre[] =>
   LIBRARY_GENRES.filter((genre) => books.some((book) => book.genres.includes(genre)));
