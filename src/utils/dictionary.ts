@@ -131,6 +131,13 @@ const godanPotentialStemToDictionaryForm: Record<string, string> = {
   れ: 'る',
 };
 
+// Verbs that follow a て-form only to add an aspect; the reader joins them to
+// that verb and the dictionary looks the verb up instead.
+export const auxiliaryTeFormVerbs = new Set(['いる', 'おる', 'おく', 'しまう', 'くる', 'いく', 'みる', 'ある']);
+export const contractedTeRuForms = new Set(['てる', 'でる']);
+// Contracted て-form auxiliaries as kuromoji gives their basic form (書いてる, 送り出しちゃおう).
+const contractedTeFormVerbs = new Set([...contractedTeRuForms, 'ちゃう', 'じゃう', 'とく', 'どく']);
+
 const guessBaseForms = (word: string): string[] => {
   if (!word) return [];
 
@@ -568,10 +575,30 @@ export const getDictionarySearchTerms = async (
     const tokens = await tokenizer.tokenize(originalText);
     tokenizerAvailable = true;
 
+    // A verb that only adds an aspect to the て-form before it (送り出してしまおう,
+    // 食べている, 書いてる) is not the word being looked up: the reader joins it to
+    // that verb, and looking it up would answer しまう instead of 送り出す.
+    const isTeFormAuxiliary = (index: number): boolean => {
+      const token = tokens[index];
+      const previous = tokens[index - 1];
+      if (token.pos !== '動詞' || !previous) return false;
+      if (token.pos_detail_1 === '非自立' && contractedTeFormVerbs.has(token.basic_form || '')) {
+        return previous.pos === '動詞';
+      }
+      return previous.pos === '助詞' &&
+        ['て', 'で'].includes(previous.surface_form) &&
+        auxiliaryTeFormVerbs.has(token.basic_form || token.surface_form);
+    };
+    const auxiliaryIndexes = new Set<number>();
+    for (let i = tokens.length - 1; i > 0 && (isTeFormAuxiliary(i) || ['助詞', '助動詞'].includes(tokens[i].pos)); i -= 1) {
+      if (isTeFormAuxiliary(i)) auxiliaryIndexes.add(i);
+    }
+
     // Look for the last predicate token (verb, adjective) to reconstruct the base form of the whole phrase
     let lastVerbIdx = -1;
     for (let i = tokens.length - 1; i >= 0; i -= 1) {
       if (
+        !auxiliaryIndexes.has(i) &&
         ['動詞', '形容詞', '形容動詞'].includes(tokens[i].pos) &&
         tokens[i].basic_form &&
         tokens[i].basic_form !== '*'
@@ -589,7 +616,9 @@ export const getDictionarySearchTerms = async (
     }
 
     const meaningfulTokens = tokens.filter(
-      (token) => !['記号', '助詞', '助動詞'].includes(token.pos) && token.surface_form
+      (token, index) => !['記号', '助詞', '助動詞'].includes(token.pos) &&
+        !auxiliaryIndexes.has(index) &&
+        token.surface_form
     );
 
     if (meaningfulTokens.length > 1) {

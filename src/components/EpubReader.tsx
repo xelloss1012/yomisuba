@@ -60,6 +60,8 @@ import {
 } from '../utils/frequentQueries';
 import { ReaderBookBackup, ReaderDataGroup } from '../utils/googleDriveBackup';
 import {
+  auxiliaryTeFormVerbs,
+  contractedTeRuForms,
   DictionaryLookup,
   getDictionarySearchTerms,
   JapaneseMorphologicalToken,
@@ -3670,8 +3672,6 @@ export const EpubReader: React.FC<Props> = ({
         start: number;
         end: number;
       }> = [];
-      const auxiliaryTeFormVerbs = new Set(['いる', 'おる', 'おく', 'しまう', 'くる', 'いく', 'みる', 'ある']);
-      const contractedTeRuForms = new Set(['てる', 'でる']);
       locatedTokens.forEach(({ token, start, end }) => {
         if (!token.surface_form.trim() || token.pos === '記号') return;
         const previous = mergedTokens[mergedTokens.length - 1];
