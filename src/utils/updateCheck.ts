@@ -5,7 +5,7 @@
  * is signed with the same key as the installed app). The web version needs none of
  * this, since every push to main publishes it again.
  *
- * It asks GitHub's public API at most once a day, and the reader can turn it off.
+ * It asks GitHub's public API at most every few hours, and the reader can turn it off.
  */
 export const APP_VERSION: string = __APP_VERSION__;
 
@@ -13,7 +13,7 @@ const REPOSITORY = 'xelloss1012/yomisuba';
 const LATEST_RELEASE_URL = `https://api.github.com/repos/${REPOSITORY}/releases/latest`;
 const RELEASES_PREFIX = `https://github.com/${REPOSITORY}/releases/`;
 const APK_NAME = 'yomisuba.apk';
-const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 10_000;
 
 const CHECK_KEY = 'yomisuba_update_check_v1';
@@ -143,8 +143,9 @@ const readStoredCheck = (storage: StorageLike | null): StoredCheck | null => {
 
 /**
  * The newer release, if there is one. Asks GitHub only when the last answer is
- * over a day old (or `force`); between checks it answers from the stored one. A
- * failed request keeps the stored answer and is tried again next time.
+ * a few hours old (or `force`); between checks it answers from the stored one. A
+ * failed request keeps the stored answer and is tried again next time, except when
+ * `force` is set: the reader asked, so the failure is reported.
  */
 export async function checkForUpdate(
   { force = false }: { force?: boolean } = {},
@@ -171,7 +172,8 @@ export async function checkForUpdate(
     const release = parseRelease(await response.json());
     write(storage, CHECK_KEY, JSON.stringify({ checkedAt: now, release } satisfies StoredCheck));
     return newerThanInstalled(release);
-  } catch {
+  } catch (error) {
+    if (force) throw error;
     return newerThanInstalled(stored?.release ?? null);
   }
 }

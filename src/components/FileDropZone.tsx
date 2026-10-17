@@ -9,6 +9,7 @@ import { BookShelf } from './BookShelf';
 import { BookLibraryModal } from './BookLibraryModal';
 import { UpdateNotice } from './UpdateNotice';
 import { UpdateCheckToggle } from './UpdateCheckToggle';
+import { UpdateCheckNow } from './UpdateCheckNow';
 import { isUpdateCheckEnabled } from '../utils/updateCheck';
 import { AVAILABLE_LANGUAGES } from '../utils/i18n';
 import { useLanguage, useT } from '../i18n/LanguageContext';
@@ -239,6 +240,11 @@ export const FileDropZone: React.FC<Props> = ({
           </a>
           {isNative && <UpdateCheckToggle variant="inline" onChange={setUpdateChecks} />}
         </div>
+        {isNative && (
+          <div className="mt-2 flex justify-center text-[11px] text-zinc-500 dark:text-zinc-400">
+            <UpdateCheckNow />
+          </div>
+        )}
       </div>
     </div>
   );

@@ -70,7 +70,7 @@ try {
   let clock = 1_000_000;
   const environment = (storage, fetchFake) => ({ currentVersion: '1.0.0', now: () => clock, fetch: fetchFake, storage });
 
-  // Asks GitHub, remembers the answer and does not ask again within a day.
+  // Asks GitHub, remembers the answer and does not ask again within a few hours.
   {
     const storage = memoryStorage();
     const { fetchFake, calls } = respond(release('v1.1.0'));
@@ -78,12 +78,12 @@ try {
     assert.equal(found.version, '1.1.0');
     assert.equal(calls.length, 1);
     assert.match(calls[0], /api\.github\.com\/repos\/xelloss1012\/yomisuba\/releases\/latest$/);
-    clock += 23 * HOUR;
+    clock += 5 * HOUR;
     assert.equal((await checkForUpdate({}, environment(storage, fetchFake))).version, '1.1.0', 'answers from the stored check');
     assert.equal(calls.length, 1);
     clock += 2 * HOUR;
     await checkForUpdate({}, environment(storage, fetchFake));
-    assert.equal(calls.length, 2, 'asks again after a day');
+    assert.equal(calls.length, 2, 'asks again after six hours');
     await checkForUpdate({ force: true }, environment(storage, fetchFake));
     assert.equal(calls.length, 3, 'force skips the wait');
   }
@@ -136,6 +136,7 @@ try {
     assert.equal(await checkForUpdate({}, environment(fresh, offline)), null);
     const garbage = respond({ tag_name: 7 });
     assert.equal(await checkForUpdate({ force: true }, environment(memoryStorage(), garbage.fetchFake)), null);
+    await assert.rejects(checkForUpdate({ force: true }, environment(memoryStorage(), offline)), /Failed to fetch/, 'a check the reader asked for reports its failure');
   }
 
   // Storage that throws (private mode) is tolerated.
