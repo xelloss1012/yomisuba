@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { UploadCloud, BookOpen, Sparkles, FileText, Clock3, Trash2, Languages, Smartphone, Github, ShieldCheck } from 'lucide-react';
+import { UploadCloud, BookOpen, Sparkles, FileText, Clock3, Trash2, Languages, Smartphone, Github, ShieldCheck, Library } from 'lucide-react';
 import { createSampleJapaneseEpub } from '../utils/sampleBook';
 import { RecentBook } from '../utils/recentBooks';
 import { GoogleDriveBook, GoogleDriveSession } from '../utils/googleDriveBackup';
 import { GoogleDriveBackupPanel } from './GoogleDriveBackupPanel';
 import { BookCoverThumbnail } from './BookCoverThumbnail';
+import { BookLibraryModal } from './BookLibraryModal';
 import { AVAILABLE_LANGUAGES } from '../utils/i18n';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { ReaderSettingsState } from '../types/epub';
@@ -59,6 +60,7 @@ export const FileDropZone: React.FC<Props> = ({
   const t = useT();
   const language = useLanguage();
   const [isDragOver, setIsDragOver] = useState(false);
+  const [isLibraryOpen, setIsLibraryOpen] = useState(false);
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -208,6 +210,22 @@ export const FileDropZone: React.FC<Props> = ({
           </button>
         </div>
 
+        <div className="mt-4 flex flex-col items-center justify-between gap-4 sm:flex-row">
+          <div className="text-left">
+            <div className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">{t('library.title')}</div>
+            <div className="text-[11px] text-zinc-500 dark:text-zinc-400">{t('library.subtitle')}</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsLibraryOpen(true)}
+            disabled={isLoading}
+            className="flex min-h-11 w-full min-w-0 items-center justify-center gap-2 rounded-xl border border-zinc-300 bg-stone-100 px-3 py-2.5 text-center text-xs font-semibold text-zinc-800 shadow-sm transition-all hover:bg-stone-200 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700 sm:w-auto sm:max-w-full"
+          >
+            <Library className="w-4 h-4 text-indigo-500" />
+            <span className="min-w-0">{t('library.button')}</span>
+          </button>
+        </div>
+
         {recentBooks.length > 0 && (
           <div className="mt-8 pt-6 border-t border-zinc-200 dark:border-zinc-800 text-left">
             <div className="flex items-center gap-2 mb-3">
@@ -248,6 +266,15 @@ export const FileDropZone: React.FC<Props> = ({
             </div>
           </div>
         )}
+
+        <BookLibraryModal
+          isOpen={isLibraryOpen}
+          recentBooks={recentBooks}
+          isLoading={isLoading}
+          onClose={() => setIsLibraryOpen(false)}
+          onOpenRecent={onOpenRecent}
+          onFileLoaded={onFileLoaded}
+        />
 
         <div className="mt-8 pt-4 border-t border-zinc-200 dark:border-zinc-800 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[11px] text-zinc-500 dark:text-zinc-400">
           {!Capacitor.isNativePlatform() && (

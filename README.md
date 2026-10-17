@@ -52,6 +52,11 @@ Lector EPUB con soporte de japonés vertical (縦書き). Una aplicación web mo
    - Para actualizarlo a la última versión oficial (Python 3.8 o superior): `npm run dictionary:update`.
    - Los datos JMdict/EDICT son © Electronic Dictionary Research and Development Group (EDRDG), bajo licencia [CC BY-SA 4.0](https://www.edrdg.org/edrdg/licence.html). Consulta también la [fuente y documentación de JMdict](https://www.edrdg.org/wiki/JMdict-EDICT_Dictionary_Project.html).
 
+7. **Biblioteca gratuita de libros japoneses**:
+   - Obras de dominio público de [Aozora Bunko](https://www.aozora.gr.jp/) que se descargan solo si el usuario las elige (botón «Biblioteca gratuita» de la pantalla de inicio). Cada libro muestra carátula, descripción, géneros, tamaño, páginas aproximadas, una dificultad estimada de 1 a 5 y su fuente y licencia; se puede filtrar por género.
+   - El catálogo y los EPUB se publican en el repositorio [yomisuba-library](https://github.com/xelloss1012/yomisuba-library), generados con `npm run library:build -- <ruta-del-repositorio>` y validados con `npm run library:check -- <ruta-del-repositorio>`. Solo se aceptan autores fallecidos en 1945 o antes, de modo que la obra es de dominio público en Japón, EE. UU., la UE y España; algunos países tienen plazos más largos.
+   - La descarga se comprueba con una suma SHA-256, el libro se guarda como cualquier EPUB importado y no se copia a Google Drive. Una bifurcación (fork) puede publicar su propia biblioteca y apuntar a ella con `VITE_LIBRARY_BASE_URL`.
+
 ---
 
 ## 🚀 Cómo ejecutar la aplicación
@@ -260,6 +265,8 @@ Google pedirá autorización para crear, listar, leer y actualizar los archivos 
 - `src/components/ReaderSettings.tsx`: Panel flotante de ajustes (fuentes, tamaño, temas, interlineado).
 - `src/components/ReaderToc.tsx`: Drawer lateral con la tabla de contenidos / capítulos.
 - `src/components/FileDropZone.tsx`: Pantalla de bienvenida con Drag & Drop y botón de muestra.
+- `src/components/BookLibraryModal.tsx` y `src/utils/libraryCatalog.ts`: Biblioteca gratuita (catálogo, filtros por género, descarga verificada).
+- `scripts/build-library.mjs` y `scripts/check-library.mjs`: Generan y validan el repositorio de la biblioteca.
 
 ---
 
@@ -274,6 +281,7 @@ Los datos de diccionario mantienen su propia licencia, que no es la del código:
 
 - **Niveles de vocabulario** (`src/data/word-levels.json.gz`): marcas de frecuencia de JMdict (EDRDG, CC BY-SA 4.0), listas de vocabulario y kanji del JLPT de Jonathan Waller ([tanos.co.uk](http://www.tanos.co.uk/jlpt/), CC BY, en la versión de [Bluskyo/JLPT_Vocabulary](https://github.com/Bluskyo/JLPT_Vocabulary)) y KANJIDIC2 (EDRDG, CC BY-SA 4.0). Las listas JLPT no son oficiales.
 
+- **Libros de la biblioteca gratuita** (repositorio [yomisuba-library](https://github.com/xelloss1012/yomisuba-library)): obras de dominio público de [Aozora Bunko](https://www.aozora.gr.jp/) (青空文庫), con los créditos de la edición, de quien transcribió y de quien revisó cada texto en [ATTRIBUTION.md](https://github.com/xelloss1012/yomisuba-library/blob/main/ATTRIBUTION.md). El catálogo, las descripciones y las carátulas están bajo [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).
 - **Análisis morfológico** (`public/dict/`): diccionario de [kuromoji.js](https://github.com/takuyaa/kuromoji.js) (Apache 2.0), derivado de mecab-ipadic-2.7.0 (© Nara Institute of Science and Technology). Su aviso de licencia completo está en [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 - **Libro de muestra**: *走れメロス*, de Dazai Osamu, obra de dominio público.
 

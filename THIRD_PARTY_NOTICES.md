@@ -4,6 +4,10 @@ Yomisuba incluye código y datos de terceros que conservan sus propias licencias
 Las licencias de los diccionarios (JMdict, Wiktionary, listas JLPT, KANJIDIC2)
 se detallan en el [README](README.md#-licencia).
 
+## Aozora Bunko (青空文庫)
+
+Los libros de la biblioteca gratuita (repositorio [yomisuba-library](https://github.com/xelloss1012/yomisuba-library)) son obras de dominio público procedentes de [Aozora Bunko](https://www.aozora.gr.jp/), la biblioteca digital de voluntarios. Se conservan en cada EPUB la edición de base y los nombres de quienes transcribieron y revisaron el texto, como pide Aozora Bunko, y se repiten en el [ATTRIBUTION.md](https://github.com/xelloss1012/yomisuba-library/blob/main/ATTRIBUTION.md) de ese repositorio.
+
 ## kuromoji.js
 
 Analizador morfológico japonés, © Takuya Asano y colaboradores, bajo la
