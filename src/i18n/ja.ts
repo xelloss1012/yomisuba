@@ -2,6 +2,9 @@ export const ja: Record<string, string> = {
   // FileDropZone / Main Page
   'app.title': 'Yomisuba',
   'app.slogan': '読みの素晴らしい世界に祝福を！',
+  'app.downloadAndroid': 'Android版をダウンロード',
+  'app.sourceCode': 'ソースコード',
+  'app.privacy': 'プライバシー',
   'app.subtitle': 'EPUBリーダー • 縦書き対応',
   'app.description': '一般的な電子書籍に加え、ふりがなとページ送りに対応した日本語の縦書き表示で読めます。',
   'dropzone.dragPrefix': '',

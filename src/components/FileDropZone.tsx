@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { UploadCloud, BookOpen, Sparkles, FileText, Clock3, Trash2, Languages } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
+import { UploadCloud, BookOpen, Sparkles, FileText, Clock3, Trash2, Languages, Smartphone, Github, ShieldCheck } from 'lucide-react';
 import { createSampleJapaneseEpub } from '../utils/sampleBook';
 import { RecentBook } from '../utils/recentBooks';
 import { GoogleDriveBook, GoogleDriveSession } from '../utils/googleDriveBackup';
@@ -8,6 +9,11 @@ import { BookCoverThumbnail } from './BookCoverThumbnail';
 import { AVAILABLE_LANGUAGES } from '../utils/i18n';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { ReaderSettingsState } from '../types/epub';
+
+const SOURCE_URL = 'https://github.com/xelloss1012/yomisuba';
+// Always the APK of the latest GitHub release.
+const ANDROID_DOWNLOAD_URL = `${SOURCE_URL}/releases/latest/download/yomisuba.apk`;
+const PRIVACY_URL = 'https://xelloss1012.github.io/yomisuba/privacy.html';
 
 interface Props {
   onFileLoaded: (file: File | Blob) => void;
@@ -242,6 +248,23 @@ export const FileDropZone: React.FC<Props> = ({
             </div>
           </div>
         )}
+
+        <div className="mt-8 pt-4 border-t border-zinc-200 dark:border-zinc-800 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[11px] text-zinc-500 dark:text-zinc-400">
+          {!Capacitor.isNativePlatform() && (
+            <a href={ANDROID_DOWNLOAD_URL} className="inline-flex items-center gap-1 font-semibold text-indigo-600 hover:underline dark:text-indigo-400">
+              <Smartphone className="h-3.5 w-3.5" />
+              {t('app.downloadAndroid')}
+            </a>
+          )}
+          <a href={SOURCE_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:underline">
+            <Github className="h-3.5 w-3.5" />
+            {t('app.sourceCode')}
+          </a>
+          <a href={PRIVACY_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:underline">
+            <ShieldCheck className="h-3.5 w-3.5" />
+            {t('app.privacy')}
+          </a>
+        </div>
       </div>
     </div>
   );

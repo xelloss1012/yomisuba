@@ -4,7 +4,9 @@
 >
 > *Yomisuba* es la abreviatura de este nombre largo: «¡Bendiciones a este maravilloso mundo de la lectura!».
 
-**Aplicación web:** <https://xelloss1012.github.io/yomisuba/> · **Política de privacidad:** <https://xelloss1012.github.io/yomisuba/privacy.html>
+**Aplicación web:** <https://xelloss1012.github.io/yomisuba/> · **Android:** [descargar el APK](https://github.com/xelloss1012/yomisuba/releases/latest/download/yomisuba.apk) · **Política de privacidad:** <https://xelloss1012.github.io/yomisuba/privacy.html>
+
+> El APK se instala fuera de Google Play: Android pedirá permiso para instalar aplicaciones desconocidas y Play Protect puede advertir de que no reconoce la aplicación.
 
 Lector EPUB con soporte de japonés vertical (縦書き). Una aplicación web moderna tipo Kindle desarrollada en **React + TypeScript + Vite + Tailwind CSS**, optimizada para la lectura de libros EPUB tanto en formato horizontal occidental como en **formato vertical tradicional japonés (`vertical-rl` / 縦書き)** con soporte completo de **furigana (`<ruby>`)**, ilustraciones, estilos e índice de contenidos.
 
@@ -95,7 +97,7 @@ npm run android:build:release
 ```
 
 El APK se copia siempre en
-`dist/android/yomisuba-release.apk`. `dist/` está excluido de
+`dist/android/yomisuba.apk`. `dist/` está excluido de
 Git, por lo que el binario no se sube al repositorio. El `dist/index.html` de
 la versión web se mantiene en paralelo.
 
@@ -135,10 +137,26 @@ En GitHub Actions se configura en *Settings → Secrets and variables → Action
 - Variable `VITE_GOOGLE_WEB_CLIENT_ID` (el ID de cliente web no es secreto: va
   dentro de la aplicación).
 
-Con los secretos, el workflow genera `yomisuba-release.apk` firmado; sin ellos
+Con los secretos, el workflow genera `yomisuba.apk` firmado; sin ellos
 (por ejemplo, en pull requests desde forks) genera `yomisuba-debug.apk`. El SHA-1
 que hay que registrar en Google Cloud se obtiene con
 `keytool -list -v -keystore yomisuba-release.jks -alias yomisuba`.
+
+#### Publicar una versión
+
+La versión de la app sale de `version` en `package.json` (el `versionCode` de
+Android se calcula a partir de ella). Para publicar una nueva:
+
+```bash
+npm version 1.1.0 -m "Versión %s"   # actualiza package.json y crea la etiqueta v1.1.0
+git push origin main --follow-tags
+```
+
+Al subir la etiqueta, el workflow compila el APK firmado y crea la release en
+GitHub con el archivo adjunto. El enlace
+<https://github.com/xelloss1012/yomisuba/releases/latest/download/yomisuba.apk>
+descarga siempre la última, y es el que usa el botón «Descargar para Android» de
+la versión web.
 
 ---
 

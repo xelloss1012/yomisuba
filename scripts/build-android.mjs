@@ -68,7 +68,7 @@ if (!existsSync(apkPath)) {
 const outputDir = join(root, 'dist', 'android');
 mkdirSync(outputDir, { recursive: true });
 const outputFilename = buildType === 'release'
-  ? 'yomisuba-release.apk'
+  ? 'yomisuba.apk'
   : 'yomisuba-debug.apk';
 const outputPath = join(outputDir, outputFilename);
 copyFileSync(apkPath, outputPath);

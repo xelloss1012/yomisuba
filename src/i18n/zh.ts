@@ -2,6 +2,9 @@ export const zh: Record<string, string> = {
   // FileDropZone / Main Page
   'app.title': 'Yomisuba',
   'app.slogan': '読みの素晴らしい世界に祝福を！',
+  'app.downloadAndroid': '下载 Android 版',
+  'app.sourceCode': '源代码',
+  'app.privacy': '隐私',
   'app.subtitle': 'EPUB 阅读器 • 縦書き (日式竖排)',
   'app.description': '支持标准数字图书与传统日式竖排阅读，支持假名注音与分页。',
   'dropzone.dragPrefix': '将您的文件拖到 ',

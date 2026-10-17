@@ -2,6 +2,9 @@ export const de: Record<string, string> = {
   // FileDropZone / Main Page
   'app.title': 'Yomisuba',
   'app.slogan': '読みの素晴らしい世界に祝福を！',
+  'app.downloadAndroid': 'Für Android herunterladen',
+  'app.sourceCode': 'Quellcode',
+  'app.privacy': 'Datenschutz',
   'app.subtitle': 'EPUB Reader • 縦書き (Senkrechtes Japanisch)',
   'app.description': 'Kompatibel mit Standard-E-Books und traditionellem senkrechten japanischen Lesen mit Furigana-Unterstützung und Paginierung.',
   'dropzone.dragPrefix': 'Ziehen Sie Ihre Datei ',

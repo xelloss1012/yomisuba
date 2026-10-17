@@ -2,6 +2,9 @@ export const vi: Record<string, string> = {
   // FileDropZone / Main Page
   'app.title': 'Yomisuba',
   'app.slogan': '読みの素晴らしい世界に祝福を！',
+  'app.downloadAndroid': 'Tải cho Android',
+  'app.sourceCode': 'Mã nguồn',
+  'app.privacy': 'Quyền riêng tư',
   'app.subtitle': 'Trình đọc EPUB • 縦書き (Tiếng Nhật dọc)',
   'app.description': 'Tương thích với sách điện tử tiêu chuẩn và đọc dọc truyền thống kiểu Nhật với hỗ trợ furigana và phân trang.',
   'dropzone.dragPrefix': 'Kéo tệp của bạn vào ',

@@ -1,5 +1,10 @@
 apply plugin: 'com.android.application'
 
+// The app version comes from package.json, so local and CI builds of the same
+// release agree and each new release installs over the previous one.
+def appVersion = new groovy.json.JsonSlurper().parse(rootProject.file('../package.json')).version
+def (appMajor, appMinor, appPatch) = appVersion.tokenize('.-')[0..2].collect { it as int }
+
 android {
     namespace = "io.github.xelloss1012.yomisuba"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +12,8 @@ android {
         applicationId "io.github.xelloss1012.yomisuba"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode appMajor * 10000 + appMinor * 100 + appPatch
+        versionName appVersion
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
