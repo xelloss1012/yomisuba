@@ -11,18 +11,22 @@ import JSZip from 'jszip';
 
 const libraryDir = resolve(process.argv[2] || '');
 const catalog = JSON.parse(readFileSync(join(libraryDir, 'catalog.json'), 'utf8'));
-const GENRES = ['fantasy', 'scifi', 'mystery', 'horror', 'romance', 'historical', 'humor', 'drama', 'children'];
+const GENRES = ['fantasy', 'scifi', 'mystery', 'horror', 'romance', 'historical', 'humor', 'drama', 'children', 'nonfiction'];
 const problems = [];
 const errors = [];
 
 const parseXml = (text, name) => {
-  const doc = new DOMParser({
-    onError: (level, message) => { if (level !== 'warning') errors.push(`${name}: ${message}`); },
-  }).parseFromString(text, 'application/xhtml+xml');
-  return doc;
+  try {
+    return new DOMParser({
+      onError: (level, message) => { if (level !== 'warning') errors.push(`${name}: ${message}`); },
+    }).parseFromString(text, 'application/xhtml+xml');
+  } catch (error) {
+    errors.push(`${name}: ${error.message}`);
+    return new DOMParser().parseFromString('<empty/>', 'text/xml');
+  }
 };
 
-assert.equal(catalog.schema, 1);
+assert.equal(catalog.schema, 2);
 const slugs = new Set();
 for (const book of catalog.books) {
   assert(!slugs.has(book.slug), `${book.slug} is listed twice`);
@@ -33,7 +37,15 @@ for (const book of catalog.books) {
   assert(book.genres.length > 0 && book.genres.every((genre) => GENRES.includes(genre)), `${book.slug}: bad genres`);
   for (const lang of ['ja', 'es', 'en']) assert(book.description[lang], `${book.slug}: no ${lang} description`);
   assert(book.level.score >= 1 && book.level.score <= 5, `${book.slug}: bad difficulty`);
-  assert(book.license.id === 'public-domain' && Number(book.license.authorDied.slice(0, 4)) <= 1945, `${book.slug}: license`);
+  if (book.license.id === 'public-domain') {
+    assert(Number(book.license.authorDied.slice(0, 4)) <= 1945, `${book.slug}: public domain needs an author who died by 1945`);
+  } else {
+    // Only licences that allow adapting and redistributing, with the credit and a link to the terms.
+    assert(['cc-by', 'cc-by-sa'].includes(book.license.id), `${book.slug}: licence ${book.license.id} is not accepted`);
+    assert(book.license.name?.startsWith('CC BY') && book.license.credit, `${book.slug}: licence name and credit are required`);
+    assert(['translator', 'author'].includes(book.license.creditRole) && book.license.creditName, `${book.slug}: credit role and name are required`);
+    assert(book.license.url?.startsWith('https://creativecommons.org/licenses/'), `${book.slug}: licence link`);
+  }
 
   const epubPath = join(libraryDir, book.file);
   assert(existsSync(epubPath), `${book.slug}: ${book.file} is missing`);
@@ -65,7 +77,8 @@ for (const book of catalog.books) {
     if (item.getAttribute('media-type') !== 'application/xhtml+xml') continue;
     const page = await zip.file(posix.join(base, item.getAttribute('href'))).async('string');
     for (const [, src] of page.matchAll(/<img\b[^>]*\bsrc="([^"]+)"/g)) {
-      if (!zip.file(posix.join(base, src))) problems.push(`${book.slug}: ${item.getAttribute('href')} uses ${src}, which is not in the book`);
+      if (/^(https?:)?\/\//.test(src)) problems.push(`${book.slug}: ${item.getAttribute('href')} loads ${src} from the network`);
+      else if (!zip.file(posix.join(base, src))) problems.push(`${book.slug}: ${item.getAttribute('href')} uses ${src}, which is not in the book`);
     }
   }
   assert(opf.getElementsByTagName('dc:title')[0].textContent.length > 0);

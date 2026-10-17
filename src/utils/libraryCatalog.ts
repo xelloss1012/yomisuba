@@ -15,11 +15,11 @@ export const LIBRARY_BASE_URL = configuredBaseUrl
 export const LIBRARY_REPOSITORY_URL = 'https://github.com/xelloss1012/yomisuba-library';
 export const LIBRARY_ATTRIBUTION_URL = `${LIBRARY_REPOSITORY_URL}/blob/main/ATTRIBUTION.md`;
 
-/** Catalog format this version of the app understands. */
-const SUPPORTED_SCHEMA = 1;
+/** Catalog formats this version of the app understands (2 added licences other than public domain). */
+const SUPPORTED_SCHEMAS = [1, 2];
 
 export const LIBRARY_GENRES = [
-  'fantasy', 'scifi', 'mystery', 'horror', 'romance', 'historical', 'humor', 'drama', 'children',
+  'fantasy', 'scifi', 'mystery', 'horror', 'romance', 'historical', 'humor', 'drama', 'children', 'nonfiction',
 ] as const;
 export type LibraryGenre = typeof LIBRARY_GENRES[number];
 
@@ -45,8 +45,28 @@ export interface LibraryBook {
   pages: number;
   difficulty: LibraryDifficulty;
   source: { name: string; url: string };
-  license: { id: string; authorDied: string };
+  license: LibraryLicense;
 }
+
+/**
+ * Public domain, or a Creative Commons licence that lets the work be adapted and
+ * redistributed with credit (BY, BY-SA); the build script accepts nothing else.
+ */
+export type LibraryLicenseId = 'public-domain' | 'cc-by' | 'cc-by-sa';
+
+export interface LibraryLicense {
+  id: LibraryLicenseId;
+  /** "CC BY 4.0"; empty for public domain, which the interface words itself. */
+  name: string;
+  /** Terms of a Creative Commons licence. */
+  url: string | null;
+  creditRole: 'translator' | 'author' | null;
+  creditName: string;
+  authorDied: string;
+}
+
+const LICENSE_IDS: LibraryLicenseId[] = ['public-domain', 'cc-by', 'cc-by-sa'];
+const CC_TERMS_PREFIX = 'https://creativecommons.org/licenses/';
 
 const SAFE_PATH = /^(books|covers)\/[a-z0-9-]+\.(epub|png)$/;
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -61,7 +81,9 @@ const isCount = (value: unknown): value is number => typeof value === 'number' &
  */
 export function parseLibraryCatalog(data: unknown): LibraryBook[] {
   if (!isRecord(data) || !Array.isArray(data.books)) throw new Error('El catálogo no tiene un formato válido.');
-  if (data.schema !== SUPPORTED_SCHEMA) throw new Error('El catálogo necesita una versión más reciente de la aplicación.');
+  if (typeof data.schema !== 'number' || !SUPPORTED_SCHEMAS.includes(data.schema)) {
+    throw new Error('El catálogo necesita una versión más reciente de la aplicación.');
+  }
   const books: LibraryBook[] = [];
   for (const raw of data.books) {
     if (!isRecord(raw) || !isRecord(raw.source) || !isRecord(raw.license) || !isRecord(raw.level) || !isRecord(raw.description)) continue;
@@ -69,6 +91,9 @@ export function parseLibraryCatalog(data: unknown): LibraryBook[] {
       ? raw.genres.filter((genre): genre is LibraryGenre => LIBRARY_GENRES.includes(genre as LibraryGenre))
       : [];
     const score = raw.level.score;
+    const license = raw.license; // narrowed here; a closure below would lose that
+    const licenseId = LICENSE_IDS.find((id) => id === license.id);
+    const licenseUrl = typeof license.url === 'string' && license.url.startsWith(CC_TERMS_PREFIX) ? license.url : null;
     if (
       !isText(raw.id) || !isText(raw.slug) || !isText(raw.title) || !isText(raw.author)
       || !isText(raw.file) || !SAFE_PATH.test(raw.file) || !raw.file.endsWith('.epub')
@@ -78,6 +103,8 @@ export function parseLibraryCatalog(data: unknown): LibraryBook[] {
       || !isText(raw.source.url) || !raw.source.url.startsWith('https://')
       || typeof score !== 'number' || ![1, 2, 3, 4, 5].includes(score)
       || genres.length === 0
+      // A licence the app does not know, or a Creative Commons one without its name and terms, is not shown.
+      || !licenseId || (licenseId !== 'public-domain' && (!isText(license.name) || !licenseUrl))
     ) continue;
     const description: LibraryBook['description'] = {};
     for (const [language, text] of Object.entries(raw.description)) {
@@ -100,8 +127,12 @@ export function parseLibraryCatalog(data: unknown): LibraryBook[] {
       difficulty: score as LibraryDifficulty,
       source: { name: isText(raw.source.name) ? raw.source.name : 'Aozora Bunko', url: raw.source.url },
       license: {
-        id: isText(raw.license.id) ? raw.license.id : 'public-domain',
-        authorDied: isText(raw.license.authorDied) ? raw.license.authorDied : '',
+        id: licenseId,
+        name: licenseId === 'public-domain' ? '' : String(license.name),
+        url: licenseId === 'public-domain' ? null : licenseUrl,
+        creditRole: license.creditRole === 'translator' || license.creditRole === 'author' ? license.creditRole : null,
+        creditName: isText(license.creditName) ? license.creditName : '',
+        authorDied: isText(license.authorDied) ? license.authorDied : '',
       },
     });
   }

@@ -65,9 +65,42 @@ try {
   assert.deepEqual(books.map((item) => item.id), ['aozora-1', 'ok']);
   assert.deepEqual(books[1].genres, ['mystery'], 'unknown genres are filtered out of an otherwise valid entry');
 
-  assert.throws(() => parseLibraryCatalog({ schema: 2, books: [] }), /más reciente/);
+  assert.throws(() => parseLibraryCatalog({ schema: 3, books: [] }), /más reciente/);
   assert.throws(() => parseLibraryCatalog({ schema: 1 }), /formato/);
   assert.throws(() => parseLibraryCatalog([]), /formato/);
+
+  // Licences: public domain, or Creative Commons BY / BY-SA with their name and terms; anything else is dropped.
+  const cc = (overrides = {}) => entry({
+    id: 'cc1', slug: 'cc1', file: 'books/cc1.epub', cover: 'covers/cc1.png',
+    license: {
+      id: 'cc-by', name: 'CC BY 2.1 JP', url: 'https://creativecommons.org/licenses/by/2.1/jp/',
+      creditRole: 'translator', creditName: '大久保ゆう', credit: '翻訳: 大久保ゆう',
+    },
+    ...overrides,
+  });
+  const licensed = parseLibraryCatalog({
+    schema: 2,
+    books: [
+      cc(),
+      cc({ id: 'sa', slug: 'sa', file: 'books/sa.epub', cover: 'covers/sa.png', license: { id: 'cc-by-sa', name: 'CC BY-SA 4.0', url: 'https://creativecommons.org/licenses/by-sa/4.0/', creditRole: 'author', creditName: '太田健一' } }),
+      cc({ id: 'nc', slug: 'nc', file: 'books/nc.epub', cover: 'covers/nc.png', license: { id: 'cc-by-nc', name: 'CC BY-NC 4.0', url: 'https://creativecommons.org/licenses/by-nc/4.0/' } }),
+      cc({ id: 'nd', slug: 'nd', file: 'books/nd.epub', cover: 'covers/nd.png', license: { id: 'cc-by-nd', name: 'CC BY-ND 4.0', url: 'https://creativecommons.org/licenses/by-nd/4.0/' } }),
+      cc({ id: 'bad-url', slug: 'bad-url', file: 'books/bad-url.epub', cover: 'covers/bad-url.png', license: { id: 'cc-by', name: 'CC BY 4.0', url: 'https://evil.example/by' } }),
+      cc({ id: 'no-name', slug: 'no-name', file: 'books/no-name.epub', cover: 'covers/no-name.png', license: { id: 'cc-by', url: 'https://creativecommons.org/licenses/by/4.0/' } }),
+      cc({ id: 'pd', slug: 'pd', file: 'books/pd.epub', cover: 'covers/pd.png', license: { id: 'public-domain', authorDied: '1916-12-09' } }),
+      cc({ id: 'unknown', slug: 'unknown', file: 'books/unknown.epub', cover: 'covers/unknown.png', license: { id: 'all-rights-reserved' } }),
+    ],
+  });
+  assert.deepEqual(licensed.map((item) => item.id), ['cc1', 'sa', 'pd'], 'NC, ND, unknown and incomplete licences are dropped');
+  assert.deepEqual(licensed[0].license, {
+    id: 'cc-by', name: 'CC BY 2.1 JP', url: 'https://creativecommons.org/licenses/by/2.1/jp/',
+    creditRole: 'translator', creditName: '大久保ゆう', authorDied: '',
+  });
+  assert.equal(licensed[1].license.id, 'cc-by-sa');
+  assert.equal(licensed[2].license.url, null, 'public domain has no licence link');
+  // Catalogs published before licences were added (schema 1) still read: their books are public domain.
+  assert.equal(parseLibraryCatalog({ schema: 1, books: [entry()] })[0].license.id, 'public-domain');
+  assert.deepEqual(genresInCatalog(parseLibraryCatalog({ schema: 2, books: [cc({ genres: ['nonfiction'] })] })), ['nonfiction']);
 
   // Description: interface language, then English, then Japanese.
   assert.equal(libraryDescription(book, 'es'), 'Español');

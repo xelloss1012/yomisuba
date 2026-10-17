@@ -9,7 +9,9 @@ import {
   TranslationLanguage,
 } from '../utils/i18n';
 import { useT } from '../i18n/LanguageContext';
+import { Capacitor } from '@capacitor/core';
 import { DownloadableDictionariesSection } from './OptionalDictionaryPanel';
+import { UpdateCheckToggle } from './UpdateCheckToggle';
 import type { JlptLevel } from '../utils/wordLevels';
 import {
   FURIGANA_MODES,
@@ -146,6 +148,8 @@ export const ReaderSettings: React.FC<Props> = ({
               {t('settings.studyLevelHint')}
             </span>
             <DownloadableDictionariesSection />
+            {/* Only the Android app can be out of date; the web version is republished on every change. */}
+            {Capacitor.isNativePlatform() && <UpdateCheckToggle variant="block" />}
           </div>
 
           {/* Dirección y Modo de Escritura (Japonés vertical vs horizontal) */}

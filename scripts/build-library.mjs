@@ -35,10 +35,12 @@ if (!libraryArg) {
 const libraryDir = resolve(libraryArg);
 const sources = JSON.parse(readFileSync(join(libraryDir, 'sources.json'), 'utf8'));
 
-const CATALOG_SCHEMA = 1;
+const CATALOG_SCHEMA = 2;
 const CACHE_DIR = join(tmpdir(), 'yomisuba-library-cache');
 const USER_AGENT = 'Yomisuba-library-builder (https://github.com/xelloss1012/yomisuba)';
 const FIXED_DATE = new Date('2026-01-01T00:00:00Z');
+// Illustrations beyond this many bytes are left out, to keep every download light.
+const MAX_ILLUSTRATION_BYTES = 1_000_000;
 const CHARS_PER_PAGE = 600; // a paperback (bunko) page, for the "about N pages" figure
 // Difficulty, 1 (easiest) to 5: how much of the vocabulary is N2 or easier. Aozora's
 // literature is never beginner material, so these cuts spread it out; they are an
@@ -54,6 +56,10 @@ const REPEAT_CAP = 3;
 // died up to 1945 are in the public domain in Japan, the United States, the EU (life+70)
 // and Spain (life+80 for authors who died before 1987). A few countries (Mexico) go further.
 const LAST_DEATH_YEAR = 1945;
+// Works still in copyright are accepted only when the rights holder says, in the file itself, that
+// they are under one of these Creative Commons licences. NonCommercial and NoDerivatives ones are
+// refused: converting to EPUB and adding pages is an adaptation, and the app may not stay free.
+const CREATIVE_COMMONS_ACCEPTED = new Set(['by', 'by-sa']);
 
 const GENRES = {
   fantasy: { ja: 'ファンタジー', color: '#33407f' },
@@ -65,6 +71,7 @@ const GENRES = {
   humor: { ja: 'ユーモア', color: '#a8721f' },
   drama: { ja: 'ドラマ', color: '#38543f' },
   children: { ja: '童話・児童文学', color: '#b8563a' },
+  nonfiction: { ja: 'ノンフィクション', color: '#47525c' },
 };
 
 mkdirSync(CACHE_DIR, { recursive: true });
@@ -108,22 +115,78 @@ async function loadAozoraCatalogue() {
   const csv = await zip.file('list_person_all_extended_utf8.csv').async('string');
   const rows = parseCsv(csv.replace(/^\uFEFF/, ''));
   const header = rows[0];
+  // One row per person of a work (author, translator, editor…): every one of them counts for copyright.
   const byId = new Map();
   for (const row of rows.slice(1)) {
     const record = Object.fromEntries(header.map((name, index) => [name, row[index] ?? '']));
-    if (record['役割フラグ'] === '著者' && !byId.has(record['作品ID'])) byId.set(record['作品ID'], record);
+    byId.set(record['作品ID'], [...(byId.get(record['作品ID']) || []), record]);
   }
   return byId;
 }
 
-function assertPublicDomain(record, id) {
-  const deathYear = Number(record['没年月日'].slice(0, 4));
-  if (record['作品著作権フラグ'] !== 'なし' || record['人物著作権フラグ'] !== 'なし') {
-    throw new Error(`Aozora ${id} is not flagged as free of copyright.`);
+/** The row of the work's author, the one that gives title and author name. */
+function authorRecord(rows, id) {
+  const record = rows.find((row) => row['役割フラグ'] === '著者');
+  if (!record) throw new Error(`Aozora ${id} has no author.`);
+  return record;
+}
+
+const deathYearOf = (row) => Number(row['没年月日'].slice(0, 4)) || 0;
+
+/** A foreign author is written in Western order (the catalogue gives surname and given name apart). */
+const personName = (row, western) => (western ? [row['名'], row['姓']] : [row['姓'], row['名']]).filter(Boolean).join(western ? '・' : '');
+
+/** The Creative Commons licence a file says it is under, or null. Aozora words it in several ways. */
+function detectCreativeCommons(pageText) {
+  const url = pageText.match(/creativecommons\.org\/licenses\/([a-z-]+)\/(\d\.\d)(?:\/(\w+))?/i);
+  // The last part of the link is a country code ("jp") or the name of the page ("deed.ja"), which is not one.
+  if (url) return { code: url[1].toLowerCase(), version: url[2], jurisdiction: /^[a-z]{2}$/i.test(url[3] || '') ? url[3].toLowerCase() : '' };
+  const english = pageText.match(/CC[- ]BY(-SA|-NC|-ND|-NC-ND|-NC-SA)?\s*(\d\.\d)/i);
+  if (english) return { code: `by${(english[1] || '').toLowerCase()}`, version: english[2], jurisdiction: '' };
+  const japanese = pageText.match(/表示\s*(?:[-－]\s*)?(非営利)?\s*(?:[-－]\s*)?(継承|改変禁止)?\s*(\d\.\d)\s*(日本|国際)?/);
+  if (japanese) {
+    const code = ['by', japanese[1] ? 'nc' : '', japanese[2] === '継承' ? 'sa' : japanese[2] ? 'nd' : ''].filter(Boolean).join('-');
+    return { code, version: japanese[3], jurisdiction: japanese[4] === '日本' ? 'jp' : '' };
   }
-  if (!deathYear || deathYear > LAST_DEATH_YEAR) {
-    throw new Error(`Aozora ${id}: the author died in ${deathYear || 'an unknown year'}; only authors who died up to ${LAST_DEATH_YEAR} are accepted.`);
+  return null;
+}
+
+/**
+ * Under what terms the work can be redistributed, or an error. Public domain needs every person
+ * credited (translators and editors too) to be clear of copyright and dead by LAST_DEATH_YEAR.
+ * Otherwise the file must carry an accepted Creative Commons licence, and a translated work needs
+ * its original author to have died by LAST_DEATH_YEAR (the licence covers the translation only).
+ */
+function rightsOf(rows, id, pageText) {
+  const clear = rows.every((row) => row['作品著作権フラグ'] === 'なし' && row['人物著作権フラグ'] === 'なし'
+    && deathYearOf(row) > 0 && deathYearOf(row) <= LAST_DEATH_YEAR);
+  if (clear) return { id: 'public-domain', authorDied: authorRecord(rows, id)['没年月日'] };
+
+  const licence = detectCreativeCommons(pageText);
+  if (!licence || !CREATIVE_COMMONS_ACCEPTED.has(licence.code)) {
+    throw new Error(`Aozora ${id} is under copyright and ${licence ? `licensed CC ${licence.code.toUpperCase()}` : 'has no Creative Commons licence'}: only public-domain works and CC BY / CC BY-SA ones are accepted.`);
   }
+  const translators = rows.filter((row) => row['役割フラグ'] === '翻訳者');
+  for (const author of rows.filter((row) => row['役割フラグ'] === '著者')) {
+    if (translators.length && !(deathYearOf(author) > 0 && deathYearOf(author) <= LAST_DEATH_YEAR)) {
+      throw new Error(`Aozora ${id}: the original author (${personName(author, true)}) died after ${LAST_DEATH_YEAR}, so the translator's licence is not enough.`);
+    }
+  }
+  const jurisdiction = licence.jurisdiction ? ` ${licence.jurisdiction.toUpperCase()}` : '';
+  const author = authorRecord(rows, id);
+  return {
+    id: `cc-${licence.code}`,
+    name: `CC ${licence.code.toUpperCase()} ${licence.version}${jurisdiction}`,
+    url: `https://creativecommons.org/licenses/${licence.code}/${licence.version}/${licence.jurisdiction ? `${licence.jurisdiction}/` : ''}`,
+    // The role and the name apart, so the app can word the role in the reader's language.
+    creditRole: translators.length ? 'translator' : 'author',
+    creditName: translators.length
+      ? translators.map((row) => personName(row, false)).join('、')
+      : personName(author, false),
+    credit: translators.length
+      ? `翻訳: ${translators.map((row) => personName(row, false)).join('、')}`
+      : `著者: ${personName(author, false)}`,
+  };
 }
 
 // --- Text helpers -----------------------------------------------------------------
@@ -146,6 +209,11 @@ const plainText = (html) => decodeEntities(
     .replace(/<[^>]+>/g, ''),
 );
 
+/** Some Aozora files are plain HTML (`<br>`); an EPUB page has to be XML, so empty elements are closed. */
+const closeVoidTags = (html) => html
+  .replace(/<(br|hr)\s*>/gi, '<$1 />')
+  .replace(/<img\b([^>]*?)\s*(?<!\/)>/gi, '<img$1 />');
+
 /** Aozora numbers the episodes of a series in the subtitle ("01 お文の魂"); the number is not part of the title. */
 const subtitleOf = (record) => record['副題'].replace(/^\d+\s+/, '');
 const workTitle = (record) => record['作品名'] + (subtitleOf(record) ? ` ${subtitleOf(record)}` : '');
@@ -158,11 +226,16 @@ async function convertWork(record, source) {
   const htmlUrl = record['XHTML/HTMLファイルURL'];
   const html = new TextDecoder('shift_jis').decode(await fetchCached(htmlUrl, `${source.aozoraId}.html`));
   const mainStart = html.indexOf('<div class="main_text">');
-  const creditsStart = html.indexOf('<div class="bibliographical_information">');
-  if (mainStart < 0 || creditsStart < mainStart) throw new Error(`${htmlUrl}: unexpected layout.`);
+  // The credits follow the text in a block Aozora names differently for translations.
+  const creditsMarker = ['<div class="bibliographical_information">', '<div class="after_text">']
+    .map((marker) => ({ marker, index: html.indexOf(marker, mainStart) }))
+    .filter((candidate) => candidate.index >= 0)
+    .sort((left, right) => left.index - right.index)[0];
+  if (mainStart < 0 || !creditsMarker) throw new Error(`${htmlUrl}: unexpected layout.`);
+  const creditsStart = creditsMarker.index;
 
   let body = html.slice(mainStart + '<div class="main_text">'.length, creditsStart).replace(/<\/div>\s*$/, '');
-  body = body
+  body = closeVoidTags(body)
     .replace(/<script[\s\S]*?<\/script>/g, '')
     .replace(/&nbsp;/g, '&#160;')
     .replace(/&(?!amp;|lt;|gt;|quot;|apos;|#\d+;|#x[0-9a-f]+;)/gi, '&amp;');
@@ -178,17 +251,28 @@ async function convertWork(record, source) {
       : basename(absolute.pathname);
     if (!images.has(src)) images.set(src, { name, data: await fetchCached(absolute.href, `img-${name}`) });
   }
+  const illustrations = [...images].filter(([, image]) => !image.name.startsWith('gaiji-'));
+  const illustrationsOmitted = illustrations.reduce((sum, [, image]) => sum + image.data.length, 0) > MAX_ILLUSTRATION_BYTES;
+  if (illustrationsOmitted) {
+    for (const [src] of illustrations) {
+      body = body.replace(new RegExp(`<img\\b[^>]*\\bsrc="${src.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"[^>]*>`, 'g'), '');
+      images.delete(src);
+    }
+  }
   for (const [src, { name }] of images) body = body.split(`src="${src}"`).join(`src="images/${name}"`);
 
-  const creditsEnd = html.indexOf('<div class="notation_notes">');
-  const creditsHtml = html
-    .slice(creditsStart, creditsEnd > 0 ? creditsEnd : undefined)
-    .replace(/^<div class="bibliographical_information">\s*<hr\s*\/>/, '')
+  const creditsEnd = html.indexOf('<div class="notation_notes">', creditsStart);
+  const creditsHtml = closeVoidTags(html.slice(creditsStart, creditsEnd > 0 ? creditsEnd : undefined))
+    .replace(/^<div class="(?:bibliographical_information|after_text)">\s*<hr\s*\/>/, '')
     .replace(/<\/div>\s*$/, '')
+    // The licence badge is a remote image, and an EPUB must not depend on one.
+    .replace(/<a rel="license"[^>]*>\s*<img[^>]*>\s*<\/a>\s*(?:<br\s*\/>)?/g, '')
+    .replace(/<img\b[^>]*>/g, '')
     .replace(/&(?!amp;|lt;|gt;|quot;|apos;|#\d+;)/g, '&amp;')
     .trim();
 
-  return { body, creditsHtml, images: [...images.values()] };
+  const pageText = plainText(html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/g, ''));
+  return { body, creditsHtml, pageText, illustrationsOmitted, images: [...images.values()] };
 }
 
 /** Splits at the headings of the most prominent level that occurs at least twice. */
@@ -251,9 +335,8 @@ ${content}
 </html>
 `;
 
-async function buildEpub({ source, record, converted, chapters, coverPng, description }) {
+async function buildEpub({ source, record, converted, chapters, coverPng, description, rights, author }) {
   const title = workTitle(record);
-  const author = record['姓'] + record['名'];
   const zip = new JSZip();
   const add = (name, data, options = {}) => zip.file(name, data, { date: FIXED_DATE, createFolders: false, ...options });
   add('mimetype', 'application/epub+zip', { compression: 'STORE' });
@@ -275,7 +358,9 @@ async function buildEpub({ source, record, converted, chapters, coverPng, descri
   ];
   const credits = `<div class="colophon">
 <h2>底本・クレジット</h2>
-<p>この作品は青空文庫（<a href="https://www.aozora.gr.jp/">https://www.aozora.gr.jp/</a>）の公開テキストをもとに、Yomisubaの図書館用にEPUBへ変換したものです。作品は著作権が消滅したパブリックドメインです。図書カード：<a href="${escapeXml(record['図書カードURL'])}">${escapeXml(record['図書カードURL'])}</a></p>
+<p>この作品は青空文庫（<a href="https://www.aozora.gr.jp/">https://www.aozora.gr.jp/</a>）の公開テキストをもとに、Yomisubaの図書館用にEPUBへ変換したものです。${rights.id === 'public-domain'
+    ? '作品は著作権が消滅したパブリックドメインです。'
+    : `作品はクリエイティブ・コモンズ・ライセンス <a href="${escapeXml(rights.url)}">${escapeXml(rights.name)}</a> で提供されています（${escapeXml(rights.credit)}）。EPUBにするにあたり、表紙・扉・この奥付ページを加え、レイアウトを整えました。本文は変更していません。`}${converted.illustrationsOmitted ? '挿絵は容量の都合で省略しています。' : ''} 図書カード：<a href="${escapeXml(record['図書カードURL'])}">${escapeXml(record['図書カードURL'])}</a></p>
 <p>${converted.creditsHtml}</p>
 </div>`;
   pages.push({ id: 'colophon', file: 'colophon.xhtml', title: '底本・クレジット', html: xhtmlPage('底本・クレジット', credits) });
@@ -294,7 +379,9 @@ async function buildEpub({ source, record, converted, chapters, coverPng, descri
     <dc:publisher>青空文庫 / Yomisuba</dc:publisher>
     <dc:description>${escapeXml(description)}</dc:description>
 ${subjects}
-    <dc:rights>Public domain. Text from Aozora Bunko (https://www.aozora.gr.jp/).</dc:rights>
+    <dc:rights>${rights.id === 'public-domain'
+      ? 'Public domain. Text from Aozora Bunko (https://www.aozora.gr.jp/).'
+      : escapeXml(`${rights.name} (${rights.url}). ${rights.credit}. Text from Aozora Bunko (https://www.aozora.gr.jp/). Converted to EPUB with a cover, title page and colophon added; the text itself is unchanged.`)}</dc:rights>
     <dc:source>${escapeXml(record['図書カードURL'])}</dc:source>
     <meta property="dcterms:modified">${modified}</meta>
     <meta name="cover" content="cover-img"/>
@@ -358,7 +445,8 @@ function findBrowser() {
 function renderCover({ title, author, genres, slug }) {
   const color = GENRES[genres[0]].color;
   const length = [...title].length;
-  const titleSize = length <= 6 ? 88 : length <= 9 ? 70 : length <= 12 ? 56 : 46;
+  // As large as fits one column (the title block is 600px tall), never above 88px or below 40px.
+  const titleSize = Math.max(40, Math.min(88, Math.floor(600 / (length * 1.2))));
   const html = `<!doctype html><html lang="ja"><meta charset="utf-8"><style>
 html,body{margin:0;width:600px;height:900px;overflow:hidden}
 body{background:${color};color:#f6f1e6;font-family:"Yu Mincho","Hiragino Mincho ProN","Noto Serif JP","MS Mincho",serif;position:relative}
@@ -462,20 +550,22 @@ try {
   for (const source of sources.books) {
     if (onlySlugs.length && !onlySlugs.includes(source.slug)) continue;
     for (const genre of source.genres) if (!GENRES[genre]) throw new Error(`${source.slug}: unknown genre ${genre}`);
-    const record = aozora.get(source.aozoraId);
-    if (!record) throw new Error(`${source.slug}: Aozora work ${source.aozoraId} not found.`);
-    assertPublicDomain(record, source.aozoraId);
-    console.log(`${source.slug}: ${record['作品名']} (${record['姓']}${record['名']})`);
+    const rows = aozora.get(source.aozoraId);
+    if (!rows) throw new Error(`${source.slug}: Aozora work ${source.aozoraId} not found.`);
+    const record = authorRecord(rows, source.aozoraId);
+    const translated = rows.some((row) => row['役割フラグ'] === '翻訳者');
+    const author = personName(record, translated);
+    console.log(`${source.slug}: ${record['作品名']} (${author})`);
 
     const converted = await convertWork(record, source);
+    const rights = rightsOf(rows, source.aozoraId, converted.pageText);
     const title = workTitle(record);
-    const author = record['姓'] + record['名'];
     const chapters = splitChapters(converted.body, record['作品名']);
     const coverFile = join(libraryDir, 'covers', `${source.slug}.png`);
     const coverPng = existsSync(coverFile) && !redrawCovers
       ? readFileSync(coverFile)
       : renderCover({ title, author, genres: source.genres, slug: source.slug });
-    const epub = await buildEpub({ source, record, converted, chapters, coverPng, description: source.description.ja });
+    const epub = await buildEpub({ source, record, converted, chapters, coverPng, description: source.description.ja, rights, author });
 
     const text = plainText(converted.body);
     const characters = text.replace(/\s/g, '').length;
@@ -502,7 +592,7 @@ try {
       level,
       orthography: record['文字遣い種別'],
       source: { name: '青空文庫 (Aozora Bunko)', url: record['図書カードURL'] },
-      license: { id: 'public-domain', authorDied: record['没年月日'] },
+      license: rights,
       credits: {
         base: [record['底本名1'], record['底本出版社名1'], record['底本初版発行年1']].filter(Boolean).join(' / '),
         input: record['入力者'],
@@ -522,15 +612,18 @@ try {
   const attribution = [
     '# Credits and licences',
     '',
-    `Every work in this library is in the **public domain**: its author died in ${LAST_DEATH_YEAR} or earlier, so the copyright has expired in Japan, the United States, the European Union and Spain. A few countries have longer terms (Mexico, for one); check yours before redistributing. The works come from [青空文庫 (Aozora Bunko)](https://www.aozora.gr.jp/), a digital library run by volunteers. The EPUB files are conversions of the XHTML text Aozora publishes, keeping the original spelling, the furigana and the credits of the edition.`,
+    `The works come from [青空文庫 (Aozora Bunko)](https://www.aozora.gr.jp/), a digital library run by volunteers. The EPUB files are conversions of the XHTML text Aozora publishes, keeping the original spelling, the furigana and the credits of the edition. Two kinds of work are included:`,
+    '',
+    `- **Public domain.** The author died in ${LAST_DEATH_YEAR} or earlier, so the copyright has expired in Japan, the United States, the European Union and Spain. A few countries have longer terms (Mexico, for one); check yours before redistributing.`,
+    '- **Creative Commons.** Modern translations of classics (the originals are public domain) and works by modern authors that their rights holders published under CC BY or CC BY-SA, which allow copying, adapting and redistributing with credit (and, for BY-SA, under the same licence). Works under NonCommercial or NoDerivatives terms are left out. For these, the licence, the credit and the note on what changed (a cover, a title page and a colophon were added; the text is unchanged; illustrations over 1 MB are left out) are on the last page of the EPUB and in the table below.',
     '',
     'Aozora Bunko asks that the details of the source edition and the names of the people who typed and proofread the text be kept. Every EPUB carries them on its last page (底本・クレジット) and they are repeated below. The covers are drawn by the [Yomisuba](https://github.com/xelloss1012/yomisuba) build script and do not come from any edition.',
     '',
     'The catalog, the descriptions and the covers are dedicated to the public domain under [CC0 1.0](LICENSE).',
     '',
-    '| Work | Author | Aozora card | Source edition | Typed by | Proofread by |',
-    '|---|---|---|---|---|---|',
-    ...books.map((book) => `| ${book.title} | ${book.author} (†${book.license.authorDied.slice(0, 4)}) | [${book.id.replace('aozora-', '#')}](${book.source.url}) | ${book.credits.base || '—'} | ${book.credits.input || '—'} | ${book.credits.proofreading || '—'} |`),
+    '| Work | Author | Licence | Aozora card | Source edition | Typed by | Proofread by |',
+    '|---|---|---|---|---|---|---|',
+    ...books.map((book) => `| ${book.title} | ${book.author} | ${book.license.id === 'public-domain' ? `Public domain (†${book.license.authorDied.slice(0, 4)})` : `[${book.license.name}](${book.license.url}), ${book.license.credit}`} | [${book.id.replace('aozora-', '#')}](${book.source.url}) | ${book.credits.base || '—'} | ${book.credits.input || '—'} | ${book.credits.proofreading || '—'} |`),
     '',
   ].join('\n');
   writeFileSync(join(libraryDir, 'ATTRIBUTION.md'), attribution);

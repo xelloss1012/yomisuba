@@ -8,7 +8,8 @@ import { GoogleDriveBackupPanel } from './GoogleDriveBackupPanel';
 import { BookCoverThumbnail } from './BookCoverThumbnail';
 import { BookLibraryModal } from './BookLibraryModal';
 import { UpdateNotice } from './UpdateNotice';
-import { isUpdateCheckEnabled, setUpdateCheckEnabled } from '../utils/updateCheck';
+import { UpdateCheckToggle } from './UpdateCheckToggle';
+import { isUpdateCheckEnabled } from '../utils/updateCheck';
 import { AVAILABLE_LANGUAGES } from '../utils/i18n';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { ReaderSettingsState } from '../types/epub';
@@ -298,17 +299,7 @@ export const FileDropZone: React.FC<Props> = ({
             <ShieldCheck className="h-3.5 w-3.5" />
             {t('app.privacy')}
           </a>
-          {isNative && (
-            <label className="inline-flex cursor-pointer items-center gap-1.5" title={t('update.checkHint')}>
-              <input
-                type="checkbox"
-                checked={updateChecks}
-                onChange={(event) => { setUpdateCheckEnabled(event.target.checked); setUpdateChecks(event.target.checked); }}
-                className="h-3.5 w-3.5 accent-indigo-600"
-              />
-              {t('update.check')}
-            </label>
-          )}
+          {isNative && <UpdateCheckToggle variant="inline" onChange={setUpdateChecks} />}
         </div>
       </div>
     </div>

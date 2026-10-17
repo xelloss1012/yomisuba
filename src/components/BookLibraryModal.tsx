@@ -49,6 +49,7 @@ export const BookLibraryModal: React.FC<Props> = ({
   const [books, setBooks] = useState<LibraryBook[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [genre, setGenre] = useState<'all' | LibraryGenre>('all');
+  const [licenseFilter, setLicenseFilter] = useState<'all' | 'public-domain' | 'free'>('all');
   const [downloading, setDownloading] = useState<{ slug: string; percent: number } | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
@@ -71,9 +72,13 @@ export const BookLibraryModal: React.FC<Props> = ({
   }, [isOpen, books, loadCatalog]);
 
   const genres = useMemo(() => (books ? genresInCatalog(books) : []), [books]);
+  // The licence filter only matters when the catalog has both kinds of book.
+  const hasFreeLicensed = useMemo(() => (books || []).some((book) => book.license.id !== 'public-domain'), [books]);
+  const hasPublicDomain = useMemo(() => (books || []).some((book) => book.license.id === 'public-domain'), [books]);
   const visible = useMemo(
-    () => (books || []).filter((book) => genre === 'all' || book.genres.includes(genre)),
-    [books, genre],
+    () => (books || []).filter((book) => (genre === 'all' || book.genres.includes(genre))
+      && (licenseFilter === 'all' || (licenseFilter === 'public-domain') === (book.license.id === 'public-domain'))),
+    [books, genre, licenseFilter],
   );
   // A book already imported or downloaded opens from the local library.
   const localCopy = useCallback(
@@ -126,6 +131,26 @@ export const BookLibraryModal: React.FC<Props> = ({
             <X className="h-5 w-5" />
           </button>
         </header>
+
+        {hasFreeLicensed && hasPublicDomain && (
+          <div className="flex shrink-0 gap-1.5 overflow-x-auto border-b border-zinc-200 px-3 py-2 dark:border-zinc-800" role="group" aria-label={t('library.licenseFilter')}>
+            {([['all', t('library.license.all')], ['public-domain', t('library.publicDomain')], ['free', t('library.license.free')]] as const).map(([item, label]) => (
+              <button
+                key={item}
+                type="button"
+                aria-pressed={licenseFilter === item}
+                onClick={() => setLicenseFilter(item)}
+                className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                  licenseFilter === item
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {genres.length > 1 && (
           <div className="flex shrink-0 gap-1.5 overflow-x-auto border-b border-zinc-200 px-3 py-2 dark:border-zinc-800" role="group" aria-label={t('library.genreFilter')}>
@@ -203,7 +228,24 @@ export const BookLibraryModal: React.FC<Props> = ({
                         </span>
                       </p>
                       <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[11px] text-zinc-500 dark:text-zinc-400">
-                        <span>{t('library.publicDomain')}</span>
+                        {book.license.id === 'public-domain' ? (
+                          <span>{t('library.publicDomain')}</span>
+                        ) : (
+                          <>
+                            <a
+                              href={book.license.url ?? undefined}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-emerald-700 hover:underline dark:text-emerald-400"
+                            >
+                              {t('library.licenseLabel', { name: book.license.name })}
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                            {book.license.creditRole && book.license.creditName && (
+                              <span>{t(`library.credit.${book.license.creditRole}`, { name: book.license.creditName })}</span>
+                            )}
+                          </>
+                        )}
                         <a
                           href={book.source.url}
                           target="_blank"
