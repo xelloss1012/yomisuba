@@ -41,4 +41,8 @@ Thumbs.db
 
 # Misc
 commit.ps1
+
+# Android signing keys
+*.jks
+*.keystore
 .aider*
