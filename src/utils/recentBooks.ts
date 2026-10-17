@@ -1,3 +1,5 @@
+import { tr } from './i18n';
+
 export interface RecentBook {
   id: string;
   name: string;
@@ -32,7 +34,7 @@ function openDatabase(): Promise<IDBDatabase> {
       }
     };
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error || new Error('No se pudo abrir la biblioteca local.'));
+    request.onerror = () => reject(request.error || new Error(tr('err.localOpen')));
   });
 }
 
@@ -42,7 +44,7 @@ export async function saveRecentBook(book: RecentBook): Promise<void> {
     const transaction = db.transaction(STORE_NAME, 'readwrite');
     transaction.objectStore(STORE_NAME).put(book);
     transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error || new Error('No se pudo guardar el libro.'));
+    transaction.onerror = () => reject(transaction.error || new Error(tr('err.localSave')));
   });
   db.close();
 }
@@ -70,7 +72,7 @@ export async function listRecentBooks(limit = Number.MAX_SAFE_INTEGER): Promise<
       results.push(cursor.value as RecentBook);
       cursor.continue();
     };
-    request.onerror = () => reject(request.error || new Error('No se pudo leer la biblioteca local.'));
+    request.onerror = () => reject(request.error || new Error(tr('err.localRead')));
   });
   db.close();
   return books;
@@ -81,7 +83,7 @@ export async function getRecentBook(id: string): Promise<RecentBook | null> {
   const book = await new Promise<RecentBook | null>((resolve, reject) => {
     const request = db.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).get(id);
     request.onsuccess = () => resolve((request.result as RecentBook | undefined) || null);
-    request.onerror = () => reject(request.error || new Error('No se pudo abrir el libro guardado.'));
+    request.onerror = () => reject(request.error || new Error(tr('err.localOpenBook')));
   });
   db.close();
   return book;
@@ -94,8 +96,8 @@ export async function deleteRecentBook(id: string): Promise<void> {
       const transaction = db.transaction(STORE_NAME, 'readwrite');
       transaction.objectStore(STORE_NAME).delete(id);
       transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error || new Error('No se pudo quitar el libro de recientes.'));
-      transaction.onabort = () => reject(transaction.error || new Error('No se pudo quitar el libro de recientes.'));
+      transaction.onerror = () => reject(transaction.error || new Error(tr('err.localRemove')));
+      transaction.onabort = () => reject(transaction.error || new Error(tr('err.localRemove')));
     });
   } finally {
     db.close();

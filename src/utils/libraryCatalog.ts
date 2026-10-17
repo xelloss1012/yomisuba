@@ -7,6 +7,7 @@
  * the local library and follows the usual rules (it is not copied to Drive).
  */
 import type { UiLanguage } from './i18n';
+import { tr } from './i18n';
 
 const configuredBaseUrl = import.meta.env.VITE_LIBRARY_BASE_URL;
 export const LIBRARY_BASE_URL = configuredBaseUrl
@@ -80,9 +81,9 @@ const isCount = (value: unknown): value is number => typeof value === 'number' &
  * restricted so a wrong entry cannot point the app anywhere else.
  */
 export function parseLibraryCatalog(data: unknown): LibraryBook[] {
-  if (!isRecord(data) || !Array.isArray(data.books)) throw new Error('El catálogo no tiene un formato válido.');
+  if (!isRecord(data) || !Array.isArray(data.books)) throw new Error(tr('err.libBadCatalog'));
   if (typeof data.schema !== 'number' || !SUPPORTED_SCHEMAS.includes(data.schema)) {
-    throw new Error('El catálogo necesita una versión más reciente de la aplicación.');
+    throw new Error(tr('err.libNewerApp'));
   }
   const books: LibraryBook[] = [];
   for (const raw of data.books) {
@@ -232,7 +233,7 @@ export async function downloadLibraryBook(
   // A truncated or altered file never reaches the reader.
   const digest = await sha256Hex(blob); // null where Web Crypto is unavailable (insecure origin)
   if (blob.size !== book.bytes || (digest !== null && digest !== book.sha256)) {
-    throw new Error('El archivo descargado no coincide con el catálogo.');
+    throw new Error(tr('err.libMismatch'));
   }
   return new File([blob], `${book.slug}.epub`, { type: 'application/epub+zip' });
 }

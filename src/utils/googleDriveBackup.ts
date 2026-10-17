@@ -6,7 +6,7 @@ import { extractEpubCoverBlob } from './epubParser';
 import { TranslationFavorite } from './translationFavorites';
 import { DictionaryHistoryData } from './translationHistory';
 import { FREQUENT_QUERIES_VERSION, FrequentQuery } from './frequentQueries';
-import { AVAILABLE_LANGUAGES, TRANSLATION_LANGUAGES } from './i18n';
+import { AVAILABLE_LANGUAGES, TRANSLATION_LANGUAGES, tr } from './i18n';
 import { FURIGANA_MODES } from './furigana';
 
 const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
@@ -126,7 +126,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string)
 
 function initializeGoogleLogin(): Promise<void> {
   const webClientId = import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID;
-  if (!webClientId) throw new Error('Falta configurar VITE_GOOGLE_WEB_CLIENT_ID.');
+  if (!webClientId) throw new Error(tr('drive.missingId'));
   if (!initializePromise) {
     initializePromise = withTimeout(
       SocialLogin.initialize({ google: { webClientId, mode: 'online' } }),
@@ -148,14 +148,14 @@ export async function signInToGoogleDrive(): Promise<GoogleDriveSession> {
     'El inicio de sesión de Google no respondió. Puedes seguir usando la aplicación sin Drive e intentarlo más tarde.',
   );
   if (result.result.responseType !== 'online') {
-    throw new Error('Google devolvió una respuesta de inicio de sesión no compatible.');
+    throw new Error(tr('err.gdBadSignIn'));
   }
   const accessToken = result.result.accessToken?.token;
   if (!accessToken) {
-    throw new Error('Google no concedió un token de acceso a Drive. Vuelve a iniciar sesión y acepta el permiso solicitado.');
+    throw new Error(tr('err.gdNoAccessToken'));
   }
   if (!result.result.idToken) {
-    throw new Error('Google no devolvió un token de identidad válido. Vuelve a iniciar sesión.');
+    throw new Error(tr('err.gdNoIdToken'));
   }
   const session = await createGoogleDriveSession(accessToken, result.result.idToken);
   localStorage.setItem(DRIVE_SESSION_EXPECTED_KEY, 'true');
@@ -256,7 +256,7 @@ export async function restoreGoogleDriveSession(): Promise<GoogleDriveSession | 
       );
       if (!isLoggedIn) {
         forgetSession();
-        throw new Error('La sesión de Google ha caducado o se ha revocado. Vuelve a conectar la cuenta.');
+        throw new Error(tr('err.gdSessionRevoked'));
       }
       throw error;
     }
@@ -284,7 +284,7 @@ export async function restoreGoogleDriveSession(): Promise<GoogleDriveSession | 
     'Google no respondió al recuperar el acceso a Drive.',
   );
   if (!authorization.accessToken || !authorization.jwt) {
-    throw new Error('La sesión de Google no tiene un token válido para Drive. Vuelve a conectar la cuenta.');
+    throw new Error(tr('err.gdSessionNoToken'));
   }
   const session = await createGoogleDriveSession(authorization.accessToken, authorization.jwt);
   localStorage.setItem(DRIVE_SESSION_EXPECTED_KEY, 'true');
@@ -325,7 +325,7 @@ async function driveRequest(accessToken: string, url: string, init: RequestInit 
     });
   } catch (error) {
     if (controller.signal.aborted) {
-      throw new Error('Google Drive no respondió a tiempo. Comprueba la conexión; puedes seguir leyendo sin sincronizar.');
+      throw new Error(tr('err.gdTimeout'));
     }
     throw error;
   } finally {
@@ -334,9 +334,9 @@ async function driveRequest(accessToken: string, url: string, init: RequestInit 
   if (!response.ok) {
     const detail = await response.text();
     if (response.status === 401) {
-      throw new Error('La sesión de Google ha caducado. Vuelve a iniciar sesión para continuar.');
+      throw new Error(tr('err.gdSessionExpired'));
     }
-    throw new Error(`Google Drive respondió ${response.status}: ${detail || response.statusText}`);
+    throw new Error(tr('err.gdHttp', { status: response.status, detail: detail || response.statusText }));
   }
   return response;
 }
@@ -372,7 +372,7 @@ async function getOrCreateDriveFolder(
       }),
     });
     const folder = await created.json() as { id?: string };
-    if (!folder.id) throw new Error(`Google Drive no devolvió el identificador de la carpeta «${name}».`);
+    if (!folder.id) throw new Error(tr('err.gdNoFolderId', { name }));
     return folder.id;
   })();
   const promise = pending.catch((error: unknown) => {
@@ -496,7 +496,7 @@ async function uploadFile(
     }),
   });
   const uploadUrl = response.headers.get('Location');
-  if (!uploadUrl) throw new Error('Google Drive no devolvió la dirección para subir el archivo.');
+  if (!uploadUrl) throw new Error(tr('err.gdNoUploadUrl'));
   const result = await driveRequest(accessToken, uploadUrl, {
     method: 'PUT',
     headers: { 'Content-Type': mimeType },
@@ -520,7 +520,7 @@ export async function createCoverThumbnailDataUrl(cover: Blob): Promise<string |
     const image = await new Promise<HTMLImageElement>((resolve, reject) => {
       const element = new Image();
       element.onload = () => resolve(element);
-      element.onerror = () => reject(new Error('No se pudo leer la imagen de portada.'));
+      element.onerror = () => reject(new Error(tr('err.gdCoverRead')));
       element.src = url;
     });
     const width = image.naturalWidth || image.width;
@@ -568,13 +568,13 @@ export async function saveGoogleDriveSettings(
 
 export async function restoreGoogleDriveSettings(accessToken: string): Promise<ReaderSettingsState> {
   const file = await findFile(accessToken, SETTINGS_FILE_NAME);
-  if (!file) throw new Error('No hay una copia de ajustes en esta cuenta de Google Drive.');
+  if (!file) throw new Error(tr('err.gdNoSettingsCopy'));
   const data: unknown = JSON.parse(await (await downloadFile(accessToken, file)).text());
   const savedSettings = data && typeof data === 'object'
     ? (data as { settings?: unknown }).settings
     : undefined;
   if (!savedSettings || typeof savedSettings !== 'object' || Array.isArray(savedSettings)) {
-    throw new Error('El archivo de ajustes de Google Drive no tiene un formato válido.');
+    throw new Error(tr('err.gdSettingsFormat'));
   }
   const settings = {
     autoNightMode: false,
@@ -586,7 +586,7 @@ export async function restoreGoogleDriveSettings(accessToken: string): Promise<R
     ...(savedSettings as Record<string, unknown>),
   };
   if (!isReaderSettings(settings)) {
-    throw new Error('El archivo de ajustes de Google Drive no tiene un formato válido.');
+    throw new Error(tr('err.gdSettingsFormat'));
   }
   return settings;
 }
@@ -678,16 +678,16 @@ export async function deleteGoogleDriveBook(
 ): Promise<void> {
   const file = await getDriveFile(accessToken, cloudBook.id);
   if (!file.name.toLowerCase().endsWith('.epub')) {
-    throw new Error('El archivo seleccionado no tiene extensión .epub.');
+    throw new Error(tr('err.gdNotEpub'));
   }
   let metadata: { yomisubaManaged?: unknown; title?: unknown; creator?: unknown } = {};
   try {
     metadata = JSON.parse(file.description || '{}') as typeof metadata;
   } catch {
-    throw new Error('No se puede borrar este archivo: no contiene metadatos válidos de Yomisuba.');
+    throw new Error(tr('err.gdDeleteNoMeta'));
   }
   if (metadata.yomisubaManaged !== true) {
-    throw new Error('No se puede borrar este archivo porque no consta como copia creada por Yomisuba.');
+    throw new Error(tr('err.gdDeleteNotOurs'));
   }
 
   await deleteDriveFile(accessToken, file.id);
@@ -729,7 +729,7 @@ async function deleteAllBookData(accessToken: string, identity: BookDriveIdentit
 
 export async function uploadGoogleDriveBook(accessToken: string, book: RecentBook): Promise<void> {
   if (book.blob.size > MAX_BOOK_SIZE) {
-    throw new Error(`El EPUB supera el límite de ${Math.round(MAX_BOOK_SIZE / 1024 / 1024)} MB.`);
+    throw new Error(tr('err.gdTooBigUpload', { size: Math.round(MAX_BOOK_SIZE / 1024 / 1024) }));
   }
   const existing = await findBookFileByMetadata(accessToken, book);
   const cover = book.cover || await extractEpubCoverBlob(book.blob);
@@ -756,9 +756,9 @@ export async function uploadGoogleDriveBook(accessToken: string, book: RecentBoo
 
 export async function downloadGoogleDriveBook(accessToken: string, cloudBook: GoogleDriveBook): Promise<RecentBook> {
   const file = await getDriveFile(accessToken, cloudBook.id);
-  if (!file.name.toLowerCase().endsWith('.epub')) throw new Error('El archivo seleccionado no tiene extensión .epub.');
+  if (!file.name.toLowerCase().endsWith('.epub')) throw new Error(tr('err.gdNotEpub'));
   if (Number(file.size || 0) > MAX_BOOK_SIZE) {
-    throw new Error(`El EPUB supera el límite de descarga de ${Math.round(MAX_BOOK_SIZE / 1024 / 1024)} MB.`);
+    throw new Error(tr('err.gdTooBigDownload', { size: Math.round(MAX_BOOK_SIZE / 1024 / 1024) }));
   }
   const blob = await downloadFile(accessToken, file);
   const cover = await extractEpubCoverBlob(blob);

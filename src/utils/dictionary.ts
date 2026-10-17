@@ -3,7 +3,7 @@ import TokenizerWorker from './tokenizer.worker?worker&inline';
 // indexed by the first lookup that needs them, so they cost nothing at startup.
 import spanishDictionaryUrl from '../data/jmdict-es.json.gz?inline';
 import englishDictionaryUrl from '../data/jmdict-en.json.gz?inline';
-import { TranslationLanguage, UiLanguage } from './i18n';
+import { TranslationLanguage, UiLanguage, tr } from './i18n';
 import {
   isOptionalDictionaryId,
   loadOptionalDictionaryEntries,
@@ -351,8 +351,8 @@ const getTokenizer = async (retryAfterFailure = false): Promise<TokenizerClient>
     if (Date.now() - tokenizerFailedAt < tokenizerRetryDelayMs) {
       throw new Error(
         tokenizerFailureMessage
-          ? `Kuromoji no disponible tras un error anterior: ${tokenizerFailureMessage}`
-          : 'Kuromoji no disponible tras un error anterior.'
+          ? tr('err.kuromojiRetry', { message: tokenizerFailureMessage })
+          : tr('err.kuromojiRetryPlain')
       );
     }
     const attempt = createTokenizer();
@@ -403,15 +403,15 @@ const createIndex = (source: CompactEntry[]): DictionaryIndex => {
 const loadBundledIndex = async (url: string, name: string): Promise<DictionaryIndex> => {
   const response = await fetch(url);
   if (!response.ok) {
-    throw new Error(`No se pudo cargar JMdict ${name} (HTTP ${response.status}).`);
+    throw new Error(tr('err.jmdictHttp', { name, status: response.status }));
   }
   if (!response.body || typeof DecompressionStream === 'undefined') {
-    throw new Error(`Este navegador no admite la carga comprimida del diccionario ${name}.`);
+    throw new Error(tr('err.dictNoCompression', { name }));
   }
   const decompressed = response.body.pipeThrough(new DecompressionStream('gzip'));
   const loadedEntries = await new Response(decompressed).json() as CompactEntry[];
   if (!Array.isArray(loadedEntries)) {
-    throw new Error(`El archivo local de JMdict ${name} no tiene un formato válido.`);
+    throw new Error(tr('err.jmdictFormat', { name }));
   }
   return createIndex(loadedEntries);
 };

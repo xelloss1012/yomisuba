@@ -1,5 +1,5 @@
 import { AiProvider } from '../types/epub';
-import { TranslationLanguage, UiLanguage } from './i18n';
+import { TranslationLanguage, UiLanguage, tr } from './i18n';
 
 export const AI_PROVIDER_LABELS: Record<AiProvider, string> = {
   gemini: 'Gemini',
@@ -47,10 +47,10 @@ async function getOpenRouterCatalog(): Promise<OpenRouterCatalogModel[]> {
     const payload = await response.json().catch(() => null);
     if (!response.ok) {
       const message = payload?.error?.message || `HTTP ${response.status}`;
-      throw new Error(`No se pudo consultar el catálogo de OpenRouter: ${message}`);
+      throw new Error(tr('err.aiCatalogFetch', { message }));
     }
     if (!Array.isArray(payload?.data)) {
-      throw new Error('El catálogo de modelos de OpenRouter tiene un formato no válido.');
+      throw new Error(tr('err.aiCatalogFormat'));
     }
     return payload.data as OpenRouterCatalogModel[];
   })();
@@ -79,7 +79,7 @@ export async function resolveOpenRouterModel(selection: string): Promise<string>
     .sort((left, right) => (right.created || 0) - (left.created || 0));
   const latestModel = models[0]?.id;
   if (!latestModel) {
-    throw new Error(`OpenRouter no tiene modelos activos disponibles para ${provider}.`);
+    throw new Error(tr('err.aiNoActiveModels', { provider }));
   }
   return latestModel;
 }
@@ -172,7 +172,7 @@ async function getGeminiTranslationModels(apiKey: string, refresh = false): Prom
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
     const message = payload?.error?.message || `HTTP ${response.status}`;
-    throw new Error(`No se pudieron consultar los modelos de Gemini: ${message}`);
+    throw new Error(tr('err.aiGeminiModels', { message }));
   }
 
   const models = (payload?.models || []) as GeminiModel[];
@@ -201,7 +201,7 @@ async function getGeminiTranslationModels(apiKey: string, refresh = false): Prom
     });
 
   if (sortedModels.length === 0) {
-    throw new Error('La clave de Gemini no tiene ningún modelo compatible con generateContent.');
+    throw new Error(tr('err.aiGeminiNoModel'));
   }
 
   geminiModelCache.set(apiKey, sortedModels);
@@ -212,7 +212,7 @@ async function parseResponse(response: Response): Promise<string> {
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
     const message = payload?.error?.message || payload?.error?.code || `HTTP ${response.status}`;
-    throw new Error(`El proveedor rechazó la petición: ${message}`);
+    throw new Error(tr('err.aiRejected', { message }));
   }
   return String(
     payload?.candidates?.[0]?.content?.parts?.map((part: { text?: string }) => part.text || '').join('') ||
@@ -261,7 +261,7 @@ async function generateWithAi(
         /not available|no longer available|not found|unsupported/i.test(errorMessage);
 
       if (!modelUnavailable) {
-        throw new Error(`El proveedor rechazó la petición: ${lastModelError}`);
+        throw new Error(tr('err.aiRejected', { message: lastModelError }));
       }
     }
 
@@ -291,7 +291,7 @@ async function generateWithAi(
     }
 
     if (!response || !response.ok) {
-      throw new Error(`El proveedor rechazó la petición: ${lastModelError}`);
+      throw new Error(tr('err.aiRejected', { message: lastModelError }));
     }
   } else {
     const isDeepSeek = provider === 'deepseek';
@@ -325,9 +325,9 @@ async function generateWithAi(
     );
   }
 
-  if (!response) throw new Error('El proveedor no devolvió una respuesta.');
+  if (!response) throw new Error(tr('err.aiNoResponse'));
   const result = await parseResponse(response);
-  if (!result) throw new Error('El proveedor no devolvió una respuesta.');
+  if (!result) throw new Error(tr('err.aiNoResponse'));
   return result;
 }
 

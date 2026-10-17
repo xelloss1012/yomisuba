@@ -387,8 +387,7 @@ export const BookLibraryModal: React.FC<Props> = ({
           <a href={LIBRARY_ATTRIBUTION_URL} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline dark:text-indigo-400">
             {t('library.attribution')}
           </a>
-          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-zinc-100 pt-2 dark:border-zinc-800">
-            <span>{t('library.sampleHint')}</span>
+          <div className="mt-2 border-t border-zinc-100 pt-2 dark:border-zinc-800">
             <button
               type="button"
               disabled={isLoading || downloading !== null}
@@ -399,7 +398,7 @@ export const BookLibraryModal: React.FC<Props> = ({
               }}
               className="font-semibold text-indigo-600 hover:underline disabled:opacity-50 dark:text-indigo-400"
             >
-              {t('sample.btn')}
+              {t('library.sampleLink')}
             </button>
           </div>
         </footer>

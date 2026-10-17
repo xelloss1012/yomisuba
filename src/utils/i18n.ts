@@ -95,6 +95,18 @@ export function t(
   return text;
 }
 
+let activeLanguage: UiLanguage = 'es';
+
+/** The interface language that messages raised outside React (errors thrown by utilities) are shown in. */
+export function setActiveLanguage(lang: UiLanguage): void {
+  activeLanguage = lang;
+}
+
+/** Translates into the active interface language. */
+export function tr(key: string, params?: Record<string, string | number>): string {
+  return t(key, activeLanguage, params);
+}
+
 export function formatSyncError(error: SyncErrorState, lang: UiLanguage): string | null {
   if (!error) return null;
   if (typeof error === 'string') {

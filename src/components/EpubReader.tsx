@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { tr } from '../utils/i18n';
 import { useDictionaryOptions, useT, useTranslationLanguage } from '../i18n/LanguageContext';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
@@ -3763,7 +3764,7 @@ export const EpubReader: React.FC<Props> = ({
       }
 
       if (visibleWords.length === 0) {
-        throw new Error('Kuromoji no ha encontrado palabras seleccionables en esta página.');
+        throw new Error(tr('err.noSelectableWords'));
       }
 
       pageWordsRef.current = visibleWords;

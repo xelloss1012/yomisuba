@@ -5,6 +5,7 @@
  * gzip-compressed (~250 KB) and is decompressed the first time it is needed.
  */
 import wordLevelsUrl from '../data/word-levels.json.gz?inline';
+import { tr } from './i18n';
 
 /** JLPT level: 5 = N5 (easiest) … 1 = N1. */
 export type JlptLevel = 1 | 2 | 3 | 4 | 5;
@@ -39,7 +40,7 @@ export const loadWordLevels = (): Promise<WordLevelsData> => {
     dataPromise = (async () => {
       const response = await fetch(wordLevelsUrl);
       if (!response.ok || !response.body || typeof DecompressionStream === 'undefined') {
-        throw new Error('No se pudieron cargar los niveles de vocabulario.');
+        throw new Error(tr('err.levelsLoad'));
       }
       return new Response(response.body.pipeThrough(new DecompressionStream('gzip'))).json();
     })().catch((error) => {

@@ -1,4 +1,5 @@
 import JSZip from 'jszip';
+import { tr } from './i18n';
 import { ManifestItem, ParsedEpub, SpineItem, TocItem } from '../types/epub';
 
 // Helper to normalize path (handle ../ and ./)
@@ -159,7 +160,7 @@ export async function parseEpub(data: ArrayBuffer | Blob): Promise<ParsedEpub> {
   // 1. Read container.xml
   const containerFile = zip.file('META-INF/container.xml');
   if (!containerFile) {
-    throw new Error('Archivo EPUB no válido: No se encontró META-INF/container.xml');
+    throw new Error(tr('err.epubNoContainer'));
   }
 
   const containerXml = await containerFile.async('text');
@@ -169,7 +170,7 @@ export async function parseEpub(data: ArrayBuffer | Blob): Promise<ParsedEpub> {
   const opfPath = rootfileEl?.getAttribute('full-path');
 
   if (!opfPath) {
-    throw new Error('No se pudo determinar la ruta del archivo OPF');
+    throw new Error(tr('err.epubNoOpfPath'));
   }
 
   const rootPath = opfPath.includes('/') ? opfPath.substring(0, opfPath.lastIndexOf('/') + 1) : '';
@@ -177,7 +178,7 @@ export async function parseEpub(data: ArrayBuffer | Blob): Promise<ParsedEpub> {
   // 2. Read OPF file
   const opfFile = zip.file(opfPath);
   if (!opfFile) {
-    throw new Error(`No se encontró el archivo OPF en: ${opfPath}`);
+    throw new Error(tr('err.epubNoOpf', { path: opfPath }));
   }
 
   const opfXml = await opfFile.async('text');
@@ -345,7 +346,7 @@ export async function parseEpub(data: ArrayBuffer | Blob): Promise<ParsedEpub> {
     const chapterPath = resolveRelativePath(rootPath, chapterHref.split('#')[0]);
     const chapterFile = zip.file(chapterPath);
     if (!chapterFile) {
-      throw new Error(`Capítulo no encontrado: ${chapterPath}`);
+      throw new Error(tr('err.epubNoChapter', { path: chapterPath }));
     }
 
     const htmlContent = await chapterFile.async('text');

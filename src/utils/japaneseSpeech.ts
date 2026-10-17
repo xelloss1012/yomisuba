@@ -1,4 +1,5 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
+import { tr } from './i18n';
 
 interface JapaneseTtsPlugin {
   speak(options: { text: string; rate: number }): Promise<void>;
@@ -26,7 +27,7 @@ const getJapaneseVoice = (): Promise<SpeechSynthesisVoice | undefined> => {
 
 export const speakJapanese = async (text: string): Promise<void> => {
   const spokenText = text.trim();
-  if (!spokenText) throw new Error('No hay texto para pronunciar.');
+  if (!spokenText) throw new Error(tr('err.speechNoText'));
 
   if (Capacitor.isNativePlatform()) {
     await JapaneseTts.speak({ text: spokenText, rate: 0.9 });
@@ -34,14 +35,14 @@ export const speakJapanese = async (text: string): Promise<void> => {
   }
 
   if (!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') {
-    throw new Error('La síntesis de voz no está disponible en este navegador.');
+    throw new Error(tr('err.speechUnavailable'));
   }
 
   const synthesis = window.speechSynthesis;
   synthesis.cancel();
   const voice = await getJapaneseVoice();
   if (!voice) {
-    throw new Error('No hay ninguna voz japonesa instalada en este navegador.');
+    throw new Error(tr('err.speechNoVoice'));
   }
   return new Promise((resolve, reject) => {
     const utterance = new SpeechSynthesisUtterance(spokenText);
@@ -49,7 +50,7 @@ export const speakJapanese = async (text: string): Promise<void> => {
     utterance.rate = 0.9;
     utterance.voice = voice;
     utterance.onend = () => resolve();
-    utterance.onerror = (event) => reject(new Error(`No se pudo reproducir la pronunciación: ${event.error}.`));
+    utterance.onerror = (event) => reject(new Error(tr('err.speechFailed', { message: event.error })));
     synthesis.speak(utterance);
   });
 };

@@ -5,7 +5,7 @@ import { extractEpubCoverBlob, parseEpub } from './utils/epubParser';
 import { FileDropZone } from './components/FileDropZone';
 import { EpubReader } from './components/EpubReader';
 import { LanguageProvider } from './i18n/LanguageContext';
-import { t } from './utils/i18n';
+import { AVAILABLE_LANGUAGES, setActiveLanguage, t } from './utils/i18n';
 import { setReaderAutoRotate } from './utils/readerOrientation';
 import { createBookId, deleteRecentBook, getLastBookId, getRecentBook, listRecentBooks, MAX_SHELF_BOOKS, RecentBook, saveRecentBook, setLastBookId } from './utils/recentBooks';
 import {
@@ -60,6 +60,9 @@ const isNightTime = () => {
   return hour >= 20 || hour < 8;
 };
 
+// The offline notice in any language, so it is cleared once the connection is back.
+const OFFLINE_MESSAGES = AVAILABLE_LANGUAGES.map(({ code }) => t('sync.offline', code));
+
 export const App: React.FC = () => {
   const [currentEpub, setCurrentEpub] = useState<ParsedEpub | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -91,6 +94,8 @@ export const App: React.FC = () => {
     return DEFAULT_SETTINGS;
   });
   const [nightTime, setNightTime] = useState(isNightTime);
+  // Errors thrown by the utilities are written in this language.
+  setActiveLanguage(settings.language);
   const effectiveSettings = settings.autoNightMode && nightTime
     ? { ...settings, theme: 'dark' as const }
     : settings;
@@ -107,7 +112,7 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (Capacitor.getPlatform() !== 'android') return;
     void setReaderAutoRotate(settings.autoRotate).catch((error: unknown) => {
-      setErrorMessage(`No se pudo cambiar la orientación de pantalla: ${error instanceof Error ? error.message : String(error)}`);
+      setErrorMessage(t('sync.orientationError', settings.language, { message: error instanceof Error ? error.message : String(error) }));
     });
   }, [settings.autoRotate]);
 
@@ -121,7 +126,7 @@ export const App: React.FC = () => {
           setSyncError(null);
         })
         .catch((error: unknown) => {
-          setSyncError(`No se pudieron guardar los ajustes en Google Drive: ${error instanceof Error ? error.message : String(error)}`);
+          setSyncError(t('sync.saveSettingsError', settings.language, { message: error instanceof Error ? error.message : String(error) }));
         })
         .finally(() => {
           setIsDriveBusy(false);
@@ -160,11 +165,11 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     if (!isOnline && googleDriveSession) {
-      setSyncError('Sin conexión a Internet (modo offline)');
-    } else if (isOnline && syncError?.includes('Sin conexión')) {
+      setSyncError(t('sync.offline', settings.language));
+    } else if (isOnline && syncError && OFFLINE_MESSAGES.includes(syncError)) {
       setSyncError(null);
     }
-  }, [isOnline, googleDriveSession, syncError]);
+  }, [isOnline, googleDriveSession, syncError, settings.language]);
 
   const loadDriveData = async (session: GoogleDriveSession, restoreSettings = true): Promise<void> => {
     setIsDriveBusy(true);
@@ -198,7 +203,7 @@ export const App: React.FC = () => {
             settingsLoaded = true;
           } catch (error) {
             if (navigator.onLine) {
-              setSyncError(`No se pudieron restaurar los ajustes de Google Drive: ${error instanceof Error ? error.message : String(error)}`);
+              setSyncError(t('sync.restoreSettingsError', settings.language, { message: error instanceof Error ? error.message : String(error) }));
             }
           }
         }
@@ -214,7 +219,7 @@ export const App: React.FC = () => {
         const failures = [settingsDateResult, booksResult].filter((result) => result.status === 'rejected');
         if (failures.length) {
           const reason = failures[0].status === 'rejected' ? failures[0].reason : null;
-          setSyncError(`Google Drive no está disponible: ${reason instanceof Error ? reason.message : String(reason)}`);
+          setSyncError(t('sync.driveUnavailable', settings.language, { message: reason instanceof Error ? reason.message : String(reason) }));
         } else {
           setSyncError(null);
         }
@@ -257,7 +262,7 @@ export const App: React.FC = () => {
       driveSessionRefreshPromiseRef.current = currentRestore;
       void currentRestore.catch((error: unknown) => {
         if (!cancelled && navigator.onLine) {
-          setSyncError(`No se pudo conectar con Google Drive: ${error instanceof Error ? error.message : String(error)}`);
+          setSyncError(t('sync.connectError', settings.language, { message: error instanceof Error ? error.message : String(error) }));
         }
       }).finally(() => {
         if (restoring === currentRestore) restoring = null;
@@ -270,7 +275,7 @@ export const App: React.FC = () => {
       if (session) {
         void loadDriveData(session, false).catch((error: unknown) => {
           if (navigator.onLine) {
-            setSyncError(`No se pudo conectar con Google Drive: ${error instanceof Error ? error.message : String(error)}`);
+            setSyncError(t('sync.connectError', settings.language, { message: error instanceof Error ? error.message : String(error) }));
           }
         });
       } else {
@@ -299,7 +304,7 @@ export const App: React.FC = () => {
       .then(() => setSyncError(null))
       .catch((error: unknown) => {
         if (navigator.onLine) {
-          setSyncError(`Pendiente de sincronizar con Drive: ${error instanceof Error ? error.message : String(error)}`);
+          setSyncError(t('sync.pending', settings.language, { message: error instanceof Error ? error.message : String(error) }));
         }
       })
       .finally(() => {
@@ -326,7 +331,7 @@ export const App: React.FC = () => {
           }
         })
         .catch((error: unknown) => {
-          setSyncError(`No se pudo renovar la sesión de Google: ${error instanceof Error ? error.message : String(error)}`);
+          setSyncError(t('sync.renewError', settings.language, { message: error instanceof Error ? error.message : String(error) }));
         })
         .finally(() => {
           driveSessionRefreshPromiseRef.current = null;
@@ -446,7 +451,7 @@ export const App: React.FC = () => {
           if (readerData) applyGoogleDriveReaderData(readerData);
         } catch (error) {
           if (navigator.onLine) {
-            setSyncError(`No se pudo actualizar la lectura desde Drive: ${error instanceof Error ? error.message : String(error)}`);
+            setSyncError(t('sync.readingUpdateError', settings.language, { message: error instanceof Error ? error.message : String(error) }));
           }
         }
       }
@@ -670,7 +675,7 @@ export const App: React.FC = () => {
     if (!googleDriveSession || !navigator.onLine) return;
     void saveGoogleDriveReaderData(googleDriveSession.accessToken, data).catch((error: unknown) => {
       if (navigator.onLine) {
-        setSyncError(`No se pudo guardar el progreso en Google Drive: ${error instanceof Error ? error.message : String(error)}`);
+        setSyncError(t('sync.saveProgressError', settings.language, { message: error instanceof Error ? error.message : String(error) }));
       }
     });
   };

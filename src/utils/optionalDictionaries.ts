@@ -10,7 +10,7 @@
  * IndexedDB belongs to the app's origin, so downloads survive app updates. They
  * are deliberately not part of the Google Drive backup.
  */
-import { UiLanguage } from './i18n';
+import { UiLanguage, tr } from './i18n';
 
 export type OptionalDictionaryId = Exclude<UiLanguage, 'es' | 'en'>;
 
@@ -112,7 +112,7 @@ function openDatabase(): Promise<IDBDatabase> {
       }
     };
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error || new Error('No se pudo abrir el almacén de diccionarios.'));
+    request.onerror = () => reject(request.error || new Error(tr('err.dictOpenStore')));
   });
 }
 
@@ -162,11 +162,11 @@ export interface OptionalCompactEntry {
 
 const parseDictionary = async (blob: Blob): Promise<OptionalCompactEntry[]> => {
   if (typeof DecompressionStream === 'undefined') {
-    throw new Error('Este navegador no puede descomprimir diccionarios.');
+    throw new Error(tr('err.dictNoDecompress'));
   }
   const entries = await new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).json();
   if (!Array.isArray(entries) || !entries.every((entry) => entry && typeof entry.id === 'string' && Array.isArray(entry.s))) {
-    throw new Error('El diccionario descargado no tiene un formato válido.');
+    throw new Error(tr('err.dictBadFormat'));
   }
   return entries as OptionalCompactEntry[];
 };
