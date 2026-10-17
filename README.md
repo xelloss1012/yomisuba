@@ -163,6 +163,12 @@ GitHub con el archivo adjunto. El enlace
 descarga siempre la última, y es el que usa el botón «Descargar para Android» de
 la versión web.
 
+#### Aviso de nuevas versiones (solo Android)
+
+La app Android consulta la API pública de GitHub (`releases/latest`) como mucho una vez al día. Si la última release es más nueva que la instalada (la versión sale de `package.json`), la pantalla de inicio muestra un aviso con los botones «Descargar» (el APK de esa release), «Novedades» y «Ahora no». La app no instala nada por su cuenta: el navegador descarga el APK y Android pide confirmación. Solo se aceptan enlaces del propio repositorio. Se puede desactivar con «Avisar de nuevas versiones» al pie de la pantalla de inicio, y no se activa en la versión web, que se publica de nuevo con cada cambio.
+
+Android solo instala una actualización si el APK nuevo está firmado con **la misma clave** que el instalado; por eso conviene firmar siempre con la clave de release (ver [Firma del APK release](#firma-del-apk-release)). Un APK firmado con una clave de depuración distinta obliga a desinstalar la app antes.
+
 ---
 
 ### Copia de seguridad en Google Drive

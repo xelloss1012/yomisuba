@@ -22,7 +22,7 @@ Crear una aplicación web tipo Kindle moderna, rápida y local que permita:
 - **Parser de EPUB**: `JSZip` (descompresión client-side) + DOMParser de navegador.
 - **Iconos**: `lucide-react`.
 - **Bundler Single-File**: `vite-plugin-singlefile` (empaqueta todo el JS, CSS y recursos en un único `dist/index.html`).
-- **Aplicación Android opcional**: Capacitor carga el mismo `dist` dentro de un WebView nativo sin sustituir la versión web.
+- **Aplicación Android opcional**: Capacitor carga el mismo `dist` dentro de un WebView nativo sin sustituir la versión web. `updateCheck.ts` y `UpdateNotice` avisan en Android de una release más nueva (consulta diaria a la API de GitHub, enlaces restringidos al repositorio, desactivable); la versión de la app es `package.json`, inyectada como `__APP_VERSION__` en `vite.config.ts`.
 
 ---
 

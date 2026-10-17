@@ -29,6 +29,7 @@
     "dictionary:build:jmdict": "python scripts/build_jmdict_language.py",
     "drive:test": "node scripts/test-google-drive-layout.mjs",
     "library:test": "node scripts/test-library.mjs",
+    "update:test": "node scripts/test-update-check.mjs",
     "library:build": "node scripts/build-library.mjs",
     "library:check": "node scripts/check-library.mjs",
     "android:add": "npm run build:web && cap add android",

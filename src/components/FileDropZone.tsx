@@ -7,6 +7,8 @@ import { GoogleDriveBook, GoogleDriveSession } from '../utils/googleDriveBackup'
 import { GoogleDriveBackupPanel } from './GoogleDriveBackupPanel';
 import { BookCoverThumbnail } from './BookCoverThumbnail';
 import { BookLibraryModal } from './BookLibraryModal';
+import { UpdateNotice } from './UpdateNotice';
+import { isUpdateCheckEnabled, setUpdateCheckEnabled } from '../utils/updateCheck';
 import { AVAILABLE_LANGUAGES } from '../utils/i18n';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { ReaderSettingsState } from '../types/epub';
@@ -61,6 +63,8 @@ export const FileDropZone: React.FC<Props> = ({
   const language = useLanguage();
   const [isDragOver, setIsDragOver] = useState(false);
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
+  const isNative = Capacitor.isNativePlatform();
+  const [updateChecks, setUpdateChecks] = useState(isUpdateCheckEnabled);
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -112,6 +116,9 @@ export const FileDropZone: React.FC<Props> = ({
             ))}
           </div>
         </div>
+
+        {/* Only the Android app can be out of date: the web version is republished on every change. */}
+        {isNative && <UpdateNotice enabled={updateChecks} />}
 
         {/* Brand & Badge */}
         <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-100 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 text-xs font-semibold mb-6">
@@ -277,7 +284,7 @@ export const FileDropZone: React.FC<Props> = ({
         />
 
         <div className="mt-8 pt-4 border-t border-zinc-200 dark:border-zinc-800 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[11px] text-zinc-500 dark:text-zinc-400">
-          {!Capacitor.isNativePlatform() && (
+          {!isNative && (
             <a href={ANDROID_DOWNLOAD_URL} className="inline-flex items-center gap-1 font-semibold text-indigo-600 hover:underline dark:text-indigo-400">
               <Smartphone className="h-3.5 w-3.5" />
               {t('app.downloadAndroid')}
@@ -291,6 +298,17 @@ export const FileDropZone: React.FC<Props> = ({
             <ShieldCheck className="h-3.5 w-3.5" />
             {t('app.privacy')}
           </a>
+          {isNative && (
+            <label className="inline-flex cursor-pointer items-center gap-1.5" title={t('update.checkHint')}>
+              <input
+                type="checkbox"
+                checked={updateChecks}
+                onChange={(event) => { setUpdateCheckEnabled(event.target.checked); setUpdateChecks(event.target.checked); }}
+                className="h-3.5 w-3.5 accent-indigo-600"
+              />
+              {t('update.check')}
+            </label>
+          )}
         </div>
       </div>
     </div>
