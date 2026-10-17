@@ -107,6 +107,37 @@ Internet. El workflow `.github/workflows/build.yml` es opcional y solo sirve
 para automatización; no es necesario para compilar ni usar la aplicación
 localmente.
 
+#### Firma del APK release
+
+Sin configuración, el APK release se firma con la clave de depuración del equipo
+que compila. Para firmarlo siempre con la misma clave (la que autoriza el cliente
+OAuth Android de Google), crea un almacén de claves propio fuera del repositorio:
+
+```bash
+keytool -genkeypair -v -keystore yomisuba-release.jks -alias yomisuba -keyalg RSA -keysize 4096 -validity 10000
+```
+
+Para compilar en local, indica la clave en `.env.local` (excluido de Git):
+
+```env
+ANDROID_KEYSTORE_PATH=C:/ruta/a/yomisuba-release.jks
+ANDROID_KEYSTORE_PASSWORD=...
+ANDROID_KEY_ALIAS=yomisuba
+ANDROID_KEY_PASSWORD=...
+```
+
+En GitHub Actions se configura en *Settings → Secrets and variables → Actions*:
+
+- Secretos `ANDROID_KEYSTORE_BASE64` (el `.jks` en base64), `ANDROID_KEYSTORE_PASSWORD`,
+  `ANDROID_KEY_ALIAS` y `ANDROID_KEY_PASSWORD`.
+- Variable `VITE_GOOGLE_WEB_CLIENT_ID` (el ID de cliente web no es secreto: va
+  dentro de la aplicación).
+
+Con los secretos, el workflow genera `yomisuba-release.apk` firmado; sin ellos
+(por ejemplo, en pull requests desde forks) genera `yomisuba-debug.apk`. El SHA-1
+que hay que registrar en Google Cloud se obtiene con
+`keytool -list -v -keystore yomisuba-release.jks -alias yomisuba`.
+
 ---
 
 ### Copia de seguridad en Google Drive
@@ -191,7 +222,7 @@ Para habilitar y configurar Google Drive y la autenticación OAuth:
    - No se requiere Firebase ni un archivo `google-services.json`.
 
 4. **Compilación en Android (opcional)**:
-   - Para Android, puedes crear un cliente OAuth Android en Google Cloud Console utilizando el ID de paquete `io.github.xelloss1012.yomisuba` y la huella SHA-1 de tu certificado.
+   - Para Android, puedes crear un cliente OAuth Android en Google Cloud Console utilizando el ID de paquete `io.github.xelloss1012.yomisuba` y la huella SHA-1 de tu certificado (el de depuración o tu clave release, ver [Firma del APK release](#firma-del-apk-release)).
    - Ejecuta `npm run android:sync` y compila la aplicación (`npm run android:build`).
 
 Google pedirá autorización para crear, listar, leer y actualizar los archivos creados por Yomisuba usando únicamente `drive.file`. La app no accede a otros archivos de Drive ni lista EPUB copiados manualmente. Los EPUB importados desde el selector del sistema se abren y se guardan localmente; se pueden copiar a Drive con la acción «Subir a Drive». Esos libros aparecen junto con los guardados previamente desde la app. Los EPUB guardados en Drive conservan su nombre original. La app usa el ID de cliente web también en Android; el cliente OAuth Android autoriza el paquete y certificado de firma. En Android se restaura la sesión nativa y se renueva el token al volver a la app; Google puede volver a pedir autorización si la cuenta revoca el acceso o caducan las credenciales de inicio de sesión. Los ajustes y datos de lectura son JSON, y los EPUB son archivos individuales; no están cifrados por la app. La configuración incluye cualquier clave IA guardada y queda sujeta a la seguridad de la cuenta Google y Drive.

@@ -16,10 +16,25 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // A release keystore of your own, given through the environment (in .env.local
+    // for scripts/build-android.mjs, or as Actions secrets). It fixes the SHA-1 that
+    // the Google OAuth Android client authorizes; without it release builds fall
+    // back to the debug key.
+    def releaseKeystore = System.getenv('ANDROID_KEYSTORE_PATH')
+    signingConfigs {
+        if (releaseKeystore) {
+            release {
+                storeFile file(releaseKeystore)
+                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANDROID_KEY_ALIAS')
+                keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
-            signingConfig signingConfigs.debug
+            signingConfig releaseKeystore ? signingConfigs.release : signingConfigs.debug
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
