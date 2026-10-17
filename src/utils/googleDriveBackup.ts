@@ -10,18 +10,17 @@ import { AVAILABLE_LANGUAGES, TRANSLATION_LANGUAGES } from './i18n';
 import { FURIGANA_MODES } from './furigana';
 
 const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
-const DRIVE_SESSION_EXPECTED_KEY = 'ereader_google_drive_session_expected';
-const DRIVE_SESSION_SCOPE_VERSION_KEY = 'ereader_google_drive_scope_version';
+const DRIVE_SESSION_EXPECTED_KEY = 'yomisuba_google_drive_session_expected';
+const DRIVE_SESSION_SCOPE_VERSION_KEY = 'yomisuba_google_drive_scope_version';
 const DRIVE_SESSION_SCOPE_VERSION = 'drive.file.v1';
-const DRIVE_PROFILE_KEY = 'ereader_google_drive_profile';
+const DRIVE_PROFILE_KEY = 'yomisuba_google_drive_profile';
 // Google access tokens last an hour; a resume within this time keeps the token.
 const ACCESS_TOKEN_REUSE_MS = 45 * 60 * 1000;
-const PENDING_READER_DATA_KEY = 'ereader_pending_drive_reader_data_v1';
-const DRIVE_FOLDER_NAME = '.ereader';
+const PENDING_READER_DATA_KEY = 'yomisuba_pending_drive_reader_data_v1';
+const DRIVE_FOLDER_NAME = '.yomisuba';
 const DRIVE_FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
 const SETTINGS_FILE_NAME = 'settings.json';
 const SETTINGS_FILE_TYPE = 'application/json';
-const BOOK_STATE_PREFIX = 'EReader reading data - ';
 const MAX_BOOK_SIZE = 100 * 1024 * 1024;
 const COVER_THUMBNAIL_MAX_WIDTH = 160;
 const COVER_THUMBNAIL_QUALITY = 0.72;
@@ -342,11 +341,6 @@ async function driveRequest(accessToken: string, url: string, init: RequestInit 
   return response;
 }
 
-async function hashText(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
-}
-
 async function getOrCreateDriveFolder(
   accessToken: string,
   name: string,
@@ -465,8 +459,8 @@ async function listBookFiles(accessToken: string): Promise<DriveFile[]> {
   return files.filter((file) => {
     if (!file.name.toLowerCase().endsWith('.epub')) return false;
     try {
-      const metadata = JSON.parse(file.description || '{}') as { ereaderManaged?: unknown };
-      return metadata.ereaderManaged === true;
+      const metadata = JSON.parse(file.description || '{}') as { yomisubaManaged?: unknown };
+      return metadata.yomisubaManaged === true;
     } catch {
       return false;
     }
@@ -656,15 +650,15 @@ async function findBookFileByMetadata(accessToken: string, book: RecentBook): Pr
     if (file.name !== book.name) continue;
     try {
       const metadata = JSON.parse(file.description || '{}') as {
-        ereaderManaged?: unknown;
+        yomisubaManaged?: unknown;
         title?: unknown;
         creator?: unknown;
       };
-      if (metadata.ereaderManaged === true && metadata.title === book.title && metadata.creator === book.creator) {
+      if (metadata.yomisubaManaged === true && metadata.title === book.title && metadata.creator === book.creator) {
         return file;
       }
     } catch {
-      // Leave files without EReader metadata untouched.
+      // Leave files without app metadata untouched.
     }
   }
   return null;
@@ -686,20 +680,20 @@ export async function deleteGoogleDriveBook(
   if (!file.name.toLowerCase().endsWith('.epub')) {
     throw new Error('El archivo seleccionado no tiene extensión .epub.');
   }
-  let metadata: { ereaderManaged?: unknown; title?: unknown; creator?: unknown } = {};
+  let metadata: { yomisubaManaged?: unknown; title?: unknown; creator?: unknown } = {};
   try {
     metadata = JSON.parse(file.description || '{}') as typeof metadata;
   } catch {
-    throw new Error('No se puede borrar este archivo: no contiene metadatos válidos de EReader.');
+    throw new Error('No se puede borrar este archivo: no contiene metadatos válidos de Yomisuba.');
   }
-  if (metadata.ereaderManaged !== true) {
-    throw new Error('No se puede borrar este archivo porque no consta como copia creada por EReader.');
+  if (metadata.yomisubaManaged !== true) {
+    throw new Error('No se puede borrar este archivo porque no consta como copia creada por Yomisuba.');
   }
 
   await deleteDriveFile(accessToken, file.id);
   if (typeof metadata.title === 'string' && typeof metadata.creator === 'string') {
     const identity: BookDriveIdentity = {
-      bookKey: `ereader_book_${encodeURIComponent(`${metadata.title}|${metadata.creator}`)}`,
+      bookKey: `yomisuba_book_${encodeURIComponent(`${metadata.title}|${metadata.creator}`)}`,
       title: metadata.title,
       creator: metadata.creator,
     };
@@ -731,13 +725,6 @@ async function deleteAllBookData(accessToken: string, identity: BookDriveIdentit
     const existing = await findFile(accessToken, name, folderId);
     if (existing) await deleteDriveFile(accessToken, existing.id);
   }
-  // Best effort cleanup of the previous single-file layout.
-  try {
-    const legacy = await findFile(accessToken, `${BOOK_STATE_PREFIX}${await hashText(identity.bookKey)}.json`);
-    if (legacy) await deleteDriveFile(accessToken, legacy.id);
-  } catch {
-    // Legacy cleanup is optional.
-  }
 }
 
 export async function uploadGoogleDriveBook(accessToken: string, book: RecentBook): Promise<void> {
@@ -751,7 +738,7 @@ export async function uploadGoogleDriveBook(accessToken: string, book: RecentBoo
   // Drive happily accepts it; a big cover must never block the whole upload.
   const storedCover = coverDataUrl && coverDataUrl.length <= MAX_COVER_METADATA_LENGTH ? coverDataUrl : undefined;
   const description = JSON.stringify({
-    ereaderManaged: true,
+    yomisubaManaged: true,
     title: book.title,
     creator: book.creator,
     ...(storedCover ? { coverDataUrl: storedCover } : {}),
@@ -1045,7 +1032,7 @@ export async function restoreGoogleDriveReaderData(
 }
 
 export function applyGoogleDriveReaderData(data: ReaderBookBackup): void {
-  const prefix = `ereader_book_${encodeURIComponent(`${data.title}|${data.creator}`)}`;
+  const prefix = `yomisuba_book_${encodeURIComponent(`${data.title}|${data.creator}`)}`;
   // Only apply the groups that were actually restored from Drive so a missing
   // remote file never destroys local data.
   const restored = new Set<ReaderDataGroup>(data.dirtyGroups);

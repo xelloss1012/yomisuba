@@ -1,4 +1,4 @@
-package com.ereader.japanesevertical;
+package io.github.xelloss1012.yomisuba;
 
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;

@@ -226,7 +226,7 @@ rt {
     <dc:title>走れメロス</dc:title>
     <dc:creator>太宰 治</dc:creator>
     <dc:language>ja</dc:language>
-    <dc:publisher>青空文庫 / EReader Sample</dc:publisher>
+    <dc:publisher>青空文庫 / Yomisuba Sample</dc:publisher>
     <dc:description>太宰治の代表作『走れメロス』。縦書き日本語表示とルビ表示のサンプルEPUBです。</dc:description>
     <meta property="dcterms:modified">2026-09-20T00:00:00Z</meta>
     <meta property="page-progression-direction">rtl</meta>

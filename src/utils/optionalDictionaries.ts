@@ -3,7 +3,7 @@
  * Japanese–Japanese (国語辞典) plus Japanese–French, –German, –Italian,
  * –Chinese, –Korean and –Vietnamese. They are built by
  * scripts/build_jmdict_language.py and scripts/build-wiktionary-dictionary.mjs,
- * published in the public ereader-dictionaries repository, downloaded on demand
+ * published in the public yomisuba-dictionaries repository, downloaded on demand
  * from the settings screen and kept in IndexedDB as the gzip files they arrive
  * in; dictionary.ts decompresses and indexes one the first time a lookup needs it.
  *
@@ -29,7 +29,7 @@ export interface OptionalDictionaryInfo {
   storageKey: string;
 }
 
-const DICTIONARIES_BASE_URL = 'https://raw.githubusercontent.com/xelloss1012/ereader-dictionaries/main/';
+const DICTIONARIES_BASE_URL = 'https://raw.githubusercontent.com/xelloss1012/yomisuba-dictionaries/main/';
 
 /** Credited by the JMdict line every dictionary panel already shows. */
 export const JMDICT_SOURCE = { label: 'JMdict/EDICT © EDRDG', url: 'https://www.edrdg.org/wiki/JMdict-EDICT_Dictionary_Project.html' };
@@ -73,7 +73,7 @@ export const isOptionalDictionaryId = (value: string): value is OptionalDictiona
 
 export const optionalDictionaryUrl = (id: OptionalDictionaryId) => `${DICTIONARIES_BASE_URL}${OPTIONAL_DICTIONARIES[id].file}`;
 
-const DB_NAME = 'ereader_dictionaries';
+const DB_NAME = 'yomisuba_dictionaries';
 const STORE_NAME = 'files';
 const DB_VERSION = 1;
 

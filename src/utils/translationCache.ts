@@ -12,7 +12,7 @@ interface CachedTranslation {
   lastUsedAt: number;
 }
 
-const STORAGE_KEY = 'ereader_translation_cache_v1';
+const STORAGE_KEY = 'yomisuba_translation_cache_v1';
 const MAX_ENTRIES = 100;
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 

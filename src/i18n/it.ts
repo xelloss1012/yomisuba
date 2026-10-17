@@ -1,6 +1,7 @@
 export const it: Record<string, string> = {
   // FileDropZone / Main Page
-  'app.title': 'Lettore di Libri EPUB',
+  'app.title': 'Yomisuba',
+  'app.slogan': '読みの素晴らしい世界に祝福を！',
   'app.subtitle': 'Lettore EPUB • 縦書き (Giapponese Verticale)',
   'app.description': 'Compatibile con libri digitali standard e lettura verticale tradizionale giapponese con supporto per furigana e impaginazione.',
   'dropzone.dragPrefix': 'Trascina il tuo file ',
@@ -216,7 +217,7 @@ export const it: Record<string, string> = {
   'drive.upload': 'Carica su Drive',
   'drive.download': 'Scarica',
   'drive.delete': 'Elimina da Drive',
-  'drive.subtitle': 'Impostazioni e lettura vengono salvate automaticamente. Vengono mostrati solo gli EPUB salvati da EReader.',
+  'drive.subtitle': 'Impostazioni e lettura vengono salvate automaticamente. Vengono mostrati solo gli EPUB salvati da Yomisuba.',
   'drive.googleAccount': 'Account Google',
   'drive.signOutBtn': 'Esci',
   'drive.missingId': 'Manca la configurazione VITE_GOOGLE_WEB_CLIENT_ID.',
@@ -228,7 +229,7 @@ export const it: Record<string, string> = {
   'drive.noLocalBooks': 'Nessun libro locale recente.',
   'drive.uploadNote': 'Gli EPUB vengono caricati singolarmente; non vengono copiati automaticamente.',
   'drive.refreshTitle': 'Aggiorna elenco',
-  'drive.cloudNotice': 'Vengono mostrati gli EPUB importati con EReader; i file aggiunti manualmente a Drive non sono accessibili.',
+  'drive.cloudNotice': 'Vengono mostrati gli EPUB importati con Yomisuba; i file aggiunti manualmente a Drive non sono accessibili.',
   'drive.update': 'Aggiorna',
   'drive.deleteTitle': 'Elimina la copia e i relativi dati di lettura da Drive',
   'drive.noCloudBooks': 'Nessun libro caricato su Drive.',

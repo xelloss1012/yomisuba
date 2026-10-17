@@ -34,7 +34,7 @@ import {
   uploadGoogleDriveBook,
 } from './utils/googleDriveBackup';
 
-const SETTINGS_STORAGE_KEY = 'ereader_settings_v1';
+const SETTINGS_STORAGE_KEY = 'yomisuba_settings_v1';
 
 const DEFAULT_SETTINGS: ReaderSettingsState = {
   writingMode: 'vertical-rl',
@@ -336,7 +336,7 @@ export const App: React.FC = () => {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, []);
 
-  // EReader-managed books normally include their cover in metadata. If an older
+  // Books managed by the app normally include their cover in metadata. If an older
   // managed book does not, load it once and cache the thumbnail on the Drive file.
   useEffect(() => {
     if (!googleDriveSession) return;
@@ -438,7 +438,7 @@ export const App: React.FC = () => {
       if (driveSession && navigator.onLine) {
         try {
           const readerData = await restoreGoogleDriveReaderData(driveSession.accessToken, {
-            bookKey: `ereader_book_${encodeURIComponent(`${parsed.metadata.title}|${parsed.metadata.creator}`)}`,
+            bookKey: `yomisuba_book_${encodeURIComponent(`${parsed.metadata.title}|${parsed.metadata.creator}`)}`,
             title: parsed.metadata.title,
             creator: parsed.metadata.creator,
           });

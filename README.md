@@ -1,6 +1,10 @@
-# 📖 Lector EPUB con Soporte de Japonés Vertical (縦書き)
+# 📖 Yomisuba
 
-Una aplicación web moderna tipo Kindle desarrollada en **React + TypeScript + Vite + Tailwind CSS**, optimizada para la lectura de libros EPUB tanto en formato horizontal occidental como en **formato vertical tradicional japonés (`vertical-rl` / 縦書き)** con soporte completo de **furigana (`<ruby>`)**, ilustraciones, estilos e índice de contenidos.
+> **読みの素晴らしい世界に祝福を！**
+>
+> *Yomisuba* es la abreviatura de este nombre largo: «¡Bendiciones a este maravilloso mundo de la lectura!».
+
+Lector EPUB con soporte de japonés vertical (縦書き). Una aplicación web moderna tipo Kindle desarrollada en **React + TypeScript + Vite + Tailwind CSS**, optimizada para la lectura de libros EPUB tanto en formato horizontal occidental como en **formato vertical tradicional japonés (`vertical-rl` / 縦書き)** con soporte completo de **furigana (`<ruby>`)**, ilustraciones, estilos e índice de contenidos.
 
 > **Nota sobre el proyecto**: Esta aplicación ha sido diseñada para uso personal, adaptada a las necesidades y preferencias del autor, y se publica en GitHub de forma totalmente libre y gratuita por si a alguien le resulta útil o desea crear su propia versión (fork). Ha sido desarrollada prácticamente en su totalidad con la asistencia de Inteligencia Artificial.
 
@@ -48,9 +52,13 @@ Una aplicación web moderna tipo Kindle desarrollada en **React + TypeScript + V
 
 ## 🚀 Cómo ejecutar la aplicación
 
-Abre un terminal en esta carpeta (`D:\Manolo\Proyectos\EReader`) y ejecuta:
+Clona el repositorio, abre un terminal en su carpeta y ejecuta:
 
 ```bash
+# 0. Clonar el repositorio
+git clone https://github.com/xelloss1012/yomisuba.git
+cd yomisuba
+
 # 1. Instalar dependencias
 npm install
 
@@ -85,7 +93,7 @@ npm run android:build:release
 ```
 
 El APK se copia siempre en
-`dist/android/ereader-japanese-vertical-release.apk`. `dist/` está excluido de
+`dist/android/yomisuba-release.apk`. `dist/` está excluido de
 Git, por lo que el binario no se sube al repositorio. El `dist/index.html` de
 la versión web se mantiene en paralelo.
 
@@ -115,7 +123,7 @@ descargar. Su estado se restaura al abrirlo si hay una copia. Para actualizar el
 progreso de un EPUB ya guardado localmente, usa la acción **Actualizar** junto
 al libro en la lista de Google Drive. No hay base de datos compartida entre
 usuarios ni archivo ZIP. Los ajustes y los datos de lectura se guardan en
-`.ereader`; los EPUB se guardan con su nombre original en `.ereader/books`.
+`.yomisuba`; los EPUB se guardan con su nombre original en `.yomisuba/books`.
 Desde la lista de Drive se puede eliminar la copia EPUB y sus datos de lectura.
 Al quitar un libro de recientes, si existe una copia en Drive, se puede elegir
 si conservarla o borrarla también.
@@ -123,7 +131,7 @@ En Android, el botón habitual «Seleccionar archivo EPUB» abre el selector del
 sistema, desde el que se puede elegir un libro del dispositivo o de un proveedor
 como Google Drive. El libro se abre y se guarda localmente; para copiarlo a
 Drive, usa después «Subir a Drive» en la lista de libros de este dispositivo.
-La lista de Drive contiene los libros guardados por EReader; los archivos
+La lista de Drive contiene los libros guardados por Yomisuba; los archivos
 añadidos manualmente a Drive no se enumeran.
 La lectura y la biblioteca local no esperan a que Drive responda. Sin conexión,
 los datos locales siguen disponibles y los cambios de lectura quedan en cola
@@ -183,10 +191,10 @@ Para habilitar y configurar Google Drive y la autenticación OAuth:
    - No se requiere Firebase ni un archivo `google-services.json`.
 
 4. **Compilación en Android (opcional)**:
-   - Para Android, puedes crear un cliente OAuth Android en Google Cloud Console utilizando el ID de paquete `com.ereader.japanesevertical` y la huella SHA-1 de tu certificado.
+   - Para Android, puedes crear un cliente OAuth Android en Google Cloud Console utilizando el ID de paquete `io.github.xelloss1012.yomisuba` y la huella SHA-1 de tu certificado.
    - Ejecuta `npm run android:sync` y compila la aplicación (`npm run android:build`).
 
-Google pedirá autorización para crear, listar, leer y actualizar los archivos creados por EReader usando únicamente `drive.file`. La app no accede a otros archivos de Drive ni lista EPUB copiados manualmente. Los EPUB importados desde el selector del sistema se abren y se guardan localmente; se pueden copiar a Drive con la acción «Subir a Drive». Esos libros aparecen junto con los guardados previamente desde la app. Los EPUB guardados en Drive conservan su nombre original. La app usa el ID de cliente web también en Android; el cliente OAuth Android autoriza el paquete y certificado de firma. En Android se restaura la sesión nativa y se renueva el token al volver a la app; Google puede volver a pedir autorización si la cuenta revoca el acceso o caducan las credenciales de inicio de sesión. Los ajustes y datos de lectura son JSON, y los EPUB son archivos individuales; no están cifrados por la app. La configuración incluye cualquier clave IA guardada y queda sujeta a la seguridad de la cuenta Google y Drive.
+Google pedirá autorización para crear, listar, leer y actualizar los archivos creados por Yomisuba usando únicamente `drive.file`. La app no accede a otros archivos de Drive ni lista EPUB copiados manualmente. Los EPUB importados desde el selector del sistema se abren y se guardan localmente; se pueden copiar a Drive con la acción «Subir a Drive». Esos libros aparecen junto con los guardados previamente desde la app. Los EPUB guardados en Drive conservan su nombre original. La app usa el ID de cliente web también en Android; el cliente OAuth Android autoriza el paquete y certificado de firma. En Android se restaura la sesión nativa y se renueva el token al volver a la app; Google puede volver a pedir autorización si la cuenta revoca el acceso o caducan las credenciales de inicio de sesión. Los ajustes y datos de lectura son JSON, y los EPUB son archivos individuales; no están cifrados por la app. La configuración incluye cualquier clave IA guardada y queda sujeta a la seguridad de la cuenta Google y Drive.
 
 ---
 
@@ -206,13 +214,16 @@ Google pedirá autorización para crear, listar, leer y actualizar los archivos 
 
 ## 📄 Licencia
 
-El código de EReader se distribuye bajo la [licencia MIT](LICENSE).
+El código de Yomisuba se distribuye bajo la [licencia MIT](LICENSE).
 
 Los datos de diccionario mantienen su propia licencia, que no es la del código:
 
 - **JMdict/EDICT** (`src/data/`): © Electronic Dictionary Research and Development Group (EDRDG), [CC BY-SA 4.0](https://www.edrdg.org/edrdg/licence.html).
-- **Diccionarios opcionales** (descarga desde [ereader-dictionaries](https://github.com/xelloss1012/ereader-dictionaries)): francés y alemán derivados de JMdict (CC BY-SA 4.0, EDRDG); japonés-japonés, chino, coreano, italiano y vietnamita adaptados de las ediciones correspondientes de Wiktionary ([CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)).
+- **Diccionarios opcionales** (descarga desde [yomisuba-dictionaries](https://github.com/xelloss1012/yomisuba-dictionaries)): francés y alemán derivados de JMdict (CC BY-SA 4.0, EDRDG); japonés-japonés, chino, coreano, italiano y vietnamita adaptados de las ediciones correspondientes de Wiktionary ([CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)).
 
 - **Niveles de vocabulario** (`src/data/word-levels.json.gz`): marcas de frecuencia de JMdict (EDRDG, CC BY-SA 4.0), listas de vocabulario y kanji del JLPT de Jonathan Waller ([tanos.co.uk](http://www.tanos.co.uk/jlpt/), CC BY, en la versión de [Bluskyo/JLPT_Vocabulary](https://github.com/Bluskyo/JLPT_Vocabulary)) y KANJIDIC2 (EDRDG, CC BY-SA 4.0). Las listas JLPT no son oficiales.
+
+- **Análisis morfológico** (`public/dict/`): diccionario de [kuromoji.js](https://github.com/takuyaa/kuromoji.js) (Apache 2.0), derivado de mecab-ipadic-2.7.0 (© Nara Institute of Science and Technology). Su aviso de licencia completo está en [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+- **Libro de muestra**: *走れメロス*, de Dazai Osamu, obra de dominio público.
 
 Las dependencias de npm conservan sus licencias respectivas.

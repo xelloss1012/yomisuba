@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Política de Privacidad - EReader (Japón Vertical)</title>
+  <title>Política de Privacidad - Yomisuba</title>
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -23,6 +23,7 @@
     h2 { font-size: 1.4rem; margin-top: 2rem; }
     p, li { font-size: 1rem; color: #4a4a4a; }
     ul { padding-left: 20px; }
+    .slogan { font-size: 1.1rem; color: #4338ca; margin-top: 0; }
     .footer {
       margin-top: 40px;
       padding-top: 20px;
@@ -37,36 +38,50 @@
 </head>
 <body>
   <h1>Política de Privacidad</h1>
-  <p><strong>Última actualización:</strong> 10 de octubre de 2026</p>
+  <p class="slogan" lang="ja">Yomisuba — 読みの素晴らしい世界に祝福を！</p>
+  <p><strong>Última actualización:</strong> 17 de octubre de 2026</p>
 
-  <p><strong>EReader</strong> ("la aplicación") es una herramienta personal de lectura de libros electrónicos EPUB con soporte para texto vertical en japonés (<i>Tate-gaki</i>), desarrollada de forma abierta, libre y gratuita. Esta política de privacidad describe cómo se gestiona la información al utilizar la aplicación web o su versión distribuida.</p>
+  <p><strong>Yomisuba</strong> ("la aplicación") es un lector de libros electrónicos EPUB con soporte para texto vertical en japonés (<i>Tate-gaki</i>), desarrollado de forma abierta, libre y gratuita. Esta política describe qué información maneja la aplicación, tanto en su versión web como en la aplicación Android.</p>
 
-  <h2>1. Naturaleza de la Aplicación y Datos</h2>
-  <p>EReader es una aplicación concebida para uso personal, adaptada a preferencias individuales y publicada en GitHub de forma abierta para que cualquier persona pueda utilizarla o crear su propia versión (fork):</p>
+  <h2>1. Datos almacenados en el dispositivo</h2>
   <ul>
-    <li><strong>Almacenamiento local:</strong> Los libros recientes, puntos de lectura, marcadores, notas, historial de traducciones y ajustes se guardan exclusivamente de manera local en el dispositivo del usuario (mediante <code>localStorage</code> o en la aplicación Android).</li>
-    <li><strong>Sin servidores propios:</strong> No recopilamos, almacenamos ni procesamos datos personales en servidores externos ajenos al usuario.</li>
+    <li><strong>Almacenamiento local:</strong> Los libros, puntos de lectura, marcadores, notas, historial de traducciones, diccionarios descargados y ajustes se guardan en el propio dispositivo (<code>localStorage</code> e IndexedDB del navegador o de la aplicación Android).</li>
+    <li><strong>Claves de IA:</strong> Si el usuario introduce una clave de API de un servicio de IA para traducir, se guarda junto con los ajustes en el dispositivo.</li>
+    <li><strong>Sin servidores propios:</strong> La aplicación no tiene servidores propios. El desarrollador no recopila, recibe ni procesa datos personales.</li>
+    <li><strong>Sin analítica ni publicidad:</strong> La aplicación no incluye herramientas de analítica, seguimiento ni publicidad.</li>
   </ul>
 
-  <h2>2. Integración con Google Drive (Opcional)</h2>
-  <p>La aplicación incluye una característica opcional de copia de seguridad en Google Drive:</p>
+  <h2>2. Copia de seguridad en Google Drive (opcional)</h2>
   <ul>
-    <li><strong>Permisos solicitados:</strong> Si el usuario decide conectar su cuenta de Google, la aplicación solicita exclusivamente el ámbito <code>https://www.googleapis.com/auth/drive.file</code>.</li>
-    <li><strong>Alcance limitado:</strong> Este permiso otorga acceso únicamente para crear, leer y modificar los archivos y carpetas gestionados explícitamente por la aplicación (dentro de la carpeta <code>.ereader</code> en Google Drive). La aplicación <strong>no tiene acceso</strong> a ningún otro archivo, documento o información personal del usuario en Google Drive.</li>
-    <li><strong>Privacidad de las copias:</strong> Los datos sincronizados se almacenan en el propio espacio de Google Drive del usuario sin que el desarrollador tenga acceso a ellos.</li>
+    <li><strong>Permisos solicitados:</strong> Si el usuario conecta su cuenta de Google, la aplicación solicita exclusivamente el ámbito <code>https://www.googleapis.com/auth/drive.file</code>.</li>
+    <li><strong>Alcance limitado:</strong> Este permiso solo da acceso a los archivos que crea la propia aplicación (dentro de la carpeta <code>.yomisuba</code> de Google Drive). La aplicación <strong>no tiene acceso</strong> a ningún otro archivo del usuario en Google Drive.</li>
+    <li><strong>Contenido de la copia:</strong> Los ajustes (incluidas las claves de IA que se hayan guardado), los datos de lectura de cada libro y los EPUB que el usuario decida subir. Los archivos no están cifrados por la aplicación y quedan protegidos por la seguridad de la cuenta de Google.</li>
+    <li><strong>Privacidad de las copias:</strong> Los datos se guardan en el espacio de Google Drive del propio usuario; el desarrollador no tiene acceso a ellos. El usuario puede borrarlos desde la aplicación o desde Google Drive y revocar el acceso en la configuración de su cuenta de Google.</li>
   </ul>
 
-  <h2>3. Desarrollo mediante Inteligencia Artificial</h2>
+  <h2>3. Servicios de terceros</h2>
+  <p>Algunas funciones envían datos a servicios externos, siempre a petición del usuario y directamente desde su dispositivo. Cada servicio aplica su propia política de privacidad:</p>
+  <ul>
+    <li><strong>Traducción automática:</strong> Al traducir una selección, el texto seleccionado se envía al servicio de traducción de Google (<code>translate.googleapis.com</code>).</li>
+    <li><strong>Traducción con IA:</strong> Si el usuario configura una clave de API, el texto seleccionado se envía, junto con esa clave, al proveedor elegido (Google Gemini, OpenAI, DeepSeek u OpenRouter).</li>
+    <li><strong>Búsqueda web:</strong> La opción «Buscar en Google» abre una búsqueda de Google con el texto seleccionado.</li>
+    <li><strong>Diccionarios opcionales:</strong> Se descargan desde GitHub (<code>raw.githubusercontent.com</code>) cuando el usuario los instala o actualiza.</li>
+    <li><strong>Fuentes tipográficas:</strong> Las fuentes japonesas se cargan desde Google Fonts.</li>
+    <li><strong>Lectura en voz alta:</strong> Usa el motor de síntesis de voz del sistema o del navegador, que puede depender de servicios de su proveedor.</li>
+  </ul>
+  <p>En todos estos casos, el servicio correspondiente recibe además la dirección IP y los datos técnicos habituales de cualquier petición web.</p>
+
+  <h2>4. Desarrollo mediante Inteligencia Artificial</h2>
   <p>Esta aplicación ha sido desarrollada prácticamente en su totalidad con la asistencia de herramientas de Inteligencia Artificial.</p>
 
-  <h2>4. Modificaciones</h2>
-  <p>Esta política de privacidad puede actualizarse en caso de introducir mejoras técnicas o modificaciones en las integraciones de API.</p>
+  <h2>5. Modificaciones</h2>
+  <p>Esta política puede actualizarse cuando cambien las funciones o los servicios que usa la aplicación. La fecha de la última actualización figura al principio de esta página.</p>
 
-  <h2>5. Contacto y Código Fuente</h2>
-  <p>El código fuente completo está disponible libremente en el repositorio de <a href="https://github.com/" target="_blank">GitHub</a> del proyecto.</p>
+  <h2>6. Contacto y código fuente</h2>
+  <p>El código fuente completo está disponible en <a href="https://github.com/xelloss1012/yomisuba" target="_blank" rel="noopener">github.com/xelloss1012/yomisuba</a>. Para cualquier consulta sobre privacidad, abre una incidencia en <a href="https://github.com/xelloss1012/yomisuba/issues" target="_blank" rel="noopener">GitHub Issues</a>.</p>
 
   <div class="footer">
-    <p>&copy; 2026 EReader - Aplicación de uso personal y código abierto.</p>
+    <p>&copy; 2026 xelloss1012 · Yomisuba · Código abierto bajo licencia MIT.</p>
   </div>
 </body>
 </html>

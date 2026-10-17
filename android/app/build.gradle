@@ -1,10 +1,10 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace = "com.ereader.japanesevertical"
+    namespace = "io.github.xelloss1012.yomisuba"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.ereader.japanesevertical"
+        applicationId "io.github.xelloss1012.yomisuba"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

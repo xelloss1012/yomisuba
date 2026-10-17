@@ -9,7 +9,7 @@ export interface RecentBook {
   printedPages?: number;
 }
 
-const DB_NAME = 'ereader_library';
+const DB_NAME = 'yomisuba_library';
 const STORE_NAME = 'books';
 const DB_VERSION = 2;
 
@@ -98,8 +98,8 @@ export async function deleteRecentBook(id: string): Promise<void> {
     db.close();
   }
   try {
-    if (localStorage.getItem('ereader_last_book_id') === id) {
-      localStorage.removeItem('ereader_last_book_id');
+    if (localStorage.getItem('yomisuba_last_book_id') === id) {
+      localStorage.removeItem('yomisuba_last_book_id');
     }
   } catch {
     // The recent-book entry is removed even if the startup preference cannot be updated.
@@ -108,7 +108,7 @@ export async function deleteRecentBook(id: string): Promise<void> {
 
 export function getLastBookId(): string | null {
   try {
-    return localStorage.getItem('ereader_last_book_id');
+    return localStorage.getItem('yomisuba_last_book_id');
   } catch {
     return null;
   }
@@ -116,7 +116,7 @@ export function getLastBookId(): string | null {
 
 export function setLastBookId(id: string): void {
   try {
-    localStorage.setItem('ereader_last_book_id', id);
+    localStorage.setItem('yomisuba_last_book_id', id);
   } catch {
     // The library remains usable when localStorage is unavailable.
   }

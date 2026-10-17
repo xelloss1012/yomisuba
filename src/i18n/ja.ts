@@ -1,6 +1,7 @@
 export const ja: Record<string, string> = {
   // FileDropZone / Main Page
-  'app.title': 'EPUBリーダー',
+  'app.title': 'Yomisuba',
+  'app.slogan': '読みの素晴らしい世界に祝福を！',
   'app.subtitle': 'EPUBリーダー • 縦書き対応',
   'app.description': '一般的な電子書籍に加え、ふりがなとページ送りに対応した日本語の縦書き表示で読めます。',
   'dropzone.dragPrefix': '',
@@ -216,7 +217,7 @@ export const ja: Record<string, string> = {
   'drive.upload': 'ドライブにアップロード',
   'drive.download': 'ダウンロード',
   'drive.delete': 'ドライブから削除',
-  'drive.subtitle': '設定と読書の進み具合は自動でバックアップされます。EReaderで保存したEPUBのみ表示されます。',
+  'drive.subtitle': '設定と読書の進み具合は自動でバックアップされます。Yomisubaで保存したEPUBのみ表示されます。',
   'drive.googleAccount': 'Googleアカウント',
   'drive.signOutBtn': 'ログアウト',
   'drive.missingId': 'VITE_GOOGLE_WEB_CLIENT_ID が設定されていません。',
@@ -228,7 +229,7 @@ export const ja: Record<string, string> = {
   'drive.noLocalBooks': '最近の本はありません。',
   'drive.uploadNote': 'EPUBは1冊ずつアップロードされ、自動ではコピーされません。',
   'drive.refreshTitle': '一覧を更新',
-  'drive.cloudNotice': 'EReaderで取り込んだEPUBを表示しています。ドライブに手動で追加したファイルにはアクセスできません。',
+  'drive.cloudNotice': 'Yomisubaで取り込んだEPUBを表示しています。ドライブに手動で追加したファイルにはアクセスできません。',
   'drive.update': '更新',
   'drive.deleteTitle': 'ドライブからこのコピーと読書データを削除',
   'drive.noCloudBooks': 'ドライブにアップロードされた本はありません。',

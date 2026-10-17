@@ -14,7 +14,7 @@ const server = await createServer({
 
 try {
   const { bookFolderName } = await server.ssrLoadModule('/src/utils/googleDriveBackup.ts');
-  const identity = (title, creator = '') => ({ bookKey: `ereader_book_${encodeURIComponent(`${title}|${creator}`)}`, title, creator });
+  const identity = (title, creator = '') => ({ bookKey: `yomisuba_book_${encodeURIComponent(`${title}|${creator}`)}`, title, creator });
 
   // The folder is named after the real book title.
   assert.equal(bookFolderName(identity('走れメロス', 'Dazai Osamu')), '走れメロス');

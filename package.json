@@ -1,5 +1,12 @@
 {
-  "name": "ereader-japanese-vertical",
+  "name": "yomisuba",
+  "description": "Yomisuba (読みの素晴らしい世界に祝福を！): EPUB reader for vertical Japanese with furigana, dictionaries and translation.",
+  "homepage": "https://github.com/xelloss1012/yomisuba#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xelloss1012/yomisuba.git"
+  },
+  "bugs": "https://github.com/xelloss1012/yomisuba/issues",
   "private": true,
   "license": "MIT",
   "version": "1.0.0",

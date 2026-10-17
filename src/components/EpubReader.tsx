@@ -347,7 +347,7 @@ export const EpubReader: React.FC<Props> = ({
   const [isTocOpen, setIsTocOpen] = useState(false);
   const [tocError, setTocError] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const bookStorageKey = `ereader_book_${encodeURIComponent(`${epub.metadata.title}|${epub.metadata.creator}`)}`;
+  const bookStorageKey = `yomisuba_book_${encodeURIComponent(`${epub.metadata.title}|${epub.metadata.creator}`)}`;
   const recentSearchesStorageKey = `${bookStorageKey}_recent_searches`;
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchSeed, setSearchSeed] = useState({ text: '', token: 0 });
@@ -1563,13 +1563,13 @@ export const EpubReader: React.FC<Props> = ({
       selectionEdgeClearRef.current();
     };
 
-    window.addEventListener('ereader-native-touch', onNativeTouchTrace);
+    window.addEventListener('yomisuba-native-touch', onNativeTouchTrace);
     window.addEventListener('contextmenu', handleWindowContextMenu, { capture: true });
     return () => {
       cancelEdgeActivation();
       startEdgeActivationRef.current = () => {};
       cancelEdgeActivationRef.current = () => {};
-      window.removeEventListener('ereader-native-touch', onNativeTouchTrace);
+      window.removeEventListener('yomisuba-native-touch', onNativeTouchTrace);
       window.removeEventListener('contextmenu', handleWindowContextMenu, { capture: true });
     };
   }, []);
@@ -2657,9 +2657,9 @@ export const EpubReader: React.FC<Props> = ({
     inputEvents.forEach((type) => {
       document.addEventListener(type, traceInputEvent, { capture: true, passive: true });
     });
-    window.addEventListener('ereader-native-touch', onNativeTouchTrace);
-    window.addEventListener('ereader-native-webview-touch', onNativeWebViewTouchTrace);
-    window.addEventListener('ereader-native-selection-event', onNativeSelectionEvent);
+    window.addEventListener('yomisuba-native-touch', onNativeTouchTrace);
+    window.addEventListener('yomisuba-native-webview-touch', onNativeWebViewTouchTrace);
+    window.addEventListener('yomisuba-native-selection-event', onNativeSelectionEvent);
     const traceWindowEvent = (event: Event) => traceInputEvent(event);
     window.addEventListener('blur', traceWindowEvent);
     window.addEventListener('focus', traceWindowEvent);
@@ -2669,9 +2669,9 @@ export const EpubReader: React.FC<Props> = ({
       inputEvents.forEach((type) => {
         document.removeEventListener(type, traceInputEvent, { capture: true });
       });
-      window.removeEventListener('ereader-native-touch', onNativeTouchTrace);
-      window.removeEventListener('ereader-native-webview-touch', onNativeWebViewTouchTrace);
-      window.removeEventListener('ereader-native-selection-event', onNativeSelectionEvent);
+      window.removeEventListener('yomisuba-native-touch', onNativeTouchTrace);
+      window.removeEventListener('yomisuba-native-webview-touch', onNativeWebViewTouchTrace);
+      window.removeEventListener('yomisuba-native-selection-event', onNativeSelectionEvent);
       window.removeEventListener('blur', traceWindowEvent);
       window.removeEventListener('focus', traceWindowEvent);
       document.removeEventListener('visibilitychange', traceInputEvent);

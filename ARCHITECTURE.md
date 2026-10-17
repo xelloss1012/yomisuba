@@ -1,6 +1,6 @@
-# 📖 EReader - Arquitectura y Guía del Proyecto
+# 📖 Yomisuba - Arquitectura y Guía del Proyecto
 
-Este documento resume la arquitectura, decisiones de diseño, estructura del código y hoja de ruta para la aplicación de lectura de libros EPUB orientada a texto vertical en japonés (**縦書き / Tate-gaki**).
+Este documento resume la arquitectura, decisiones de diseño, estructura del código y hoja de ruta de **Yomisuba** (読みの素晴らしい世界に祝福を！), la aplicación de lectura de libros EPUB orientada a texto vertical en japonés (**縦書き / Tate-gaki**).
 
 ---
 
@@ -29,7 +29,7 @@ Crear una aplicación web tipo Kindle moderna, rápida y local que permita:
 ## 📂 Estructura de Archivos
 
 ```text
-EReader/
+yomisuba/
 ├── index.html                 # HTML principal con meta tags para móvil y fuentes japonesas
 ├── vite.config.ts             # Configuración de Vite con viteSingleFile()
 ├── capacitor.config.ts        # Configuración de la distribución Android
@@ -123,7 +123,7 @@ Se conservan las 6 entradas más recientes, de modo que rotar el dispositivo o c
   - **Copiar**: Copia el texto al portapapeles.
   - **Traducir**: Llama a la API de traducción e integra la respuesta en un modal.
   - **JMDict local**: Muestra dentro del modal las entradas y definiciones en español e inglés, usando la forma base obtenida por Kuromoji para verbos conjugados. El orden sigue el idioma de traducción. Los dos van en `src/data/` comprimidos con gzip (`jmdict-es.json.gz`, `jmdict-en.json.gz`) e incrustados con `?inline`. Sólo se descomprimen e indexan en la primera consulta, así que no cuestan nada al arrancar.
-  - **Diccionarios opcionales**: uno por idioma de la interfaz que no tiene diccionario incluido. Son japonés-japonés (国語辞典, con definiciones y sinónimos), francés y alemán (JMdict) y chino, coreano, italiano y vietnamita (Wiktionary). Tienen el mismo formato compacto que JMdict, más `y` (sinónimos) e `i` (palabra conjugable, porque cada Wiktionary nombra las categorías en su idioma). Se generan con `npm run dictionary:build:jmdict` y `npm run dictionary:build:wiktionary` y se publican en el repositorio público [ereader-dictionaries](https://github.com/xelloss1012/ereader-dictionaries). El registro, con archivo, versión, tamaño y fuente, está en `src/utils/optionalDictionaries.ts`. Se descargan desde Ajustes (`DownloadableDictionariesSection`) y se guardan tal cual en IndexedDB (`ereader_dictionaries`), que pertenece al origen de la app: sobreviven a las actualizaciones, se pide `navigator.storage.persist()` para que el navegador no los desaloje y no forman parte de la copia en Google Drive. `dictionary.ts` descomprime e indexa cada uno la primera vez que hace falta.
+  - **Diccionarios opcionales**: uno por idioma de la interfaz que no tiene diccionario incluido. Son japonés-japonés (国語辞典, con definiciones y sinónimos), francés y alemán (JMdict) y chino, coreano, italiano y vietnamita (Wiktionary). Tienen el mismo formato compacto que JMdict, más `y` (sinónimos) e `i` (palabra conjugable, porque cada Wiktionary nombra las categorías en su idioma). Se generan con `npm run dictionary:build:jmdict` y `npm run dictionary:build:wiktionary` y se publican en el repositorio público [yomisuba-dictionaries](https://github.com/xelloss1012/yomisuba-dictionaries). El registro, con archivo, versión, tamaño y fuente, está en `src/utils/optionalDictionaries.ts`. Se descargan desde Ajustes (`DownloadableDictionariesSection`) y se guardan tal cual en IndexedDB (`yomisuba_dictionaries`), que pertenece al origen de la app: sobreviven a las actualizaciones, se pide `navigator.storage.persist()` para que el navegador no los desaloje y no forman parte de la copia en Google Drive. `dictionary.ts` descomprime e indexa cada uno la primera vez que hace falta.
   - **Orden de las entradas**: primero todas las coincidencias exactas y después las parciales. Dentro de cada grupo, el orden de diccionarios es: japonés-japonés (sólo con la interfaz en japonés), el del idioma de traducción (si está descargado; si no, manda el inglés), inglés y español. Así, una entrada inglesa exacta va por delante de una parcial del diccionario propio.
   - **Pronunciación TTS**: Utiliza `window.speechSynthesis` con voz `ja-JP`.
   - **Buscar**: Búsqueda en Google.

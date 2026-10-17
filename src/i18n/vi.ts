@@ -1,6 +1,7 @@
 export const vi: Record<string, string> = {
   // FileDropZone / Main Page
-  'app.title': 'Trình đọc sách EPUB',
+  'app.title': 'Yomisuba',
+  'app.slogan': '読みの素晴らしい世界に祝福を！',
   'app.subtitle': 'Trình đọc EPUB • 縦書き (Tiếng Nhật dọc)',
   'app.description': 'Tương thích với sách điện tử tiêu chuẩn và đọc dọc truyền thống kiểu Nhật với hỗ trợ furigana và phân trang.',
   'dropzone.dragPrefix': 'Kéo tệp của bạn vào ',
@@ -216,7 +217,7 @@ export const vi: Record<string, string> = {
   'drive.upload': 'Tải lên Drive',
   'drive.download': 'Tải xuống',
   'drive.delete': 'Xóa khỏi Drive',
-  'drive.subtitle': 'Cài đặt và tiến trình đọc được sao lưu tự động. Chỉ hiển thị các tệp EPUB được lưu bởi EReader.',
+  'drive.subtitle': 'Cài đặt và tiến trình đọc được sao lưu tự động. Chỉ hiển thị các tệp EPUB được lưu bởi Yomisuba.',
   'drive.googleAccount': 'Tài khoản Google',
   'drive.signOutBtn': 'Thoát',
   'drive.missingId': 'Thiếu cấu hình VITE_GOOGLE_WEB_CLIENT_ID.',
@@ -228,7 +229,7 @@ export const vi: Record<string, string> = {
   'drive.noLocalBooks': 'Không có sách cục bộ gần đây.',
   'drive.uploadNote': 'Các tệp EPUB được tải lên riêng lẻ; chúng không được sao chép tự động.',
   'drive.refreshTitle': 'Làm mới danh sách',
-  'drive.cloudNotice': 'Hiển thị các tệp EPUB được nhập bằng EReader; các tệp thêm thủ công vào Drive không thể truy cập.',
+  'drive.cloudNotice': 'Hiển thị các tệp EPUB được nhập bằng Yomisuba; các tệp thêm thủ công vào Drive không thể truy cập.',
   'drive.update': 'Cập nhật',
   'drive.deleteTitle': 'Xóa bản sao và dữ liệu đọc khỏi Drive',
   'drive.noCloudBooks': 'Không có sách nào được tải lên Drive.',

@@ -21,7 +21,7 @@ def main():
     with tempfile.TemporaryDirectory() as temporary_directory:
         archive_path = Path(temporary_directory) / "jmdict-en.gz"
         request = urllib.request.Request(
-            SOURCE_URL, headers={"User-Agent": "EReader-JMdict-updater"}
+            SOURCE_URL, headers={"User-Agent": "Yomisuba-JMdict-updater"}
         )
         with urllib.request.urlopen(request, timeout=60) as response, archive_path.open("wb") as archive:
             while chunk := response.read(1024 * 1024):

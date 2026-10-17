@@ -40,8 +40,8 @@ interface GlossaryItem {
 }
 
 type SortMode = 'page' | 'useful';
-const SORT_STORAGE_KEY = 'ereader_glossary_sort';
-const HIDE_KNOWN_STORAGE_KEY = 'ereader_glossary_hide_known';
+const SORT_STORAGE_KEY = 'yomisuba_glossary_sort';
+const HIDE_KNOWN_STORAGE_KEY = 'yomisuba_glossary_hide_known';
 
 const readPreference = (key: string) => {
   try {

@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">EReader Japanese Vertical</string>
-    <string name="title_activity_main">EReader Japanese Vertical</string>
-    <string name="package_name">com.ereader.japanesevertical</string>
-    <string name="custom_url_scheme">com.ereader.japanesevertical</string>
+    <string name="app_name">Yomisuba</string>
+    <string name="title_activity_main">Yomisuba</string>
+    <string name="package_name">io.github.xelloss1012.yomisuba</string>
+    <string name="custom_url_scheme">io.github.xelloss1012.yomisuba</string>
 </resources>

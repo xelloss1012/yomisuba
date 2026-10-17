@@ -1,6 +1,7 @@
 export const ko: Record<string, string> = {
   // FileDropZone / Main Page
-  'app.title': 'EPUB 도서 리더',
+  'app.title': 'Yomisuba',
+  'app.slogan': '読みの素晴らしい世界に祝福を！',
   'app.subtitle': 'EPUB 리더 • 縦書き (일본어 세로 읽기)',
   'app.description': '표준 디지털 도서 및 후리가나 지원과 페이지 매김이 포함된 전통 일본어 세로 읽기를 지원합니다.',
   'dropzone.dragPrefix': '파일을 여기에 ',
@@ -216,7 +217,7 @@ export const ko: Record<string, string> = {
   'drive.upload': 'Drive에 업로드',
   'drive.download': '다운로드',
   'drive.delete': 'Drive에서 삭제',
-  'drive.subtitle': '설정과 읽기 진행 상황이 자동으로 백업됩니다. EReader로 저장한 EPUB만 표시됩니다.',
+  'drive.subtitle': '설정과 읽기 진행 상황이 자동으로 백업됩니다. Yomisuba로 저장한 EPUB만 표시됩니다.',
   'drive.googleAccount': 'Google 계정',
   'drive.signOutBtn': '로그아웃',
   'drive.missingId': 'VITE_GOOGLE_WEB_CLIENT_ID 설정이 없습니다.',
@@ -228,7 +229,7 @@ export const ko: Record<string, string> = {
   'drive.noLocalBooks': '최근 로컬 책이 없습니다.',
   'drive.uploadNote': 'EPUB는 개별 업로드되며 자동으로 복사되지 않습니다.',
   'drive.refreshTitle': '목록 새로고침',
-  'drive.cloudNotice': 'EReader로 가져온 EPUB가 표시됩니다. Drive에 수동으로 추가한 파일은 액세스할 수 없습니다.',
+  'drive.cloudNotice': 'Yomisuba로 가져온 EPUB가 표시됩니다. Drive에 수동으로 추가한 파일은 액세스할 수 없습니다.',
   'drive.update': '업데이트',
   'drive.deleteTitle': 'Drive에서 사본 및 읽기 데이터 삭제',
   'drive.noCloudBooks': 'Drive에 업로드된 책이 없습니다.',

@@ -68,8 +68,8 @@ if (!existsSync(apkPath)) {
 const outputDir = join(root, 'dist', 'android');
 mkdirSync(outputDir, { recursive: true });
 const outputFilename = buildType === 'release'
-  ? 'ereader-japanese-vertical-release.apk'
-  : 'ereader-japanese-vertical-debug.apk';
+  ? 'yomisuba-release.apk'
+  : 'yomisuba-debug.apk';
 const outputPath = join(outputDir, outputFilename);
 copyFileSync(apkPath, outputPath);
 console.log(`Android APK copied to ${outputPath}`);

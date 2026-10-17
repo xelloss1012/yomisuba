@@ -1,4 +1,4 @@
-package com.ereader.japanesevertical;
+package io.github.xelloss1012.yomisuba;
 
 import ee.forgr.capacitor.social.login.ModifiedMainActivityForSocialLoginPlugin;
 import android.os.Build;
@@ -133,7 +133,7 @@ public class MainActivity extends BridgeActivity implements ModifiedMainActivity
                     && args.length == 1
                     && args[0] instanceof SelectionEvent) {
                     SelectionEvent selectionEvent = (SelectionEvent) args[0];
-                    String trace = "window.dispatchEvent(new CustomEvent('ereader-native-selection-event',{detail:{"
+                    String trace = "window.dispatchEvent(new CustomEvent('yomisuba-native-selection-event',{detail:{"
                         + "eventType:" + selectionEvent.getEventType()
                         + ",eventName:'" + (selectionEvent.getEventType() >= 100
                             ? getSelectionActionName(selectionEvent.getEventType())
@@ -180,7 +180,7 @@ public class MainActivity extends BridgeActivity implements ModifiedMainActivity
             float density = getResources().getDisplayMetrics().density;
             float cssX = (rawX - webViewLocation[0]) / density;
             float cssY = (rawY - webViewLocation[1]) / density;
-            String trace = "window.dispatchEvent(new CustomEvent('ereader-native-webview-touch',{detail:{action:'"
+            String trace = "window.dispatchEvent(new CustomEvent('yomisuba-native-webview-touch',{detail:{action:'"
                 + getMotionActionName(action)
                 + "',x:" + cssX
                 + ",y:" + cssY
@@ -218,7 +218,7 @@ public class MainActivity extends BridgeActivity implements ModifiedMainActivity
                     && rawX < webViewLocation[0] + webView.getWidth()
                     && rawY >= webViewLocation[1]
                     && rawY < webViewLocation[1] + webView.getHeight();
-                final String trace = "window.dispatchEvent(new CustomEvent('ereader-native-touch',{detail:{action:'"
+                final String trace = "window.dispatchEvent(new CustomEvent('yomisuba-native-touch',{detail:{action:'"
                     + getMotionActionName(action)
                     + "',x:" + cssX
                     + ",y:" + cssY

@@ -1,6 +1,7 @@
 export const zh: Record<string, string> = {
   // FileDropZone / Main Page
-  'app.title': 'EPUB 电子书阅读器',
+  'app.title': 'Yomisuba',
+  'app.slogan': '読みの素晴らしい世界に祝福を！',
   'app.subtitle': 'EPUB 阅读器 • 縦書き (日式竖排)',
   'app.description': '支持标准数字图书与传统日式竖排阅读，支持假名注音与分页。',
   'dropzone.dragPrefix': '将您的文件拖到 ',
@@ -216,7 +217,7 @@ export const zh: Record<string, string> = {
   'drive.upload': '上传至 Drive',
   'drive.download': '下载',
   'drive.delete': '从 Drive 删除',
-  'drive.subtitle': '设置和阅读进度会自动备份。仅显示由 EReader 保存的 EPUB。',
+  'drive.subtitle': '设置和阅读进度会自动备份。仅显示由 Yomisuba 保存的 EPUB。',
   'drive.googleAccount': 'Google 账户',
   'drive.signOutBtn': '退出',
   'drive.missingId': '缺少 VITE_GOOGLE_WEB_CLIENT_ID 配置。',
@@ -228,7 +229,7 @@ export const zh: Record<string, string> = {
   'drive.noLocalBooks': '没有最近的本地图书。',
   'drive.uploadNote': 'EPUB 文件逐个上传，不会自动复制。',
   'drive.refreshTitle': '刷新列表',
-  'drive.cloudNotice': '显示使用 EReader 导入的 EPUB；手动添加到 Drive 的文件不可访问。',
+  'drive.cloudNotice': '显示使用 Yomisuba 导入的 EPUB；手动添加到 Drive 的文件不可访问。',
   'drive.update': '更新',
   'drive.deleteTitle': '从 Drive 删除副本及其阅读数据',
   'drive.noCloudBooks': '没有上传到 Drive 的图书。',

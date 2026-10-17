@@ -33,7 +33,7 @@ def unique(items):
 
 
 def download(path):
-    request = urllib.request.Request(SOURCE_URL, headers={"User-Agent": "EReader-JMdict-updater"})
+    request = urllib.request.Request(SOURCE_URL, headers={"User-Agent": "Yomisuba-JMdict-updater"})
     with urllib.request.urlopen(request, timeout=120) as response, path.open("wb") as archive:
         while chunk := response.read(1024 * 1024):
             archive.write(chunk)

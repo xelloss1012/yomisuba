@@ -111,9 +111,12 @@ export const FileDropZone: React.FC<Props> = ({
           <span>{t('app.subtitle')}</span>
         </div>
 
-        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-mincho mb-3">
+        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-mincho mb-2">
           {t('app.title')}
         </h1>
+        <p lang="ja" className="text-sm sm:text-base font-mincho text-indigo-700 dark:text-indigo-300 mb-3">
+          {t('app.slogan')}
+        </p>
         <p className="text-sm sm:text-base text-zinc-600 dark:text-zinc-400 mb-8 max-w-md mx-auto">
           {t('app.description')}
         </p>
