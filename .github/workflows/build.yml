@@ -10,6 +10,8 @@ jobs:
   web:
     name: Build web
     runs-on: ubuntu-latest
+    env:
+      VITE_GOOGLE_WEB_CLIENT_ID: ${{ vars.VITE_GOOGLE_WEB_CLIENT_ID }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -18,10 +20,29 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build:web
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-pages-artifact@v3
         with:
-          name: web-dist
           path: dist
+
+  # Publishes the web app and its privacy policy at
+  # https://xelloss1012.github.io/yomisuba/ on every push to main.
+  pages:
+    name: Deploy to GitHub Pages
+    needs: web
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: true
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
 
   android:
     name: Build Android

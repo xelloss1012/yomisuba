@@ -338,7 +338,8 @@ const createTokenizer = (): Promise<TokenizerClient> =>
         pending.delete(message.id);
       }
     };
-    worker.postMessage({ type: 'init', dicPath: new URL('/dict/', window.location.href).href });
+    // Relative to the page, so it also works under a sub-path (GitHub Pages).
+    worker.postMessage({ type: 'init', dicPath: new URL('dict/', window.location.href).href });
   });
 
 const getTokenizer = async (retryAfterFailure = false): Promise<TokenizerClient> => {
