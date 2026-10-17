@@ -9,6 +9,9 @@ export interface RecentBook {
   printedPages?: number;
 }
 
+/** Books shown on the home shelf; the local database itself keeps every book. */
+export const MAX_SHELF_BOOKS = 200;
+
 const DB_NAME = 'yomisuba_library';
 const STORE_NAME = 'books';
 const DB_VERSION = 2;

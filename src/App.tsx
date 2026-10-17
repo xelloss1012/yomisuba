@@ -5,8 +5,9 @@ import { extractEpubCoverBlob, parseEpub } from './utils/epubParser';
 import { FileDropZone } from './components/FileDropZone';
 import { EpubReader } from './components/EpubReader';
 import { LanguageProvider } from './i18n/LanguageContext';
+import { t } from './utils/i18n';
 import { setReaderAutoRotate } from './utils/readerOrientation';
-import { createBookId, deleteRecentBook, getLastBookId, getRecentBook, listRecentBooks, RecentBook, saveRecentBook, setLastBookId } from './utils/recentBooks';
+import { createBookId, deleteRecentBook, getLastBookId, getRecentBook, listRecentBooks, MAX_SHELF_BOOKS, RecentBook, saveRecentBook, setLastBookId } from './utils/recentBooks';
 import {
   deleteGoogleDriveBook,
   downloadGoogleDriveBook,
@@ -466,7 +467,7 @@ export const App: React.FC = () => {
       } catch (err) {
         console.warn('No se pudo guardar el libro en la biblioteca local:', err);
       }
-      setRecentBooks((books) => [recentBook, ...books.filter((book) => book.id !== id)].slice(0, 8));
+      setRecentBooks((books) => [recentBook, ...books.filter((book) => book.id !== id)].slice(0, MAX_SHELF_BOOKS));
 
       // Auto-detect writing mode and progression direction based on language and metadata
       const lang = parsed.metadata.language?.toLowerCase() || '';
@@ -492,7 +493,7 @@ export const App: React.FC = () => {
     } catch (err: any) {
       console.error('Error al abrir el archivo EPUB:', err);
       setErrorMessage(
-        err?.message || 'No se pudo leer el archivo EPUB. Comprueba que sea un archivo válido.'
+        err?.message || t('drive.alertReadEpubError', settings.language)
       );
     } finally {
       setIsLoading(false);
@@ -507,9 +508,9 @@ export const App: React.FC = () => {
     let cancelled = false;
     const restoreLibrary = async () => {
       try {
-        const books = await listRecentBooks(8);
+        const books = await listRecentBooks(MAX_SHELF_BOOKS);
         if (cancelled) return;
-        const visibleBooks = books.slice(0, 8);
+        const visibleBooks = books.slice(0, MAX_SHELF_BOOKS);
         setRecentBooks(visibleBooks);
 
         const hydrateCovers = async () => {
@@ -562,13 +563,13 @@ export const App: React.FC = () => {
 
       let deleteDriveCopy = false;
       if (cloudBook) {
-        deleteDriveCopy = window.confirm(
-          `«${book.title}» tiene una copia en Google Drive. ¿Quitarla también de Drive junto con sus datos de lectura?\n\nAceptar: borrar de Drive y de recientes.\nCancelar: conservar Drive y quitar solo de recientes.`,
-        );
+        deleteDriveCopy = window.confirm(t('drive.confirmDeleteCloudAndRecent', settings.language, { title: book.title }));
       } else {
-        const confirmed = window.confirm(googleDriveSession
-          ? `¿Quitar «${book.title}» de los libros recientes de este dispositivo?`
-          : `¿Quitar «${book.title}» de los libros recientes? No hay una sesión de Google, así que no se puede comprobar ni borrar una copia de Drive.`);
+        const confirmed = window.confirm(t(
+          googleDriveSession ? 'drive.confirmRemoveRecent' : 'drive.confirmRemoveRecentNoSession',
+          settings.language,
+          { title: book.title },
+        ));
         if (!confirmed) return;
       }
 
@@ -625,7 +626,7 @@ export const App: React.FC = () => {
   };
 
   const handleRestoreDriveSettings = () => {
-    if (!googleDriveSession || !window.confirm('¿Reemplazar los ajustes locales por los ajustes guardados en tu Google Drive?')) return;
+    if (!googleDriveSession || !window.confirm(t('drive.confirmRestoreSettings', settings.language))) return;
     void runDriveAction(async () => {
       const restored = await restoreGoogleDriveSettings(googleDriveSession.accessToken);
       setSettings({ ...DEFAULT_SETTINGS, ...restored });
@@ -645,7 +646,7 @@ export const App: React.FC = () => {
 
   const handleDeleteDriveBook = (cloudBook: GoogleDriveBook) => {
     if (!googleDriveSession || !window.confirm(
-      `¿Eliminar «${cloudBook.title}» y sus datos de lectura de Google Drive? Esta acción no se puede deshacer.`,
+      t('drive.confirmDeleteBook', settings.language, { title: cloudBook.title }),
     )) return;
     void runDriveAction(async () => {
       await deleteGoogleDriveBook(googleDriveSession.accessToken, cloudBook);
@@ -655,11 +656,11 @@ export const App: React.FC = () => {
 
   const handleDownloadDriveBook = (cloudBook: GoogleDriveBook) => {
     if (!googleDriveSession || !window.confirm(
-      `Descargar «${cloudBook.title}» y restaurar sus datos de lectura locales?`
+      t('drive.confirmDownloadBook', settings.language, { title: cloudBook.title }),
     )) return;
     void runDriveAction(async () => {
       const book = await downloadGoogleDriveBook(googleDriveSession.accessToken, cloudBook);
-      setRecentBooks((books) => [book, ...books.filter((item) => item.id !== book.id)].slice(0, 8));
+      setRecentBooks((books) => [book, ...books.filter((item) => item.id !== book.id)].slice(0, MAX_SHELF_BOOKS));
       await openBook(book.blob, book.id, book.name);
     });
   };
@@ -694,7 +695,7 @@ export const App: React.FC = () => {
     if (!googleDriveSession || !currentEpub) return;
     const currentBook = recentBooks.find((b) => b.title === currentEpub.metadata.title);
     if (!currentBook) {
-      alert('No se encuentra el archivo local de este libro para subirlo.');
+      alert(t('drive.alertNoLocalBook', settings.language));
       return;
     }
     handleUploadDriveBook(currentBook);

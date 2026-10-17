@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { createSampleJapaneseEpub } from '../utils/sampleBook';
 import { BookOpen, Download, ExternalLink, Loader2, RefreshCw, Search, X } from 'lucide-react';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { RecentBook } from '../utils/recentBooks';
@@ -25,7 +26,7 @@ interface Props {
   isLoading: boolean;
   onClose: () => void;
   onOpenRecent: (book: RecentBook) => void;
-  onFileLoaded: (file: File) => void;
+  onFileLoaded: (file: File | Blob) => void;
 }
 
 /** Books shown at first and added by each «show more». */
@@ -386,6 +387,21 @@ export const BookLibraryModal: React.FC<Props> = ({
           <a href={LIBRARY_ATTRIBUTION_URL} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline dark:text-indigo-400">
             {t('library.attribution')}
           </a>
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-zinc-100 pt-2 dark:border-zinc-800">
+            <span>{t('library.sampleHint')}</span>
+            <button
+              type="button"
+              disabled={isLoading || downloading !== null}
+              onClick={async () => {
+                const sample = await createSampleJapaneseEpub();
+                onClose();
+                onFileLoaded(sample);
+              }}
+              className="font-semibold text-indigo-600 hover:underline disabled:opacity-50 dark:text-indigo-400"
+            >
+              {t('sample.btn')}
+            </button>
+          </div>
         </footer>
       </section>
     </div>,

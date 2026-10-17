@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { UploadCloud, BookOpen, Sparkles, FileText, Clock3, Trash2, Languages, Smartphone, Github, ShieldCheck, Library } from 'lucide-react';
+import { UploadCloud, Sparkles, FileText, Languages, Smartphone, Github, ShieldCheck, Library } from 'lucide-react';
 import { createSampleJapaneseEpub } from '../utils/sampleBook';
 import { RecentBook } from '../utils/recentBooks';
 import { GoogleDriveBook, GoogleDriveSession } from '../utils/googleDriveBackup';
 import { GoogleDriveBackupPanel } from './GoogleDriveBackupPanel';
-import { BookCoverThumbnail } from './BookCoverThumbnail';
+import { BookShelf } from './BookShelf';
 import { BookLibraryModal } from './BookLibraryModal';
 import { UpdateNotice } from './UpdateNotice';
 import { UpdateCheckToggle } from './UpdateCheckToggle';
@@ -64,6 +64,7 @@ export const FileDropZone: React.FC<Props> = ({
   const language = useLanguage();
   const [isDragOver, setIsDragOver] = useState(false);
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
   const isNative = Capacitor.isNativePlatform();
   const [updateChecks, setUpdateChecks] = useState(isUpdateCheckEnabled);
 
@@ -84,6 +85,8 @@ export const FileDropZone: React.FC<Props> = ({
     if (e.target.files && e.target.files.length > 0) {
       onFileLoaded(e.target.files[0]);
     }
+    // So that choosing the same file again still fires a change.
+    e.target.value = '';
   };
 
   const handleLoadSample = async () => {
@@ -92,188 +95,123 @@ export const FileDropZone: React.FC<Props> = ({
   };
 
   return (
-    <div className="h-full overflow-y-auto overscroll-y-contain bg-gradient-to-br from-stone-50 via-zinc-100 to-stone-200 dark:from-zinc-950 dark:via-zinc-900 dark:to-stone-950 flex flex-col items-center justify-start p-4 pb-8 sm:p-6 text-zinc-800 dark:text-zinc-200">
-      <div className="w-full max-w-xl shrink-0 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-zinc-200/80 dark:border-zinc-800/80 p-6 sm:p-10 text-center">
-        {/* Language Selector on Main Page */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6 bg-indigo-50/70 dark:bg-indigo-950/40 p-3 rounded-2xl border border-indigo-100 dark:border-indigo-800/80">
-          <div className="flex items-center gap-2 text-xs font-semibold text-indigo-700 dark:text-indigo-300">
-            <Languages className="w-4 h-4" />
-            <span>{t('language.label')}</span>
+    <div
+      className="relative h-full overflow-y-auto overscroll-y-contain bg-gradient-to-br from-stone-50 via-zinc-100 to-stone-200 dark:from-zinc-950 dark:via-zinc-900 dark:to-stone-950 flex flex-col items-center justify-start p-4 pb-8 sm:p-6 text-zinc-800 dark:text-zinc-200"
+      onDragOver={(e) => {
+        if (!e.dataTransfer.types.includes('Files')) return;
+        e.preventDefault();
+        setIsDragOver(true);
+      }}
+    >
+      {/* Dropping a file anywhere works on a computer; the overlay only shows while dragging. */}
+      {isDragOver && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-indigo-600/20 p-6 backdrop-blur-sm"
+          onDragOver={(e) => e.preventDefault()}
+          onDragLeave={() => setIsDragOver(false)}
+          onDrop={handleDrop}
+        >
+          <div className="rounded-3xl border-2 border-dashed border-indigo-500 bg-white/90 px-8 py-10 text-center text-base font-semibold text-indigo-700 shadow-2xl dark:bg-zinc-900/90 dark:text-indigo-300">
+            <UploadCloud className="mx-auto mb-3 h-10 w-10" />
+            {t('shelf.dropHere')}
           </div>
-          <div className="flex flex-wrap gap-1">
-            {AVAILABLE_LANGUAGES.map((langItem) => (
-              <button
-                key={langItem.code}
-                type="button"
-                onClick={() => onUpdateSettings({ language: langItem.code })}
-                className={`px-2.5 py-1 rounded-xl text-[11px] font-semibold transition-all ${
-                  language === langItem.code
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'bg-transparent text-zinc-700 dark:text-zinc-300 hover:bg-indigo-100/60 dark:hover:bg-indigo-900/50'
-                }`}
-              >
-                {langItem.label}
-              </button>
-            ))}
+        </div>
+      )}
+
+      <div className="w-full max-w-xl shrink-0 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-zinc-200/80 dark:border-zinc-800/80 p-5 sm:p-8">
+        {/* Brand and language */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 text-left">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-white font-mincho">
+              {t('app.title')}
+            </h1>
+            <p lang="ja" className="text-xs sm:text-sm font-mincho text-indigo-700 dark:text-indigo-300">
+              {t('app.slogan')}
+            </p>
           </div>
+          <label className="flex shrink-0 items-center gap-1.5 text-xs font-semibold text-indigo-700 dark:text-indigo-300">
+            <Languages className="h-4 w-4" aria-hidden="true" />
+            <select
+              value={language}
+              onChange={(e) => onUpdateSettings({ language: e.target.value as ReaderSettingsState['language'] })}
+              aria-label={t('language.label')}
+              className="min-h-9 rounded-lg border border-indigo-100 bg-indigo-50/70 px-2 py-1 text-xs font-semibold text-indigo-700 dark:border-indigo-800/80 dark:bg-indigo-950/40 dark:text-indigo-300"
+            >
+              {AVAILABLE_LANGUAGES.map((langItem) => (
+                <option key={langItem.code} value={langItem.code}>{langItem.label}</option>
+              ))}
+            </select>
+          </label>
         </div>
 
         {/* Only the Android app can be out of date: the web version is republished on every change. */}
-        {isNative && <UpdateNotice enabled={updateChecks} />}
+        {isNative && <div className="mt-4"><UpdateNotice enabled={updateChecks} /></div>}
 
-        {/* Brand & Badge */}
-        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-100 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 text-xs font-semibold mb-6">
-          <BookOpen className="w-3.5 h-3.5" />
-          <span>{t('app.subtitle')}</span>
-        </div>
-
-        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white font-mincho mb-2">
-          {t('app.title')}
-        </h1>
-        <p lang="ja" className="text-sm sm:text-base font-mincho text-indigo-700 dark:text-indigo-300 mb-3">
-          {t('app.slogan')}
-        </p>
-        <p className="text-sm sm:text-base text-zinc-600 dark:text-zinc-400 mb-8 max-w-md mx-auto">
-          {t('app.description')}
-        </p>
-
-        <GoogleDriveBackupPanel
-          configured={googleDriveConfigured}
-          session={googleDriveSession}
-          settingsDate={googleDriveSettingsDate}
-          localBooks={recentBooks}
+        <BookShelf
+          recentBooks={recentBooks}
           cloudBooks={googleDriveBooks}
-          busy={isDriveBusy}
-          onSignIn={onGoogleDriveSignIn}
-          onSignOut={onGoogleDriveSignOut}
-          onRestoreSettings={onRestoreDriveSettings}
-          onUploadBook={onUploadDriveBook}
-          onDownloadBook={onDownloadDriveBook}
-          onDeleteBook={onDeleteDriveBook}
-          onRefreshBooks={onRefreshDriveBooks}
+          signedIn={Boolean(googleDriveSession)}
+          isLoading={isLoading}
+          isDriveBusy={isDriveBusy}
+          onOpenRecent={onOpenRecent}
+          onRemoveRecentBook={onRemoveRecentBook}
+          onUploadDriveBook={onUploadDriveBook}
+          onDownloadDriveBook={onDownloadDriveBook}
+          onDeleteDriveBook={onDeleteDriveBook}
         />
 
-        {/* Drop Zone */}
-        <div
-          className={`relative mt-6 border-2 border-dashed rounded-2xl p-4 transition-all cursor-pointer flex flex-col items-center justify-center sm:p-8 ${
-            isDragOver
-              ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/30 scale-[1.02]'
-              : 'border-zinc-300 dark:border-zinc-700 hover:border-indigo-400 dark:hover:border-indigo-600 bg-zinc-50/50 dark:bg-zinc-800/30'
-          }`}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setIsDragOver(true);
-          }}
-          onDragLeave={() => setIsDragOver(false)}
-          onDrop={handleDrop}
-          onClick={() => document.getElementById('epub-file-input')?.click()}
-        >
+        {/* Adding books */}
+        <div className="mt-6 grid gap-2 sm:grid-cols-2">
           <input
-            id="epub-file-input"
+            ref={fileInput}
             type="file"
             accept=".epub,application/epub+zip"
             className="hidden"
             onChange={handleFileInput}
           />
-
-          <div className="w-16 h-16 rounded-2xl bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center text-indigo-600 dark:text-indigo-400 mb-4 shadow-sm">
-            <UploadCloud className="w-8 h-8" />
-          </div>
-
-          <div className="text-base font-semibold text-zinc-800 dark:text-zinc-200 mb-1">
-            {t('dropzone.dragPrefix')}<span className="text-indigo-600 dark:text-indigo-400">.epub</span>{t('dropzone.dragSuffix')}
-          </div>
-          <div className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
-            {t('dropzone.browse')}
-          </div>
-
           <button
             type="button"
-            className="flex min-h-11 w-full max-w-xs items-center justify-center gap-2 rounded-xl bg-indigo-600 px-3 py-2.5 text-center text-xs font-semibold text-white shadow-md transition-all hover:bg-indigo-700 active:scale-95"
+            onClick={() => fileInput.current?.click()}
+            disabled={isLoading}
+            className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-3 py-2.5 text-xs font-semibold text-white shadow-md transition-all hover:bg-indigo-700 active:scale-95 disabled:opacity-50"
           >
             <FileText className="h-4 w-4 shrink-0" />
-            <span className="min-w-0">{t('dropzone.selectBtn')}</span>
+            <span className="min-w-0">{t('shelf.openEpub')}</span>
           </button>
-        </div>
-
-        {/* Sample Book Divider & Action */}
-        <div className="mt-6 pt-6 border-t border-zinc-200 dark:border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="text-left">
-            <div className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-              {t('sample.title')}
-            </div>
-            <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
-              {t('sample.subtitle')}
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleLoadSample}
-            disabled={isLoading}
-            className="flex min-h-11 w-full min-w-0 items-center justify-center gap-2 rounded-xl border border-zinc-300 bg-stone-100 px-3 py-2.5 text-center text-xs font-semibold text-zinc-800 shadow-sm transition-all hover:bg-stone-200 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700 sm:w-auto sm:max-w-full"
-          >
-            <Sparkles className="w-4 h-4 text-amber-500" />
-            <span className="min-w-0">{t('sample.btn')}</span>
-          </button>
-        </div>
-
-        <div className="mt-4 flex flex-col items-center justify-between gap-4 sm:flex-row">
-          <div className="text-left">
-            <div className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">{t('library.title')}</div>
-            <div className="text-[11px] text-zinc-500 dark:text-zinc-400">{t('library.subtitle')}</div>
-          </div>
           <button
             type="button"
             onClick={() => setIsLibraryOpen(true)}
             disabled={isLoading}
-            className="flex min-h-11 w-full min-w-0 items-center justify-center gap-2 rounded-xl border border-zinc-300 bg-stone-100 px-3 py-2.5 text-center text-xs font-semibold text-zinc-800 shadow-sm transition-all hover:bg-stone-200 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700 sm:w-auto sm:max-w-full"
+            title={t('library.subtitle')}
+            className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-zinc-300 bg-stone-100 px-3 py-2.5 text-xs font-semibold text-zinc-800 shadow-sm transition-all hover:bg-stone-200 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
           >
-            <Library className="w-4 h-4 text-indigo-500" />
+            <Library className="h-4 w-4 shrink-0 text-indigo-500" />
             <span className="min-w-0">{t('library.button')}</span>
           </button>
         </div>
-
-        {recentBooks.length > 0 && (
-          <div className="mt-8 pt-6 border-t border-zinc-200 dark:border-zinc-800 text-left">
-            <div className="flex items-center gap-2 mb-3">
-              <Clock3 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-              <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">{t('recent.title')}</h2>
-            </div>
-            <div className="space-y-2">
-              {recentBooks.map((book) => (
-                <div
-                  key={book.id}
-                  className="flex min-w-0 items-center gap-2 rounded-xl border border-zinc-200 bg-white/70 px-2 dark:border-zinc-700 dark:bg-zinc-800/60"
-                >
-                  <button
-                    type="button"
-                    onClick={() => onOpenRecent(book)}
-                    disabled={isLoading}
-                    className="min-w-0 flex-1 py-2.5 pl-1 text-left transition-colors hover:text-indigo-700 disabled:opacity-50 dark:hover:text-indigo-300"
-                  >
-                    <span className="flex min-w-0 items-center gap-3">
-                      <BookCoverThumbnail cover={book.cover} title={book.title} />
-                      <span className="min-w-0">
-                        <span className="block truncate text-xs font-semibold text-zinc-800 dark:text-zinc-200">{book.title}</span>
-                        <span className="block truncate text-[11px] text-zinc-500 dark:text-zinc-400">{book.creator} · {book.name}</span>
-                      </span>
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onRemoveRecentBook(book)}
-                    disabled={isLoading || isDriveBusy}
-                    title={t('dropzone.removeRecent')}
-                    className="p-2 text-zinc-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
+        {recentBooks.length === 0 && (
+          <button
+            type="button"
+            onClick={handleLoadSample}
+            disabled={isLoading}
+            title={t('sample.subtitle')}
+            className="mt-2 flex min-h-10 w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-zinc-600 transition-colors hover:bg-stone-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          >
+            <Sparkles className="h-4 w-4 text-amber-500" />
+            <span className="min-w-0">{t('sample.btn')}</span>
+          </button>
         )}
+
+        <GoogleDriveBackupPanel
+          configured={googleDriveConfigured}
+          session={googleDriveSession}
+          settingsDate={googleDriveSettingsDate}
+          busy={isDriveBusy}
+          onSignIn={onGoogleDriveSignIn}
+          onSignOut={onGoogleDriveSignOut}
+          onRestoreSettings={onRestoreDriveSettings}
+          onRefreshBooks={onRefreshDriveBooks}
+        />
 
         <BookLibraryModal
           isOpen={isLibraryOpen}
