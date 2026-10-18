@@ -96,6 +96,15 @@ const normalizeSelection = (value: string): string => {
 
 const unique = (items: string[]) => Array.from(new Set(items.filter(Boolean)));
 
+/**
+ * A word written in katakana for effect (オリ, ココロ, ヒトビト) is listed in its usual hiragana
+ * or kanji spelling, so it is also looked up as hiragana. Null when there is nothing to convert.
+ */
+const hiraganaSpelling = (term: string): string | null => {
+  if (!/^[ァ-ヶー]+$/.test(term) || !/[ァ-ヶ]/.test(term)) return null;
+  return term.replace(/[ァ-ヶ]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0x60));
+};
+
 const godanNegativeStemToDictionaryForm: Record<string, string> = {
   か: 'く',
   が: 'ぐ',
@@ -498,6 +507,8 @@ const findRawEntries = (
   // 1. Direct whole-text matches
   for (const term of normalizedDirect) {
     addMatches(index.byForm.get(term), 0, term, false, true);
+    const hiragana = hiraganaSpelling(term);
+    if (hiragana) addMatches(index.byForm.get(hiragana), 0, hiragana, false, true);
 
     for (let length = 2; length < term.length; length += 1) {
       addMatches(index.byForm.get(term.slice(0, length)), 10 + (term.length - length), term);
@@ -547,6 +558,8 @@ const findRawEntries = (
   // the word, the lower the score, so the main word of a phrase is listed before the others.
   normalizedSub.forEach((term, position) => {
     addMatches(index.byForm.get(term), 5 + position * 0.01, term, false, false);
+    const hiragana = hiraganaSpelling(term);
+    if (hiragana) addMatches(index.byForm.get(hiragana), 5 + position * 0.01, hiragana, false, false);
   });
 
   return [...ranked.values()].sort((left, right) => left.score - right.score);

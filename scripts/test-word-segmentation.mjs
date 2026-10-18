@@ -89,6 +89,12 @@ try {
     assert((await first(text, 'es')).kanji.includes('不安気'), text + ' should lead with 不安気, not with its prefix');
   }
   assert((await first('お金が', 'es')).kanji.includes('お金'));
+  // A word written in katakana for effect is looked up in its usual spelling too.
+  const kana = async (text) => (await getDictionarySearchTerms(text, 'es')).entries.slice(0, 5).flatMap((entry) => entry.kanji);
+  assert((await kana('オリ')).includes('檻'), 'オリ finds the cage, written 檻 or おり');
+  assert((await kana('ココロ')).includes('心'));
+  assert((await kana('オリの中')).includes('檻'), 'also as a word inside a phrase');
+  assert((await getDictionarySearchTerms('オリ', 'es')).hasCompleteMatch, 'and counts as a complete match');
   const guess = await getDictionarySearchTerms('察すれば', 'es');
   assert.equal(guess.baseForm, '察する');
   assert((await first('察すれば', 'es')).kanji.includes('察する'));
