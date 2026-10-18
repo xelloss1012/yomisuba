@@ -84,6 +84,11 @@ try {
     assert((await first('習得済み', language)).kanji.includes('習得'), `習得済み should lead with 習得 in ${language}`);
   }
   assert((await first('不安気', 'es')).kanji.includes('不安気'), '不安気 is a word of its own in the dictionary');
+  // The word the reader shows is the word looked up, with the particle or ending it carries.
+  for (const text of ['不安気な', '不安気に']) {
+    assert((await first(text, 'es')).kanji.includes('不安気'), text + ' should lead with 不安気, not with its prefix');
+  }
+  assert((await first('お金が', 'es')).kanji.includes('お金'));
   const guess = await getDictionarySearchTerms('察すれば', 'es');
   assert.equal(guess.baseForm, '察する');
   assert((await first('察すれば', 'es')).kanji.includes('察する'));

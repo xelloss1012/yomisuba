@@ -4,6 +4,7 @@ import TokenizerWorker from './tokenizer.worker?worker&inline';
 import spanishDictionaryUrl from '../data/jmdict-es.json.gz?inline';
 import englishDictionaryUrl from '../data/jmdict-en.json.gz?inline';
 import { TranslationLanguage, UiLanguage, tr } from './i18n';
+import { joinNounPieces } from './tokenFixes';
 import {
   isOptionalDictionaryId,
   loadOptionalDictionaryEntries,
@@ -574,7 +575,8 @@ export const getDictionarySearchTerms = async (
 
   try {
     const tokenizer = await getTokenizer();
-    const tokens = await tokenizer.tokenize(originalText);
+    // The same pieces the reader joins (不安気な is cut as 不 + 安気), so the lookup is of the word shown.
+    const tokens = joinNounPieces(await tokenizer.tokenize(originalText));
     tokenizerAvailable = true;
 
     // A verb that only adds an aspect to the て-form before it (送り出してしまおう,

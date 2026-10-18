@@ -3,6 +3,7 @@ import {
   contractedTeRuForms,
   JapaneseMorphologicalToken,
 } from './dictionary';
+import { isKiSuffix, isPrefixOfNoun, joinPrefix } from './tokenFixes';
 
 export interface LocatedToken {
   token: JapaneseMorphologicalToken;
@@ -36,7 +37,7 @@ export const mergeJapaneseTokens = (locatedTokens: LocatedToken[]): MergedToken[
       previous.token.pos_detail_1 === '形容動詞語幹';
     // 不安気, 自慢気: the suffix 気 (げ) is cut off as a noun of its own, unlike 不安げ.
     const isSuffix = token.pos_detail_1 === '接尾' ||
-      (token.pos === '名詞' && token.surface_form === '気' && previousIsAdjectivalNoun);
+      isKiSuffix(previous?.token, token);
     const isAuxiliary = token.pos === '助動詞' &&
       (
         ['動詞', '形容詞', '形容動詞', '助動詞'].includes(previous?.token.pos || '') ||
@@ -62,14 +63,8 @@ export const mergeJapaneseTokens = (locatedTokens: LocatedToken[]): MergedToken[
       previous?.token.pos === '動詞';
 
     // お金, 不安気: a prefix and the noun it starts are one word (kuromoji cuts 不安気な as 不 + 安気).
-    if (adjacent && previous && previous.token.pos === '接頭詞' && token.pos === '名詞') {
-      const mergedSurface = previous.token.surface_form + token.surface_form;
-      previous.token = {
-        ...token,
-        surface_form: mergedSurface,
-        reading: previous.token.reading && token.reading ? previous.token.reading + token.reading : token.reading,
-        basic_form: mergedSurface,
-      };
+    if (adjacent && previous && isPrefixOfNoun(previous.token, token)) {
+      previous.token = joinPrefix(previous.token, token);
       previous.end = end;
       return;
     }
