@@ -95,6 +95,13 @@ try {
   assert((await kana('ココロ')).includes('心'));
   assert((await kana('オリの中')).includes('檻'), 'also as a word inside a phrase');
   assert((await getDictionarySearchTerms('オリ', 'es')).hasCompleteMatch, 'and counts as a complete match');
+  // Causative and passive endings change the voice, not the word: the verb before them is looked up.
+  for (const [text, verb] of [['かけさせよう', 'かける'], ['食べさせよう', '食べる'], ['書かせよう', '書く'], ['読まれる', '読む'], ['見られた', '見る']]) {
+    const lookup = await getDictionarySearchTerms(text, 'es');
+    assert.equal(lookup.baseForm, verb, text);
+    const top = lookup.entries[0];
+    assert((top.kanji.concat(top.kana)).includes(verb), text + ' should lead with ' + verb + ', not with its stem');
+  }
   const guess = await getDictionarySearchTerms('察すれば', 'es');
   assert.equal(guess.baseForm, '察する');
   assert((await first('察すれば', 'es')).kanji.includes('察する'));

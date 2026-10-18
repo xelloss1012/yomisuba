@@ -610,6 +610,11 @@ export const getDictionarySearchTerms = async (
     for (let i = tokens.length - 1; i > 0 && (isTeFormAuxiliary(i) || ['助詞', '助動詞'].includes(tokens[i].pos)); i -= 1) {
       if (isTeFormAuxiliary(i)) auxiliaryIndexes.add(i);
     }
+    // させる, れる, られる after a verb (かけさせよう, 読まれる) only change its voice: the word is
+    // the verb before them. Looking them up would answer かけ (a chicken) for かけさせよう.
+    tokens.forEach((token, index) => {
+      if (index > 0 && token.pos === '動詞' && token.pos_detail_1 === '接尾') auxiliaryIndexes.add(index);
+    });
 
     // Look for the last predicate token (verb, adjective) to reconstruct the base form of the whole phrase
     let lastVerbIdx = -1;
@@ -645,10 +650,13 @@ export const getDictionarySearchTerms = async (
         ...meaningfulTokens.filter(isSuffixToken),
       ];
       for (const token of byImportance) {
+        // A conjugated verb or adjective is looked up by its dictionary form first: its stem alone
+        // (かけ of かける) is often a different word.
+        const hasBaseForm = token.basic_form && token.basic_form !== '*';
+        const inflects = ['動詞', '形容詞'].includes(token.pos) && hasBaseForm;
+        if (inflects) subTokenTerms.push(token.basic_form as string);
         if (token.surface_form) subTokenTerms.push(token.surface_form);
-        if (token.basic_form && token.basic_form !== '*') {
-          subTokenTerms.push(token.basic_form);
-        }
+        if (!inflects && hasBaseForm) subTokenTerms.push(token.basic_form as string);
       }
     } else if (meaningfulTokens.length === 1 && lastVerbIdx >= 0) {
       const verbBase = tokens[lastVerbIdx].basic_form;
