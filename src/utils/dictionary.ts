@@ -542,10 +542,11 @@ const findRawEntries = (
     }
   }
 
-  // 3. Sub-token matches (score >= 5, partial match for individual internal words)
-  for (const term of normalizedSub) {
-    addMatches(index.byForm.get(term), 5, term, false, false);
-  }
+  // 3. Sub-token matches (score >= 5, partial match for individual internal words). The earlier
+  // the word, the lower the score, so the main word of a phrase is listed before the others.
+  normalizedSub.forEach((term, position) => {
+    addMatches(index.byForm.get(term), 5 + position * 0.01, term, false, false);
+  });
 
   return [...ranked.values()].sort((left, right) => left.score - right.score);
 };
@@ -623,7 +624,12 @@ export const getDictionarySearchTerms = async (
     );
 
     if (meaningfulTokens.length > 1) {
-      for (const token of meaningfulTokens) {
+      const isSuffixToken = (token: JapaneseMorphologicalToken) => token.pos_detail_1 === '接尾';
+      const byImportance = [
+        ...meaningfulTokens.filter((token) => !isSuffixToken(token)),
+        ...meaningfulTokens.filter(isSuffixToken),
+      ];
+      for (const token of byImportance) {
         if (token.surface_form) subTokenTerms.push(token.surface_form);
         if (token.basic_form && token.basic_form !== '*') {
           subTokenTerms.push(token.basic_form);
@@ -700,17 +706,21 @@ export const getDictionarySearchTerms = async (
   const preferred: UiLanguage = resultsByLanguage.has(language) ? language : 'en';
   const order = (unique(['ja', preferred, 'en', 'es']) as UiLanguage[])
     .filter((dictionaryLanguage) => resultsByLanguage.has(dictionaryLanguage));
+  // Exact matches go by dictionary order; partial ones by how good the match is, and only then by
+  // dictionary (so the main word of a phrase is not pushed down by a minor word that the preferred
+  // dictionary happens to have).
   const byPriority = (
-    left: { priority: number; score: number },
-    right: { priority: number; score: number },
-  ) => left.priority - right.priority || left.score - right.score;
+    left: { priority: number; score: number; dictionaryIndex: number },
+    right: { priority: number; score: number; dictionaryIndex: number },
+  ) => left.priority - right.priority || left.score - right.score || left.dictionaryIndex - right.dictionaryIndex;
 
   const topEntries = order.flatMap((dictionaryLanguage, index) =>
     (resultsByLanguage.get(dictionaryLanguage) || [])
       .map((match) => ({
         entry: toEntry(match.entry, dictionaryLanguage),
         score: match.score,
-        priority: match.score === 0 ? index : order.length + index,
+        priority: match.score === 0 ? index : order.length,
+        dictionaryIndex: index,
       }))
       .sort(byPriority)
       .slice(0, 20)

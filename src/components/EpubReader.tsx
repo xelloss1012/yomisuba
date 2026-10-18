@@ -61,14 +61,13 @@ import {
 } from '../utils/frequentQueries';
 import { ReaderBookBackup, ReaderDataGroup } from '../utils/googleDriveBackup';
 import {
-  auxiliaryTeFormVerbs,
-  contractedTeRuForms,
   DictionaryLookup,
   getDictionarySearchTerms,
   JapaneseMorphologicalToken,
   tokenizeJapanese,
   warmUpDictionary,
 } from '../utils/dictionary';
+import { mergeJapaneseTokens } from '../utils/tokenMerging';
 import {
   annotateFurigana,
   applyFuriganaClasses,
@@ -3664,80 +3663,7 @@ export const EpubReader: React.FC<Props> = ({
         locatedTokens.push({ token, start, end });
       }
 
-      const mergedTokens: Array<{
-        token: JapaneseMorphologicalToken & {
-          joinedSuffix?: boolean;
-          joinedConjugation?: boolean;
-          joinedTeForm?: boolean;
-        };
-        start: number;
-        end: number;
-      }> = [];
-      locatedTokens.forEach(({ token, start, end }) => {
-        if (!token.surface_form.trim() || token.pos === '記号') return;
-        const previous = mergedTokens[mergedTokens.length - 1];
-        const adjacent = previous?.end === start;
-        const isSuffix = token.pos_detail_1 === '接尾';
-        const previousIsAdjectivalNoun =
-          previous?.token.pos === '名詞' &&
-          previous.token.pos_detail_1 === '形容動詞語幹';
-        const isAuxiliary = token.pos === '助動詞' &&
-          (
-            ['動詞', '形容詞', '形容動詞', '助動詞'].includes(previous?.token.pos || '') ||
-            previousIsAdjectivalNoun
-          );
-        const isTeFormConnector = token.pos === '助詞' &&
-          token.pos_detail_1 === '接続助詞' &&
-          ['て', 'で'].includes(token.surface_form) &&
-          previous?.token.pos === '動詞';
-        const isTeFormAuxiliary = token.pos === '動詞' &&
-          previous?.token.joinedTeForm === true &&
-          auxiliaryTeFormVerbs.has(token.basic_form || token.surface_form);
-        const isContractedTeRu = token.pos === '動詞' &&
-          token.pos_detail_1 === '非自立' &&
-          contractedTeRuForms.has(token.surface_form) &&
-          previous?.token.pos === '動詞';
-
-        if (adjacent && previous && (
-          isSuffix ||
-          isAuxiliary ||
-          isTeFormConnector ||
-          isTeFormAuxiliary ||
-          isContractedTeRu
-        )) {
-          const mergedSurface = previous.token.surface_form + token.surface_form;
-          previous.token = {
-            ...previous.token,
-            surface_form: mergedSurface,
-            reading: previous.token.reading && token.reading
-              ? previous.token.reading + token.reading
-              : previous.token.reading || token.reading,
-            basic_form: isSuffix
-              ? mergedSurface
-              : previous.token.basic_form,
-            joinedSuffix: Boolean(previous.token.joinedSuffix || isSuffix),
-            joinedConjugation: Boolean(
-              previous.token.joinedConjugation ||
-              isTeFormAuxiliary ||
-              isContractedTeRu
-            ),
-            joinedTeForm: Boolean(
-              isTeFormConnector ||
-              (previous.token.joinedTeForm && !isTeFormAuxiliary)
-            ),
-            conjugated_type: token.conjugated_type || previous.token.conjugated_type,
-            conjugated_form: token.conjugated_form || previous.token.conjugated_form,
-          };
-          previous.end = end;
-          return;
-        }
-
-        mergedTokens.push({
-          token: { ...token },
-          start,
-          end,
-        });
-      });
+      const mergedTokens = mergeJapaneseTokens(locatedTokens);
 
       const visibleWords: PageWordToken[] = [];
       for (const { token, start, end } of mergedTokens) {

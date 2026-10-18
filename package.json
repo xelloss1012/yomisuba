@@ -9,7 +9,7 @@
   "bugs": "https://github.com/xelloss1012/yomisuba/issues",
   "private": true,
   "license": "MIT",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -30,6 +30,7 @@
     "drive:test": "node scripts/test-google-drive-layout.mjs",
     "library:test": "node scripts/test-library.mjs",
     "update:test": "node scripts/test-update-check.mjs",
+    "words:test": "node scripts/test-word-segmentation.mjs",
     "library:build": "node scripts/build-library.mjs",
     "library:check": "node scripts/check-library.mjs",
     "android:add": "npm run build:web && cap add android",
