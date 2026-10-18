@@ -3863,7 +3863,7 @@ export const EpubReader: React.FC<Props> = ({
       ) return;
 
       void analyzeCurrentPage(false, true);
-    }, 1200);
+    }, 500);
 
     return () => {
       window.clearTimeout(timeout);

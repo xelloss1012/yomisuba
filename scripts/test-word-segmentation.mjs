@@ -51,6 +51,14 @@ try {
   assert.deepEqual(surfaces('ワニ系の生き物'), ['ワニ系', 'の', '生き物']);
   assert.deepEqual(surfaces('習得済みの技術'), ['習得済み', 'の', '技術']);
 
+  // 気 after an adjectival noun is its suffix, and a prefix belongs to its noun.
+  assert.deepEqual(surfaces('不安気に'), ['不安気', 'に']);
+  assert.deepEqual(surfaces('不安気な顔'), ['不安気な', '顔']);
+  assert.deepEqual(surfaces('不安げに'), ['不安げ', 'に']);
+  assert.deepEqual(surfaces('お金がない'), ['お金', 'が', 'ない']);
+  assert.deepEqual(surfaces('空気を読む'), ['空気', 'を', '読む']);
+  assert.equal(words('不安気な顔')[0].token.basic_form, '不安気');
+
   // A する verb is one word, in every form, with the endings that follow it.
   assert.deepEqual(surfaces('察するに'), ['察する', 'に']);
   assert.deepEqual(surfaces('察すれば'), ['察すれ', 'ば']);
@@ -75,6 +83,7 @@ try {
     assert((await first('ワニ系', language)).kanji.includes('鰐'), `ワニ系 should lead with the crocodile in ${language}`);
     assert((await first('習得済み', language)).kanji.includes('習得'), `習得済み should lead with 習得 in ${language}`);
   }
+  assert((await first('不安気', 'es')).kanji.includes('不安気'), '不安気 is a word of its own in the dictionary');
   const guess = await getDictionarySearchTerms('察すれば', 'es');
   assert.equal(guess.baseForm, '察する');
   assert((await first('察すれば', 'es')).kanji.includes('察する'));
