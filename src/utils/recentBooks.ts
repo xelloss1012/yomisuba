@@ -1,4 +1,7 @@
+import { Capacitor } from '@capacitor/core';
 import { tr } from './i18n';
+import { nativeFiles } from './nativeFiles';
+import { createNativeBookStore } from './nativeStorage';
 
 export interface RecentBook {
   id: string;
@@ -9,6 +12,8 @@ export interface RecentBook {
   blob: Blob;
   cover?: Blob;
   printedPages?: number;
+  /** false for a book listed without its text (`blob` is then empty): `loadRecentBook` brings the text. */
+  blobLoaded?: boolean;
 }
 
 /** Books shown on the home shelf; the local database itself keeps every book. */
@@ -38,7 +43,7 @@ function openDatabase(): Promise<IDBDatabase> {
   });
 }
 
-export async function saveRecentBook(book: RecentBook): Promise<void> {
+async function idbSaveBook(book: RecentBook): Promise<void> {
   const db = await openDatabase();
   await new Promise<void>((resolve, reject) => {
     const transaction = db.transaction(STORE_NAME, 'readwrite');
@@ -49,7 +54,7 @@ export async function saveRecentBook(book: RecentBook): Promise<void> {
   db.close();
 }
 
-export async function listRecentBooks(limit = Number.MAX_SAFE_INTEGER): Promise<RecentBook[]> {
+async function idbListBooks(limit = Number.MAX_SAFE_INTEGER): Promise<RecentBook[]> {
   const db = await openDatabase();
   const books = await new Promise<RecentBook[]>((resolve, reject) => {
     const results: RecentBook[] = [];
@@ -91,7 +96,7 @@ export async function requestPersistentStorage(): Promise<boolean> {
   }
 }
 
-export async function getRecentBook(id: string): Promise<RecentBook | null> {
+async function idbGetBook(id: string): Promise<RecentBook | null> {
   const db = await openDatabase();
   const book = await new Promise<RecentBook | null>((resolve, reject) => {
     const request = db.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).get(id);
@@ -102,7 +107,7 @@ export async function getRecentBook(id: string): Promise<RecentBook | null> {
   return book;
 }
 
-export async function deleteRecentBook(id: string): Promise<void> {
+async function idbDeleteBook(id: string): Promise<void> {
   const db = await openDatabase();
   try {
     await new Promise<void>((resolve, reject) => {
@@ -115,12 +120,89 @@ export async function deleteRecentBook(id: string): Promise<void> {
   } finally {
     db.close();
   }
+}
+
+// --- Where the books are kept ------------------------------------------------------
+//
+// In the Android app the books live in the app's private files (see nativeStorage.ts), which survive
+// the WebView clearing its own storage. A book that an earlier version left in IndexedDB is moved there
+// the first time it is seen. On the web, IndexedDB is all there is.
+
+const nativeBooks = Capacitor.isNativePlatform() ? createNativeBookStore(nativeFiles) : null;
+
+export async function saveRecentBook(book: RecentBook): Promise<void> {
+  if (nativeBooks) {
+    try {
+      await nativeBooks.save(book);
+      await idbDeleteBook(book.id).catch(() => undefined); // an older copy there would only be stale
+      return;
+    } catch (error) {
+      console.warn('No se pudo guardar el libro en el almacenamiento de la aplicación:', error);
+      // A book listed without its text has nothing worth putting in IndexedDB.
+      if (book.blobLoaded === false) throw error;
+    }
+  }
+  await idbSaveBook(book);
+}
+
+export async function listRecentBooks(limit = Number.MAX_SAFE_INTEGER): Promise<RecentBook[]> {
+  if (!nativeBooks) return idbListBooks(limit);
+  const [stored, leftovers] = await Promise.all([
+    nativeBooks.list().catch((error) => { console.warn('No se pudo leer el almacenamiento de la aplicación:', error); return [] as RecentBook[]; }),
+    idbListBooks().catch(() => [] as RecentBook[]),
+  ]);
+  const known = new Set(stored.map((book) => book.id));
+  return [...stored, ...leftovers.filter((book) => !known.has(book.id))]
+    .sort((left, right) => right.lastOpened - left.lastOpened)
+    .slice(0, Math.max(0, Math.floor(limit)));
+}
+
+export async function getRecentBook(id: string): Promise<RecentBook | null> {
+  if (nativeBooks) {
+    const stored = await nativeBooks.get(id).catch(() => null);
+    if (stored) return stored;
+  }
+  return idbGetBook(id);
+}
+
+/** The book with its text, which a book from `listRecentBooks` may not have yet. */
+export async function loadRecentBook(book: RecentBook): Promise<RecentBook> {
+  if (book.blobLoaded !== false) return book;
+  const full = await getRecentBook(book.id);
+  if (!full) throw new Error(tr('err.localOpenBook'));
+  return full;
+}
+
+export async function deleteRecentBook(id: string): Promise<void> {
+  const results = await Promise.allSettled([
+    nativeBooks ? nativeBooks.remove(id) : Promise.resolve(),
+    idbDeleteBook(id),
+  ]);
+  const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+  if (failed && results.every((result) => result.status === 'rejected')) throw failed.reason;
   try {
     if (localStorage.getItem('yomisuba_last_book_id') === id) {
       localStorage.removeItem('yomisuba_last_book_id');
     }
   } catch {
     // The recent-book entry is removed even if the startup preference cannot be updated.
+  }
+}
+
+/** Moves the books an earlier version kept in IndexedDB into the app's own storage. */
+export async function migrateBooksToNativeStorage(): Promise<void> {
+  if (!nativeBooks) return;
+  const inDatabase = await idbListBooks().catch(() => [] as RecentBook[]);
+  if (inDatabase.length === 0) return;
+  const stored = new Set((await nativeBooks.list().catch(() => [] as RecentBook[])).map((book) => book.id));
+  for (const book of inDatabase) {
+    try {
+      if (!stored.has(book.id)) await nativeBooks.save(book);
+      // Only once it can be read back from its new place is the old copy removed.
+      if (await nativeBooks.get(book.id)) await idbDeleteBook(book.id);
+    } catch (error) {
+      console.warn('No se pudo mover un libro al almacenamiento de la aplicación:', error);
+    }
   }
 }
 

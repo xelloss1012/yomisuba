@@ -7,7 +7,7 @@ import { EpubReader } from './components/EpubReader';
 import { LanguageProvider } from './i18n/LanguageContext';
 import { AVAILABLE_LANGUAGES, setActiveLanguage, t } from './utils/i18n';
 import { setReaderAutoRotate } from './utils/readerOrientation';
-import { createBookId, deleteRecentBook, getLastBookId, getRecentBook, listRecentBooks, MAX_SHELF_BOOKS, RecentBook, requestPersistentStorage, saveRecentBook, setLastBookId } from './utils/recentBooks';
+import { createBookId, deleteRecentBook, getLastBookId, getRecentBook, listRecentBooks, loadRecentBook, MAX_SHELF_BOOKS, migrateBooksToNativeStorage, RecentBook, requestPersistentStorage, saveRecentBook, setLastBookId } from './utils/recentBooks';
 import {
   deleteGoogleDriveBook,
   downloadGoogleDriveBook,
@@ -521,15 +521,24 @@ export const App: React.FC = () => {
         if (cancelled) return;
         const visibleBooks = books.slice(0, MAX_SHELF_BOOKS);
         setRecentBooks(visibleBooks);
+        // Books that an earlier version left in the WebView's storage move to the app's own files,
+        // in the background: they are listed meanwhile.
+        void migrateBooksToNativeStorage();
 
         const hydrateCovers = async () => {
           for (const book of visibleBooks) {
             if (book.cover) continue;
-            const cover = await extractEpubCoverBlob(book.blob);
+            let full: RecentBook;
+            try {
+              full = await loadRecentBook(book);
+            } catch {
+              continue;
+            }
+            const cover = await extractEpubCoverBlob(full.blob);
             if (cancelled || !cover) continue;
             try {
               const stored = await getRecentBook(book.id);
-              await saveRecentBook({ ...(stored || book), cover: stored?.cover || cover });
+              await saveRecentBook({ ...(stored || full), cover: stored?.cover || cover });
             } catch {
               // Cover display still works from memory if persistence fails.
             }
@@ -543,7 +552,8 @@ export const App: React.FC = () => {
 
         const lastBookId = getLastBookId();
         if (lastBookId) {
-          const lastBook = books.find((book) => book.id === lastBookId) || await getRecentBook(lastBookId);
+          const listed = books.find((book) => book.id === lastBookId);
+          const lastBook = listed && listed.blobLoaded !== false ? listed : await getRecentBook(lastBookId);
           if (lastBook && !cancelled) {
             await openBook(lastBook.blob, lastBook.id, lastBook.name);
           }
@@ -560,7 +570,14 @@ export const App: React.FC = () => {
   }, []);
 
   const handleOpenRecent = (book: RecentBook) => {
-    void openBook(book.blob, book.id, book.name);
+    void (async () => {
+      try {
+        const full = await loadRecentBook(book);
+        await openBook(full.blob, full.id, full.name);
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : String(error));
+      }
+    })();
   };
 
   const handleRemoveRecentBook = async (book: RecentBook) => {
@@ -650,7 +667,7 @@ export const App: React.FC = () => {
   const handleUploadDriveBook = (book: RecentBook) => {
     if (!googleDriveSession) return;
     void runDriveAction(async () => {
-      await uploadGoogleDriveBook(googleDriveSession.accessToken, book);
+      await uploadGoogleDriveBook(googleDriveSession.accessToken, await loadRecentBook(book));
       setGoogleDriveBooks(await listGoogleDriveBooks(googleDriveSession.accessToken));
     });
   };
