@@ -17,9 +17,16 @@ import {
   truncate,
 } from './textToEpub';
 
+export interface RemoteImage {
+  mediaType: string;
+  data: Uint8Array;
+}
+
 export interface HtmlImportOptions extends TextImportOptions {
   /** Builds a document from HTML. The browser's DOMParser unless a test supplies another. */
   parse?: (html: string) => Document;
+  /** The picture a page refers to, when it was fetched (a page opened from its address). */
+  resolveImage?: (src: string) => RemoteImage | null;
 }
 
 const MAX_HTML_CHARACTERS = 20_000_000;
@@ -29,9 +36,9 @@ const MIN_ARTICLE_CHARACTERS = 200;
 // --- Reading the bytes -----------------------------------------------------------
 
 /** The text of an HTML file: the charset the page declares wins, then the usual guesses. */
-export function decodeHtml(buffer: ArrayBuffer, decodeFallback: (buffer: ArrayBuffer) => string): string {
+export function decodeHtml(buffer: ArrayBuffer, decodeFallback: (buffer: ArrayBuffer) => string, headerCharset?: string): string {
   const head = new TextDecoder('latin1').decode(new Uint8Array(buffer, 0, Math.min(buffer.byteLength, 2048)));
-  const declared = head.match(/(?:charset|encoding)\s*=\s*["']?([\w-]+)/i)?.[1];
+  const declared = headerCharset || head.match(/(?:charset|encoding)\s*=\s*["']?([\w-]+)/i)?.[1];
   if (declared && !/^utf-?8$/i.test(declared)) {
     try {
       const text = new TextDecoder(declared).decode(buffer);
@@ -85,7 +92,7 @@ const decodeDataUri = (src: string): { mediaType: string; extension: string; dat
 };
 
 /** Turns the content of an element into blocks: paragraphs (a <br> ends a line), headings and gaps. */
-function blockify(root: Element): Cleaner {
+function blockify(root: Element, resolveImage?: HtmlImportOptions['resolveImage']): Cleaner {
   const cleaner: Cleaner = { blocks: [], images: [] };
   let imageBytes = 0;
   let line = '';
@@ -105,7 +112,9 @@ function blockify(root: Element): Cleaner {
 
   const image = (element: Element): string => {
     const alt = (element.getAttribute('alt') || '').trim();
-    const decoded = decodeDataUri((element.getAttribute('src') || '').trim());
+    const src = (element.getAttribute('src') || '').trim();
+    const fetched = resolveImage?.(src);
+    const decoded = decodeDataUri(src) ?? (fetched ? { mediaType: fetched.mediaType, extension: IMAGE_TYPES[fetched.mediaType.replace('image/', '')] ?? 'png', data: fetched.data } : null);
     // A picture that is not inside the file cannot be fetched: its description stands for it (Aozora's gaiji do this).
     if (!decoded || imageBytes + decoded.data.length > MAX_IMAGE_BYTES) return escapeHtml(alt);
     imageBytes += decoded.data.length;
@@ -231,7 +240,7 @@ export function htmlToDocument(html: string, options: HtmlImportOptions): TextDo
   const doc = parse(html);
   const extracted = extract(doc, parse);
 
-  const { blocks, images } = blockify(extracted.container);
+  const { blocks, images } = blockify(extracted.container, options.resolveImage);
   if (blocks.length === 0) throw new Error('The page has no text to read.');
 
   let title = options.title?.trim() || extracted.title || options.fallbackTitle?.trim() || '';
@@ -262,12 +271,12 @@ export function htmlToDocument(html: string, options: HtmlImportOptions): TextDo
   const known = /^[a-z]{2,3}$/.test(declared) ? declared : '';
   // A page that says it is Japanese or Chinese is believed; one that says nothing (or something else) is read.
   const language = known === 'ja' || known === 'zh' ? known : detectLanguage(text) === 'ja' ? 'ja' : known || 'und';
-  return { title, author: extracted.author || options.author, language, sections, images };
+  return { title, author: extracted.author || options.author, language, sections, images, source: options.source };
 }
 
 /** HTML to an EPUB. */
 export async function htmlToEpub(html: string, options: HtmlImportOptions): Promise<ConvertedText> {
   const document = htmlToDocument(html, options);
-  const blob = await documentToEpub(document, `${document.title}\n${html.length}\n${html.slice(0, 4000)}`);
+  const blob = await documentToEpub(document, options.source ?? `${document.title}\n${html.length}\n${html.slice(0, 4000)}`);
   return { blob, title: document.title, author: document.author, language: document.language };
 }

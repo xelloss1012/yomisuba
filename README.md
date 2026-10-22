@@ -206,7 +206,12 @@ límite de espera.
 
 **Hecho (fase 2):** archivos HTML (`.html`, `.htm`, `.xhtml`; `src/utils/htmlToEpub.ts`). Se respeta el juego de caracteres que declara la página, se extrae el artículo (con la biblioteca [Readability](https://github.com/mozilla/readability), la del modo lectura de Firefox) y se limpia todo lo que pudiera ejecutarse o cargarse de fuera: scripts, estilos, formularios, atributos y enlaces. Se conservan el furigana (`<ruby>`), los puntos de énfasis y las imágenes incrustadas en el propio archivo (hasta 4 MB); las imágenes que no están dentro del archivo no se pueden recuperar y se sustituyen por su descripción (los gaiji de Aozora salen como texto). Los capítulos se cortan por el primer nivel de encabezado que aparece al menos dos veces. Las páginas de Aozora Bunko guardadas desde el navegador se leen con su texto y su furigana intactos.
 
-**Pendiente (propuesta):** páginas por URL, según la tabla de abajo.
+**Hecho (fase 3):** páginas por dirección web (botón «Desde una web»; `src/utils/urlImport.ts`). La página se descarga y se convierte como un HTML guardado, y además se descargan sus imágenes (hasta 20, 1 MB cada una y 4 MB en total). Si la dirección es un EPUB o un TXT, se toma como ese archivo. Una dirección `http://` se prueba primero como `https://`. Se conserva la dirección en el EPUB (`dc:source`), de modo que volver a abrir la misma dirección da el mismo libro.
+
+- **Android:** la descarga usa el cliente HTTP nativo de Capacitor (`CapacitorHttp`, sin plugin ni permiso nuevos), que no está sujeto a CORS: funciona con casi cualquier página pública.
+- **Web:** el navegador solo deja leer los sitios que lo permiten con CORS; en el resto la app explica que no se pudo y propone guardar la página como HTML (y abrirla como archivo) o pegar el texto.
+- **Límites:** páginas de hasta 10 MB; no funcionan las que generan su texto con JavaScript, ni las que exigen iniciar sesión o pagar. Es para uso personal y conviene respetar los derechos del sitio.
+- **Pendiente:** «Compartir → Yomisuba» desde el navegador de Android (requiere código nativo).
 
 El lector está acoplado actualmente a la estructura de un EPUB, pero no sería
 necesario rehacer sus funciones para admitir otros tipos de entrada. Una

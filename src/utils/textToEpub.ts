@@ -15,6 +15,8 @@ export interface TextDocument {
   author: string;
   language: string;
   sections: TextSection[];
+  /** Where the text came from, when it has an address. */
+  source?: string;
   /** Images the sections refer to as `images/<name>`. */
   images?: Array<{ name: string; mediaType: string; data: Uint8Array }>;
 }
@@ -26,6 +28,8 @@ export interface TextImportOptions {
   fallbackTitle?: string;
   /** Shown as the author when the text has none ("Pasted text"). */
   author: string;
+  /** Where the text came from (a web address): kept in the EPUB and part of its identity. */
+  source?: string;
 }
 
 /** Above this the text is refused: it would not be a page to read but a file to process. */
@@ -231,7 +235,7 @@ export function textToDocument(source: string, options: TextImportOptions): Text
     const colophonBlocks = toBlocks(colophon, true);
     sections.push({ title: '底本', html: colophonBlocks.map((block) => block.html).join('\n') });
   }
-  return { title, author: author || options.author, language: detectLanguage(text), sections };
+  return { title, author: author || options.author, language: detectLanguage(text), sections, source: options.source };
 }
 
 // --- The EPUB --------------------------------------------------------------------
@@ -333,7 +337,7 @@ ${files.map((file, index) => `    <navPoint id="np${index + 1}" playOrder="${ind
     <dc:title>${escapeXml(title)}</dc:title>
     <dc:creator>${escapeXml(author)}</dc:creator>
     <dc:language>${language}</dc:language>
-    <meta property="dcterms:modified">${new Date().toISOString().replace(/\.\d+Z$/, 'Z')}</meta>
+${document.source ? `    <dc:source>${escapeXml(document.source)}</dc:source>\n` : ''}    <meta property="dcterms:modified">${new Date().toISOString().replace(/\.\d+Z$/, 'Z')}</meta>
   </metadata>
   <manifest>
     <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
@@ -353,6 +357,6 @@ ${files.map((file) => `    <itemref idref="${file.id}"/>`).join('\n')}
 /** Text to an EPUB. */
 export async function textToEpub(text: string, options: TextImportOptions): Promise<ConvertedText> {
   const document = textToDocument(text, options);
-  const blob = await documentToEpub(document, `${document.title}\n${text}`);
+  const blob = await documentToEpub(document, options.source ?? `${document.title}\n${text}`);
   return { blob, title: document.title, author: document.author, language: document.language };
 }

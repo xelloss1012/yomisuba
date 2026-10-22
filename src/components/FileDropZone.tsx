@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { UploadCloud, Sparkles, FileText, Languages, Smartphone, Github, ShieldCheck, Library, ClipboardPaste } from 'lucide-react';
+import { UploadCloud, Sparkles, FileText, Languages, Smartphone, Github, ShieldCheck, Library, ClipboardPaste, Globe } from 'lucide-react';
 import { createSampleJapaneseEpub } from '../utils/sampleBook';
 import { RecentBook } from '../utils/recentBooks';
 import { GoogleDriveBook, GoogleDriveSession } from '../utils/googleDriveBackup';
@@ -8,6 +8,8 @@ import { GoogleDriveBackupPanel } from './GoogleDriveBackupPanel';
 import { BookShelf } from './BookShelf';
 import { BookLibraryModal } from './BookLibraryModal';
 import { PasteTextModal } from './PasteTextModal';
+import { ImportUrlModal } from './ImportUrlModal';
+import { importUrlAsEpub, UrlImportError } from '../utils/urlImport';
 import { textToEpub } from '../utils/textToEpub';
 import { importFileAsEpub, isImportable } from '../utils/importFile';
 import { UpdateNotice } from './UpdateNotice';
@@ -69,6 +71,7 @@ export const FileDropZone: React.FC<Props> = ({
   const [isDragOver, setIsDragOver] = useState(false);
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [isPasteOpen, setIsPasteOpen] = useState(false);
+  const [isUrlOpen, setIsUrlOpen] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const isNative = Capacitor.isNativePlatform();
   const [updateChecks, setUpdateChecks] = useState(isUpdateCheckEnabled);
@@ -93,6 +96,20 @@ export const FileDropZone: React.FC<Props> = ({
       onFileLoaded(new File([converted.blob], `${converted.title}.epub`, { type: 'application/epub+zip' }));
     } catch (error) {
       throw new Error(t('import.failed', { message: error instanceof Error ? error.message : String(error) }));
+    }
+  };
+
+  const openUrl = async (address: string) => {
+    try {
+      const file = await importUrlAsEpub(address, { fallbackAuthor: t('import.htmlFileAuthor') });
+      setIsUrlOpen(false);
+      onFileLoaded(file);
+    } catch (error) {
+      if (!(error instanceof UrlImportError)) throw new Error(t('import.urlFailed', { message: error instanceof Error ? error.message : String(error) }));
+      const keys = { invalid: 'import.urlInvalid', blocked: 'import.urlBlocked', status: 'import.urlStatus', type: 'import.urlType', size: 'import.urlSize', empty: 'import.urlEmpty' } as const;
+      throw new Error(error.code === 'failed'
+        ? t('import.urlFailed', { message: error.detail })
+        : t(keys[error.code], { status: error.detail }));
     }
   };
 
@@ -182,7 +199,7 @@ export const FileDropZone: React.FC<Props> = ({
         />
 
         {/* Adding books */}
-        <div className="mt-6 grid gap-2 sm:grid-cols-3">
+        <div className="mt-6 grid gap-2 sm:grid-cols-2">
           <input
             ref={fileInput}
             type="file"
@@ -218,6 +235,15 @@ export const FileDropZone: React.FC<Props> = ({
             <ClipboardPaste className="h-4 w-4 shrink-0 text-indigo-500" />
             <span className="min-w-0">{t('import.pasteButton')}</span>
           </button>
+          <button
+            type="button"
+            onClick={() => setIsUrlOpen(true)}
+            disabled={isLoading}
+            className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-zinc-300 bg-stone-100 px-3 py-2.5 text-xs font-semibold text-zinc-800 shadow-sm transition-all hover:bg-stone-200 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+          >
+            <Globe className="h-4 w-4 shrink-0 text-indigo-500" />
+            <span className="min-w-0">{t('import.urlButton')}</span>
+          </button>
         </div>
         {recentBooks.length === 0 && (
           <button
@@ -241,6 +267,12 @@ export const FileDropZone: React.FC<Props> = ({
           onSignOut={onGoogleDriveSignOut}
           onRestoreSettings={onRestoreDriveSettings}
           onRefreshBooks={onRefreshDriveBooks}
+        />
+
+        <ImportUrlModal
+          isOpen={isUrlOpen}
+          onClose={() => setIsUrlOpen(false)}
+          onSubmit={openUrl}
         />
 
         <PasteTextModal
