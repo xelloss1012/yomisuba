@@ -146,6 +146,7 @@ const applyPageWordHighlights = (
   doc: Document,
   tokens: PageWordToken[],
   vertical: boolean,
+  dark: boolean,
 ) => {
   const win = doc.defaultView as (Window & {
     Highlight?: { new (...ranges: Range[]): unknown };
@@ -181,13 +182,10 @@ const applyPageWordHighlights = (
   const separatorLayer = doc.createElement('div');
   separatorLayer.setAttribute('data-page-word-separators', '');
   separatorLayer.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; z-index: 5; margin: 0; padding: 0; box-sizing: border-box;';
-  const separatorColors: Record<PageWordCategory, string> = {
-    noun: 'rgba(14,116,144,0.45)',
-    verb: 'rgba(180,83,9,0.45)',
-    adjective: 'rgba(4,120,87,0.45)',
-    particle: 'rgba(109,40,217,0.42)',
-    other: 'rgba(82,82,91,0.4)',
-  };
+  // Solid lines, dark on a light page and light on a dark one: the old faint, blurred ones vanished on dark.
+  const separatorColors: Record<PageWordCategory, string> = dark
+    ? { noun: '#67e8f9', verb: '#fcd34d', adjective: '#6ee7b7', particle: '#c4b5fd', other: '#d4d4d8' }
+    : { noun: '#0e7490', verb: '#b45309', adjective: '#047857', particle: '#6d28d9', other: '#52525b' };
   tokens.forEach((token) => {
     const rects = Array.from(token.range.getClientRects());
     const rect = rects[rects.length - 1];
@@ -196,9 +194,10 @@ const applyPageWordHighlights = (
     const color = separatorColors[getPageWordCategory(token)];
     const localLeft = rect.left - scrollerRect.left;
     const localTop = rect.top - scrollerRect.top;
+    // Between this word and the next: across the column in vertical text, down the line in horizontal.
     separator.style.cssText = vertical
-      ? `position: absolute; left: ${localLeft}px; top: ${localTop + rect.height - 1}px; width: ${rect.width}px; height: 1px; box-shadow: 0 1px 2px ${color};`
-      : `position: absolute; left: ${localLeft + rect.width - 1}px; top: ${localTop}px; width: 1px; height: ${rect.height}px; box-shadow: 1px 0 2px ${color};`;
+      ? `position: absolute; left: ${localLeft}px; top: ${localTop + rect.height - 1}px; width: ${rect.width}px; height: 2px; background: ${color}; border-radius: 1px;`
+      : `position: absolute; left: ${localLeft + rect.width - 1}px; top: ${localTop}px; width: 2px; height: ${rect.height}px; background: ${color}; border-radius: 1px;`;
     separatorLayer.appendChild(separator);
   });
   scroller.appendChild(separatorLayer);
@@ -797,10 +796,10 @@ export const EpubReader: React.FC<Props> = ({
   }, [markReaderDataChanged]);
 
   const themeColors = useMemo(() => ({
-    light: { bg: '#ffffff', text: '#18181b', generatedFurigana: '#a0612b' },
-    paper: { bg: '#faf7f0', text: '#2c2825', generatedFurigana: '#a0612b' },
-    sepia: { bg: '#f4ede4', text: '#433428', generatedFurigana: '#9a5420' },
-    dark: { bg: '#18181b', text: '#e4e4e7', generatedFurigana: '#d9a066' },
+    light: { bg: '#ffffff', text: '#18181b', generatedFurigana: '#a0612b', isDark: false },
+    paper: { bg: '#faf7f0', text: '#2c2825', generatedFurigana: '#a0612b', isDark: false },
+    sepia: { bg: '#f4ede4', text: '#433428', generatedFurigana: '#9a5420', isDark: false },
+    dark: { bg: '#18181b', text: '#e4e4e7', generatedFurigana: '#d9a066', isDark: true },
   }[settings.theme]), [settings.theme]);
 
   const getFontFamilyCss = useCallback((font: string) => {
@@ -974,15 +973,17 @@ export const EpubReader: React.FC<Props> = ({
       text-orientation: upright; -webkit-text-orientation: upright;
       display: inline-block; line-height: 1;
     }
+    :root { --reader-annotation-line: ${themeColors.isDark ? '#a5b4fc' : '#4338ca'}; }
     ::highlight(reader-annotation) {
-      background-color: rgba(129, 140, 248, 0.35);
+      background-color: ${themeColors.isDark ? 'rgba(129, 140, 248, 0.40)' : 'rgba(129, 140, 248, 0.35)'};
       color: inherit;
     }
-    ::highlight(reader-word-noun) { background-color: rgba(56, 189, 248, 0.20); color: inherit; }
-    ::highlight(reader-word-verb) { background-color: rgba(251, 191, 36, 0.22); color: inherit; }
-    ::highlight(reader-word-adjective) { background-color: rgba(52, 211, 153, 0.20); color: inherit; }
-    ::highlight(reader-word-particle) { background-color: rgba(167, 139, 250, 0.18); color: inherit; }
-    ::highlight(reader-word-other) { background-color: rgba(161, 161, 170, 0.16); color: inherit; }
+    /* The analyzer's tints are stronger on a dark page, where the light ones barely show. */
+    ::highlight(reader-word-noun) { background-color: ${themeColors.isDark ? 'rgba(56, 189, 248, 0.30)' : 'rgba(56, 189, 248, 0.22)'}; color: inherit; }
+    ::highlight(reader-word-verb) { background-color: ${themeColors.isDark ? 'rgba(251, 191, 36, 0.30)' : 'rgba(251, 191, 36, 0.24)'}; color: inherit; }
+    ::highlight(reader-word-adjective) { background-color: ${themeColors.isDark ? 'rgba(52, 211, 153, 0.28)' : 'rgba(52, 211, 153, 0.22)'}; color: inherit; }
+    ::highlight(reader-word-particle) { background-color: ${themeColors.isDark ? 'rgba(167, 139, 250, 0.30)' : 'rgba(167, 139, 250, 0.20)'}; color: inherit; }
+    ::highlight(reader-word-other) { background-color: ${themeColors.isDark ? 'rgba(212, 212, 216, 0.22)' : 'rgba(161, 161, 170, 0.18)'}; color: inherit; }
     p  { margin: 0; padding: ${isVertical ? '0 0 0 0.5rem' : '0 0 0.5rem 0'}; }
     h1,h2,h3,h4 { font-weight:700; break-after:avoid; }
     ruby {
@@ -3699,6 +3700,7 @@ export const EpubReader: React.FC<Props> = ({
         doc,
         visibleWords,
         isVertical,
+        themeColors.isDark,
       );
       wordSelectionModeRef.current = true;
       setIsWordSelectionMode(true);
@@ -3718,7 +3720,7 @@ export const EpubReader: React.FC<Props> = ({
         automaticPageAnalysisRequestRef.current = 0;
       }
     }
-  }, [isVertical, showWordAnalysisError]);
+  }, [isVertical, showWordAnalysisError, themeColors.isDark]);
 
   const handleToggleAutoAnalysis = useCallback(() => {
     if (!settings.autoAnalyzePage && isWordSelectionMode) {
