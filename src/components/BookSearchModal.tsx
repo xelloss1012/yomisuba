@@ -7,6 +7,8 @@ import {
   SearchHit,
 } from '../utils/bookSearch';
 import { useT } from '../i18n/LanguageContext';
+import { searchNotes } from '../utils/noteSearch';
+import type { TextAnnotation } from '../utils/textAnnotations';
 
 interface Props {
   isOpen: boolean;
@@ -26,6 +28,9 @@ interface Props {
   onClearRecents: () => void;
   onClose: () => void;
   onSelectHit: (hit: SearchHit) => void;
+  /** The underlines that have a note, with the name of their chapter: their notes are searched too. */
+  notes: Array<TextAnnotation & { chapterLabel: string }>;
+  onSelectNote: (annotation: TextAnnotation) => void;
 }
 
 const SEARCH_DELAY_MS = 250;
@@ -45,6 +50,8 @@ export const BookSearchModal: React.FC<Props> = ({
   onClearRecents,
   onClose,
   onSelectHit,
+  notes,
+  onSelectNote,
 }) => {
   const t = useT();
   const [input, setInput] = useState('');
@@ -124,6 +131,8 @@ export const BookSearchModal: React.FC<Props> = ({
     return { hits: allHits, truncated: allHits.length >= MAX_SEARCH_HITS };
   }, [normalizedQuery, texts]);
 
+  const noteHits = useMemo(() => searchNotes(notes, query), [notes, query]);
+
   // Request chapter page numbers for hits as they appear.
   useEffect(() => {
     if (!isOpen || hits.length === 0) return;
@@ -172,6 +181,9 @@ export const BookSearchModal: React.FC<Props> = ({
     if (hits.length > 0) {
       onRememberSearch(query);
       onSelectHit(hits[0]);
+    } else if (noteHits.length > 0) {
+      onRememberSearch(query);
+      onSelectNote(noteHits[0].annotation);
     }
   };
 
@@ -264,11 +276,14 @@ export const BookSearchModal: React.FC<Props> = ({
             )}
             {!isIndexing && normalizedQuery && (
               <span>
-                {hits.length
-                  ? truncated
-                    ? t('search.firstMatches').replace('{count}', String(MAX_SEARCH_HITS))
-                    : `${hits.length} ${hits.length === 1 ? t('search.match') : t('search.matches')}`
-                  : t('search.noResults')}
+                {[
+                  hits.length
+                    ? truncated
+                      ? t('search.firstMatches').replace('{count}', String(MAX_SEARCH_HITS))
+                      : `${hits.length} ${hits.length === 1 ? t('search.match') : t('search.matches')}`
+                    : '',
+                  noteHits.length ? `${noteHits.length} ${t('search.inNotes')}` : '',
+                ].filter(Boolean).join(' · ') || t('search.noResults')}
               </span>
             )}
           </div>
@@ -321,6 +336,32 @@ export const BookSearchModal: React.FC<Props> = ({
             )
           ) : (
             <ul className="p-2">
+              {noteHits.length > 0 && (
+                <li className="sticky top-0 z-10 bg-white/95 px-3 pb-1 pt-3 text-xs font-semibold text-amber-700 backdrop-blur dark:bg-zinc-900/95 dark:text-amber-300">
+                  {t('search.notesHeading')}
+                </li>
+              )}
+              {noteHits.map((hit) => (
+                <li key={`note-${hit.annotation.id}`}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onRememberSearch(query);
+                      onSelectNote(hit.annotation);
+                    }}
+                    className="flex w-full flex-col gap-1 rounded-xl border-l-2 border-amber-400 px-3 py-2.5 text-left text-sm leading-relaxed text-zinc-700 hover:bg-zinc-50 dark:text-zinc-200 dark:hover:bg-zinc-800/70"
+                  >
+                    <span className="whitespace-pre-line">
+                      <span className="text-zinc-500 dark:text-zinc-400">{hit.before ? `…${hit.before}` : ''}</span>
+                      <mark className="rounded bg-amber-200 px-0.5 text-zinc-900 dark:bg-amber-400/80">{hit.match}</mark>
+                      <span className="text-zinc-500 dark:text-zinc-400">{hit.after ? `${hit.after}…` : ''}</span>
+                    </span>
+                    <span lang="ja" className="truncate text-xs text-zinc-500 dark:text-zinc-400">
+                      {hit.annotation.chapterLabel} · "{hit.annotation.quote}"
+                    </span>
+                  </button>
+                </li>
+              ))}
               {hits.map((hit) => {
                 const showHeading = hit.spineIndex !== lastChapter;
                 lastChapter = hit.spineIndex;

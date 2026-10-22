@@ -4,7 +4,18 @@ export interface TextAnnotation {
   quote: string;
   prefix: string;
   suffix: string;
+  /** What the reader wrote about the passage, if anything. */
+  note?: string;
 }
+
+export const MAX_NOTE_LENGTH = 2000;
+
+/** The note of an annotation as it is stored: trimmed, within the limit, or none. */
+export const normalizeNote = (note: unknown): string | undefined => {
+  if (typeof note !== 'string') return undefined;
+  const text = note.trim().slice(0, MAX_NOTE_LENGTH);
+  return text || undefined;
+};
 
 export const readTextAnnotations = (storageKey: string): TextAnnotation[] => {
   try {
@@ -23,7 +34,12 @@ export const readTextAnnotations = (storageKey: string): TextAnnotation[] => {
         typeof item.prefix === 'string' &&
         typeof item.suffix === 'string'
       )
-    );
+    ).map((item) => {
+      // A note that is not text (a damaged or foreign file) is dropped; the underline stays.
+      const { note, ...rest } = item;
+      const clean = normalizeNote(note);
+      return clean ? { ...rest, note: clean } : rest;
+    });
   } catch {
     return [];
   }
@@ -211,7 +227,39 @@ const joinSegments = (rects: DOMRect[], vertical: boolean): Segment[] => {
   return segments;
 };
 
-type ObservedRoot = HTMLElement & { __annotationRanges?: Range[]; __annotationWatch?: boolean };
+interface MarkedRange {
+  range: Range;
+  id: string;
+  note?: string;
+}
+
+type ObservedRoot = HTMLElement & { __annotationRanges?: MarkedRange[]; __annotationWatch?: boolean };
+
+/** The event the page raises when a note marker is tapped; its detail has the annotation id. */
+export const NOTE_MARKER_EVENT = 'yomisuba-note';
+const NOTE_MARKER_SIZE = 24;
+
+/** A marker beside the first line of an annotation that has a note: a dot, tappable, taking no space. */
+const noteMarker = (doc: Document, id: string, note: string, x: number, y: number): HTMLElement => {
+  const marker = doc.createElement('span');
+  marker.setAttribute('data-annotation-note', id);
+  marker.setAttribute('role', 'button');
+  marker.title = note.length > 140 ? `${note.slice(0, 139)}…` : note;
+  marker.setAttribute('aria-label', marker.title);
+  marker.style.cssText = `position: absolute; left: ${x - NOTE_MARKER_SIZE / 2}px; top: ${y - NOTE_MARKER_SIZE / 2}px; width: ${NOTE_MARKER_SIZE}px; height: ${NOTE_MARKER_SIZE}px; display: flex; align-items: center; justify-content: center; pointer-events: auto; cursor: pointer; touch-action: manipulation;`;
+  const dot = doc.createElement('span');
+  dot.style.cssText = 'width: 9px; height: 9px; border-radius: 50%; background: var(--reader-annotation-line, #4338ca); box-shadow: 0 0 0 2px var(--reader-page-bg, #ffffff);';
+  marker.appendChild(dot);
+  // The reader's own tap and swipe handlers must not take a tap on the marker for a page turn.
+  for (const type of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'touchstart', 'touchend']) {
+    marker.addEventListener(type, (event) => event.stopPropagation());
+  }
+  marker.addEventListener('click', (event) => {
+    event.stopPropagation();
+    doc.dispatchEvent(new CustomEvent(NOTE_MARKER_EVENT, { detail: { id } }));
+  });
+  return marker;
+};
 
 const drawUnderlines = (root: ObservedRoot) => {
   const doc = root.ownerDocument;
@@ -224,8 +272,20 @@ const drawUnderlines = (root: ObservedRoot) => {
   const layer = doc.createElement('div');
   layer.setAttribute(UNDERLINE_LAYER, '');
   layer.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; z-index: 4; margin: 0; padding: 0;';
-  for (const range of ranges) {
-    for (const segment of joinSegments(baseTextRects(range), vertical)) {
+  for (const { range, id, note } of ranges) {
+    const segments = joinSegments(baseTextRects(range), vertical);
+    if (note && segments.length > 0) {
+      // At the start of the passage, on the side of its line: top-left of vertical text, left end of horizontal.
+      const first = segments[0];
+      layer.appendChild(noteMarker(
+        doc,
+        id,
+        note,
+        first.left - origin.left + (vertical ? 1 : 0),
+        vertical ? first.top - origin.top : first.bottom - origin.top - UNDERLINE_THICKNESS / 2,
+      ));
+    }
+    for (const segment of segments) {
       const line = doc.createElement('span');
       const geometry = vertical
         ? `left: ${segment.left - origin.left}px; top: ${segment.top - origin.top}px; width: ${UNDERLINE_THICKNESS}px; height: ${segment.bottom - segment.top}px;`
@@ -263,9 +323,13 @@ export const applyTextAnnotations = (
   if (!win || !win.Highlight || !win.CSS || !win.CSS.highlights) return;
 
   const ranges: Range[] = [];
+  const marked: MarkedRange[] = [];
   for (const annotation of annotations) {
     const range = findTextAnnotationRange(root, annotation);
-    if (range) ranges.push(range);
+    if (range) {
+      ranges.push(range);
+      marked.push({ range, id: annotation.id, note: annotation.note });
+    }
   }
 
   if (ranges.length > 0) {
@@ -275,7 +339,7 @@ export const applyTextAnnotations = (
   } else {
     win.CSS.highlights.delete('reader-annotation');
   }
-  (root as ObservedRoot).__annotationRanges = ranges;
+  (root as ObservedRoot).__annotationRanges = marked;
   drawUnderlines(root as ObservedRoot);
   watchLayout(root as ObservedRoot);
 };

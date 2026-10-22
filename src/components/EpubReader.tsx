@@ -33,10 +33,13 @@ import {
   applyTextAnnotations,
   captureTextAnnotation,
   findTextAnnotationRange,
+  normalizeNote,
+  NOTE_MARKER_EVENT,
   readTextAnnotations,
   removeTextAnnotationMarkup,
   TextAnnotation,
 } from '../utils/textAnnotations';
+import { AnnotationNoteModal } from './AnnotationNoteModal';
 import {
   readTranslationHistory,
   saveTranslationHistoryEntry,
@@ -390,6 +393,8 @@ export const EpubReader: React.FC<Props> = ({
   const recordedFrequentSearchTokensRef = useRef(new Set<string>());
   const [dictionaryPreview, setDictionaryPreview] = useState<DictionaryLookup | null>(null);
   const [isSelectionUnderlined, setIsSelectionUnderlined] = useState(false);
+  // The annotation whose note is open for writing.
+  const [noteEditorId, setNoteEditorId] = useState<string | null>(null);
   const [isSelectionAdjusting, setIsSelectionAdjusting] = useState(false);
   const selectionSettleRef = useRef<number | undefined>(undefined);
   // Set from the iframe's pointer events: the menu must wait for the finger to
@@ -789,6 +794,8 @@ export const EpubReader: React.FC<Props> = ({
   }, [markReaderDataChanged]);
 
   const handleRemoveTextAnnotation = useCallback((annotation: TextAnnotation) => {
+    // A note is the reader's own writing: removing the underline that carries it is asked about.
+    if (annotation.note && !window.confirm(t('notes.confirmRemoveUnderline'))) return;
     markReaderDataChanged();
     const next = textAnnotationsRef.current.filter((item) => item.id !== annotation.id);
     textAnnotationsRef.current = next;
@@ -973,7 +980,7 @@ export const EpubReader: React.FC<Props> = ({
       text-orientation: upright; -webkit-text-orientation: upright;
       display: inline-block; line-height: 1;
     }
-    :root { --reader-annotation-line: ${themeColors.isDark ? '#a5b4fc' : '#4338ca'}; }
+    :root { --reader-annotation-line: ${themeColors.isDark ? '#a5b4fc' : '#4338ca'}; --reader-page-bg: ${themeColors.bg}; }
     ::highlight(reader-annotation) {
       background-color: ${themeColors.isDark ? 'rgba(129, 140, 248, 0.40)' : 'rgba(129, 140, 248, 0.35)'};
       color: inherit;
@@ -1353,16 +1360,12 @@ export const EpubReader: React.FC<Props> = ({
     }
   }, [showWordAnalysisError]);
 
-  const handleToggleUnderline = useCallback(() => {
+  /** The annotation the current selection is on, if it is already underlined. */
+  const findSelectedAnnotation = useCallback((): TextAnnotation | undefined => {
     const anchor = selectionAnnotationRef.current;
-    const iframe = iframeRef.current;
-    const scroller = iframe?.contentDocument?.getElementById('reader-scroller');
-    if (!scroller) return;
-
-    const selectedTextStr = iframe?.contentWindow?.getSelection()?.toString().trim() || '';
+    const selectedTextStr = iframeRef.current?.contentWindow?.getSelection()?.toString().trim() || '';
     const currentSpine = currentSpineRef.current;
-
-    const existing = textAnnotationsRef.current.find((annotation) =>
+    return textAnnotationsRef.current.find((annotation) =>
       annotation.spineIndex === currentSpine &&
       (
         annotation.id === selectedTextAnnotationIdRef.current ||
@@ -1370,8 +1373,18 @@ export const EpubReader: React.FC<Props> = ({
         (selectedTextStr && (annotation.quote.includes(selectedTextStr) || selectedTextStr.includes(annotation.quote)))
       )
     );
+  }, []);
+
+  const handleToggleUnderline = useCallback(() => {
+    const anchor = selectionAnnotationRef.current;
+    const iframe = iframeRef.current;
+    const scroller = iframe?.contentDocument?.getElementById('reader-scroller');
+    if (!scroller) return;
+
+    const existing = findSelectedAnnotation();
 
     if (existing) {
+      if (existing.note && !window.confirm(t('notes.confirmRemoveUnderline'))) return;
       removeTextAnnotationMarkup(scroller, existing.id);
       markReaderDataChanged();
       const next = textAnnotationsRef.current.filter((annotation) => annotation.id !== existing.id);
@@ -1395,6 +1408,39 @@ export const EpubReader: React.FC<Props> = ({
     setTextAnnotations(next);
     selectedTextAnnotationIdRef.current = annotation.id;
     setIsSelectionUnderlined(true);
+  }, [findSelectedAnnotation, markReaderDataChanged]);
+
+  /** Opens the note of the selection, underlining it first when it is not underlined. */
+  const handleAddNote = useCallback(() => {
+    const scroller = iframeRef.current?.contentDocument?.getElementById('reader-scroller');
+    if (!scroller) return;
+    let target = findSelectedAnnotation();
+    if (!target) {
+      const anchor = selectionAnnotationRef.current;
+      const range = selectionRangeRef.current;
+      if (!anchor || !range || range.startContainer.ownerDocument !== scroller.ownerDocument) return;
+      target = { ...anchor, id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}` };
+      markReaderDataChanged();
+      const next = [...textAnnotationsRef.current, target];
+      textAnnotationsRef.current = next;
+      setTextAnnotations(next);
+      setIsSelectionUnderlined(true);
+    }
+    selectedTextAnnotationIdRef.current = target.id;
+    setNoteEditorId(target.id);
+  }, [findSelectedAnnotation, markReaderDataChanged]);
+
+  const handleSaveAnnotationNote = useCallback((id: string, note: string) => {
+    const clean = normalizeNote(note);
+    const next = textAnnotationsRef.current.map((annotation) => {
+      if (annotation.id !== id) return annotation;
+      const { note: _previous, ...rest } = annotation;
+      return clean ? { ...rest, note: clean } : rest;
+    });
+    markReaderDataChanged();
+    textAnnotationsRef.current = next;
+    setTextAnnotations(next);
+    setNoteEditorId(null);
   }, [markReaderDataChanged]);
 
   // ─── PAGE ACTIONS ─────────────────────────────────────────────────────────────
@@ -2190,6 +2236,10 @@ export const EpubReader: React.FC<Props> = ({
         doc.addEventListener('selectionchange', onSelectionChange);
         // The native selection handles report through pointer events, so this is
         // the stream the selection paging has to run on.
+        // A tap on a note's marker opens the note.
+        doc.addEventListener(NOTE_MARKER_EVENT, (event) => {
+          setNoteEditorId((event as CustomEvent<{ id: string }>).detail.id);
+        });
         doc.addEventListener('pointerdown', () => {
           countDebugRef.current('pdown');
           programmaticWordSelectionRef.current = false;
@@ -3130,6 +3180,8 @@ export const EpubReader: React.FC<Props> = ({
       cancelled = true;
     };
   }, [isBookmarksOpen, isVertical, textAnnotations, withHiddenChapter]);
+
+  const noteEditorAnnotation = noteEditorId === null ? undefined : textAnnotations.find((annotation) => annotation.id === noteEditorId);
 
   const annotationItems = textAnnotations.map((annotation) => {
     const location = annotationPages.get(annotation.id);
@@ -4196,10 +4248,12 @@ export const EpubReader: React.FC<Props> = ({
         // panel open it covered the bottom of the dictionary result. Fold it
         // away while any overlay is on screen, as it is already folded away
         // while the selection is being dragged.
-        isAdjusting={isSelectionAdjusting || isTranslateOpen || isBookmarksOpen || isSearchOpen || isTranslationHistoryOpen || isPageGlossaryOpen || isTocOpen || isSettingsOpen || Boolean(imageViewerSrc)}
+        isAdjusting={isSelectionAdjusting || isTranslateOpen || isBookmarksOpen || isSearchOpen || isTranslationHistoryOpen || isPageGlossaryOpen || isTocOpen || isSettingsOpen || noteEditorId !== null || Boolean(imageViewerSrc)}
         dictionaryPreview={dictionaryPreview}
         isUnderlined={isSelectionUnderlined}
         onToggleUnderline={handleToggleUnderline}
+        hasNote={textAnnotations.some((annotation) => annotation.id === selectedTextAnnotationIdRef.current && Boolean(annotation.note))}
+        onAddNote={handleAddNote}
         onClose={() => {
           selectedTextRef.current = '';
           setSelectedText('');
@@ -4252,6 +4306,7 @@ export const EpubReader: React.FC<Props> = ({
         onToggleFavorite={handleToggleTranslationFavorite}
         onClearFavorites={handleClearTranslationFavorites}
         onClearFrequentQueries={handleClearFrequentQueries}
+        bookTitle={epub.metadata.title}
       />
 
       <PageGlossaryModal
@@ -4279,6 +4334,13 @@ export const EpubReader: React.FC<Props> = ({
         onClearRecents={handleClearRecentSearches}
         onClose={() => setIsSearchOpen(false)}
         onSelectHit={handleSelectSearchHit}
+        notes={textAnnotations
+          .filter((annotation) => annotation.note)
+          .map((annotation) => ({ ...annotation, chapterLabel: spineLabels[annotation.spineIndex] || `${t('common.section')} ${annotation.spineIndex + 1}` }))}
+        onSelectNote={(annotation) => {
+          setIsSearchOpen(false);
+          void handleSelectTextAnnotation(annotation);
+        }}
       />
 
       <BookmarksModal
@@ -4290,6 +4352,16 @@ export const EpubReader: React.FC<Props> = ({
         onRemove={handleRemoveBookmark}
         onSelectAnnotation={handleSelectTextAnnotation}
         onRemoveAnnotation={handleRemoveTextAnnotation}
+        onEditNote={(annotation) => setNoteEditorId(annotation.id)}
+        bookTitle={epub.metadata.title}
+      />
+
+      <AnnotationNoteModal
+        isOpen={noteEditorAnnotation !== undefined}
+        quote={noteEditorAnnotation?.quote ?? ''}
+        note={noteEditorAnnotation?.note ?? ''}
+        onSave={(note) => { if (noteEditorAnnotation) handleSaveAnnotationNote(noteEditorAnnotation.id, note); }}
+        onClose={() => setNoteEditorId(null)}
       />
 
       <ReaderFooter

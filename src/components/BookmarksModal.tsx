@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
-import { Bookmark, Highlighter, Trash2, X } from 'lucide-react';
+import { Bookmark, Check, Copy, Download, Highlighter, Search, StickyNote, Trash2, X } from 'lucide-react';
 import { TextAnnotation } from '../utils/textAnnotations';
 import { useT } from '../i18n/LanguageContext';
+import { annotationsToMarkdown } from '../utils/annotationExport';
+import { annotationMatches } from '../utils/noteSearch';
+import { exportFileName, saveTextFile } from '../utils/exportFile';
 
 export interface ReaderBookmark {
   spineIndex: number;
@@ -32,6 +35,10 @@ interface Props {
   onRemove: (bookmark: ReaderBookmark) => void;
   onSelectAnnotation: (annotation: TextAnnotation) => void;
   onRemoveAnnotation: (annotation: TextAnnotation) => void;
+  /** Opens the note of an underlined passage to write or edit it. */
+  onEditNote: (annotation: TextAnnotation) => void;
+  /** The title of the book, for the exported notes. */
+  bookTitle: string;
 }
 
 export const BookmarksModal: React.FC<Props> = ({
@@ -43,8 +50,43 @@ export const BookmarksModal: React.FC<Props> = ({
   onRemove,
   onSelectAnnotation,
   onRemoveAnnotation,
+  onEditNote,
+  bookTitle,
 }) => {
   const t = useT();
+  const [copied, setCopied] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [exportFailed, setExportFailed] = useState(false);
+  const [filter, setFilter] = useState('');
+  // What the filter leaves is what is copied and saved.
+  const shownAnnotations = annotations.filter((annotation) => annotationMatches(annotation, filter));
+
+  const copyAll = async () => {
+    try {
+      await navigator.clipboard.writeText(annotationsToMarkdown(bookTitle, shownAnnotations));
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // Clipboard not allowed: nothing to show, the list is still there to copy by hand.
+    }
+  };
+
+  const saveAsFile = async () => {
+    setExportFailed(false);
+    try {
+      await saveTextFile(
+        exportFileName(bookTitle, t('notes.fileSuffix'), 'md'),
+        annotationsToMarkdown(bookTitle, shownAnnotations),
+        'text/markdown',
+        t('export.shareTitle'),
+      );
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 1800);
+    } catch (error) {
+      // Cancelling the share sheet is not a failure.
+      if (!(error instanceof Error && /cancel/i.test(error.message))) setExportFailed(true);
+    }
+  };
   const [activeTab, setActiveTab] = useState<'bookmarks' | 'annotations'>(() =>
     bookmarks.length === 0 && annotations.length > 0 ? 'annotations' : 'bookmarks'
   );
@@ -149,8 +191,46 @@ export const BookmarksModal: React.FC<Props> = ({
             </p>
           )
         ) : annotations.length ? (
-          <ul role="tabpanel" className="space-y-2 overflow-y-auto p-3">
-            {annotations.map((annotation) => (
+          <div role="tabpanel" className="flex min-h-0 flex-col">
+            <div className="flex shrink-0 items-center gap-2 px-3 pt-3">
+              <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-zinc-300 bg-white px-2.5 dark:border-zinc-700 dark:bg-zinc-950">
+                <Search className="h-4 w-4 shrink-0 text-zinc-400" />
+                <input
+                  type="search"
+                  value={filter}
+                  onChange={(event) => setFilter(event.target.value)}
+                  placeholder={t('notes.filterPlaceholder')}
+                  aria-label={t('notes.filterPlaceholder')}
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="min-w-0 flex-1 bg-transparent py-2 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 dark:text-zinc-100"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => { void copyAll(); }}
+                className="tap-area inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-zinc-300 text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                title={t('notes.copyAll')}
+                aria-label={t('notes.copyAll')}
+              >
+                {copied ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
+              </button>
+              <button
+                type="button"
+                onClick={() => { void saveAsFile(); }}
+                className="tap-area inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-zinc-300 text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                title={t('notes.saveFile')}
+                aria-label={t('notes.saveFile')}
+              >
+                {saved ? <Check className="h-4 w-4 text-emerald-500" /> : <Download className="h-4 w-4" />}
+              </button>
+            </div>
+            {exportFailed && <p role="alert" className="px-4 pt-2 text-xs text-rose-600 dark:text-rose-400">{t('export.failed')}</p>}
+            {shownAnnotations.length === 0 && (
+              <p className="px-5 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">{t('notes.noMatches')}</p>
+            )}
+          <ul className="space-y-2 overflow-y-auto p-3">
+            {shownAnnotations.map((annotation) => (
               <li
                 key={annotation.id}
                 className="flex items-center gap-2 rounded-xl border border-zinc-200 p-2 dark:border-zinc-800"
@@ -166,6 +246,20 @@ export const BookmarksModal: React.FC<Props> = ({
                   <span className="mt-0.5 block text-xs text-zinc-500 dark:text-zinc-400">
                     {annotation.pageLabel ? annotation.pageLabel : annotation.chapterLabel}
                   </span>
+                  {annotation.note && (
+                    <span className="mt-1.5 block line-clamp-3 whitespace-pre-line border-l-2 border-amber-400 pl-2 text-xs text-zinc-700 dark:text-zinc-300">
+                      {annotation.note}
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onEditNote(annotation)}
+                  className={`tap-area rounded-lg p-2 hover:bg-amber-50 dark:hover:bg-amber-950/30 ${annotation.note ? 'text-amber-600 dark:text-amber-400' : 'text-zinc-500'}`}
+                  aria-label={annotation.note ? t('notes.edit') : t('notes.add')}
+                  title={annotation.note ? t('notes.edit') : t('notes.add')}
+                >
+                  <StickyNote className="h-4 w-4" />
                 </button>
                 <button
                   type="button"
@@ -179,6 +273,7 @@ export const BookmarksModal: React.FC<Props> = ({
               </li>
             ))}
           </ul>
+          </div>
         ) : (
           <p role="tabpanel" className="px-5 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
             {t('bookmarks.empty')}

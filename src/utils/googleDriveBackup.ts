@@ -84,7 +84,7 @@ export interface ReaderBookBackup {
   chapterPageCounts?: number[];
   position?: { spineIndex: number; page: number; pageCount?: number; textOffset?: number };
   bookmarks: Array<{ spineIndex: number; page: number; pageCount?: number; textOffset?: number }>;
-  annotations: Array<{ id: string; spineIndex: number; quote: string; prefix: string; suffix: string }>;
+  annotations: Array<{ id: string; spineIndex: number; quote: string; prefix: string; suffix: string; note?: string }>;
   translationHistory: Array<{
     id: string;
     queriedAt: number;
@@ -1136,7 +1136,8 @@ function isAnnotation(value: unknown): boolean {
     && Number(annotation.spineIndex) >= 0
     && typeof annotation.quote === 'string'
     && typeof annotation.prefix === 'string'
-    && typeof annotation.suffix === 'string';
+    && typeof annotation.suffix === 'string'
+    && (annotation.note === undefined || typeof annotation.note === 'string');
 }
 
 function isHistoryEntry(value: unknown): boolean {

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { BarChart3, Clock, Star, Trash2, X } from 'lucide-react';
+import { BarChart3, Clock, Download, Star, Trash2, X } from 'lucide-react';
 import { AI_PROVIDER_LABELS } from '../utils/aiTranslation';
 import {
   MAX_TRANSLATION_HISTORY_ENTRIES,
@@ -22,6 +22,8 @@ import { UiLanguage } from '../utils/i18n';
 import { Translate, useLanguage, useT } from '../i18n/LanguageContext';
 import { classifyWord } from '../utils/wordLevels';
 import { useWordLevels, WordLevelBadge } from './WordLevelBadge';
+import { exportFileName, saveTextFile } from '../utils/exportFile';
+import { favoritesToCsv, favoritesToMarkdown } from '../utils/favoritesExport';
 
 interface Props {
   isOpen: boolean;
@@ -34,6 +36,8 @@ interface Props {
   onToggleFavorite: (candidate: TranslationFavoriteCandidate) => void;
   onClearFavorites: () => void;
   onClearFrequentQueries: () => void;
+  /** The title of the book, for the name of the exported file. */
+  bookTitle: string;
 }
 
 interface DisplayItem {
@@ -77,12 +81,49 @@ export const TranslationHistoryModal: React.FC<Props> = ({
   onToggleFavorite,
   onClearFavorites,
   onClearFrequentQueries,
+  bookTitle,
 }) => {
   const t = useT();
   const language = useLanguage();
   const wordLevels = useWordLevels();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'history' | 'favorites' | 'frequent'>('history');
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [exportFailed, setExportFailed] = useState(false);
+
+  const exportFavorites = async (format: 'markdown' | 'csv') => {
+    setExportMenuOpen(false);
+    setExportFailed(false);
+    const kind = (favorite: TranslationFavorite) => getKindLabel(favorite, t);
+    try {
+      if (format === 'csv') {
+        await saveTextFile(
+          exportFileName(bookTitle, t('history.fileSuffix'), 'csv'),
+          favoritesToCsv(favorites, {
+            word: t('export.colWord'),
+            reading: t('export.colReading'),
+            meaning: t('export.colMeaning'),
+            type: t('export.colType'),
+            date: t('export.colDate'),
+            source: t('export.colSource'),
+            kind,
+          }),
+          'text/csv',
+          t('export.shareTitle'),
+        );
+      } else {
+        await saveTextFile(
+          exportFileName(bookTitle, t('history.fileSuffix'), 'md'),
+          favoritesToMarkdown(`${bookTitle} · ${t('history.tabFavorites')}`, favorites, { kind }, language),
+          'text/markdown',
+          t('export.shareTitle'),
+        );
+      }
+    } catch (error) {
+      // Cancelling the share sheet is not a failure.
+      if (!(error instanceof Error && /cancel/i.test(error.message))) setExportFailed(true);
+    }
+  };
 
   const latestHistoryByQuery = useMemo(() => {
     const latest = new Map<string, TranslationHistoryEntry>();
@@ -239,6 +280,28 @@ export const TranslationHistoryModal: React.FC<Props> = ({
             {activeTab === 'favorites' && t('history.savedFavs').replace('{count}', String(favorites.length)).replace('{max}', String(MAX_TRANSLATION_FAVORITES))}
             {activeTab === 'frequent' && t('history.frequentTerms')}
           </span>
+          {activeTab === 'favorites' && displayItems.length > 0 && (
+            <div className="relative ml-auto mr-3">
+              <button
+                type="button"
+                onClick={() => setExportMenuOpen((open) => !open)}
+                aria-expanded={exportMenuOpen}
+                className="tap-area inline-flex items-center gap-1 text-[11px] font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+              >
+                <Download className="h-3.5 w-3.5" /> {t('history.export')}
+              </button>
+              {exportMenuOpen && (
+                <div className="absolute right-0 top-full z-20 mt-1 w-56 overflow-hidden rounded-xl border border-zinc-200 bg-white text-left shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
+                  <button type="button" onClick={() => { void exportFavorites('markdown'); }} className="block w-full px-3 py-2.5 text-xs text-zinc-700 hover:bg-zinc-50 dark:text-zinc-200 dark:hover:bg-zinc-800">
+                    {t('history.exportMarkdown')}
+                  </button>
+                  <button type="button" onClick={() => { void exportFavorites('csv'); }} className="block w-full border-t border-zinc-100 px-3 py-2.5 text-xs text-zinc-700 hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-800">
+                    {t('history.exportCsv')}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
           {displayItems.length > 0 && (
             <button
               type="button"
@@ -253,6 +316,8 @@ export const TranslationHistoryModal: React.FC<Props> = ({
             </button>
           )}
         </div>
+
+        {exportFailed && <p role="alert" className="px-4 pt-2 text-xs text-rose-600 dark:text-rose-400">{t('export.failed')}</p>}
 
         <div role="tabpanel" className="min-h-0 flex-1 overflow-y-auto p-3">
           {displayItems.length ? (

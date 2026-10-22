@@ -24,7 +24,7 @@ const SNIPPET_CONTEXT = 22;
 
 const SKIPPED = 'rt, rp, script, style';
 
-const normalizeChar = (char: string): string => {
+export const normalizeChar = (char: string): string => {
   if (/\s/.test(char)) return '';
   const folded = char.normalize('NFKC');
   // Only fold when the length is preserved, so offsets stay aligned.

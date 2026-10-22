@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Copy, Languages, Volume2, Search, BookOpen, Check, X, Underline, TextSearch } from 'lucide-react';
+import { Copy, Languages, Volume2, Search, BookOpen, Check, X, Underline, TextSearch, StickyNote } from 'lucide-react';
 import { AiProvider } from '../types/epub';
 import { AI_PROVIDER_LABELS } from '../utils/aiTranslation';
 import { DictionaryLookup } from '../utils/dictionary';
@@ -26,6 +26,10 @@ interface Props {
   dictionaryPreview: DictionaryLookup | null;
   isUnderlined: boolean;
   onToggleUnderline: () => void;
+  /** Whether the underlined passage already has a note. */
+  hasNote?: boolean;
+  /** Underlines the selection, if it is not, and opens its note. */
+  onAddNote: () => void;
   onSearchInBook: () => void;
   aiProviders: AiProvider[];
   onOpenAiTranslate: (provider: AiProvider) => void;
@@ -41,6 +45,8 @@ export const TextSelectionMenu: React.FC<Props> = ({
   dictionaryPreview,
   isUnderlined,
   onToggleUnderline,
+  hasNote = false,
+  onAddNote,
   onSearchInBook,
   aiProviders,
   onOpenAiTranslate,
@@ -228,6 +234,22 @@ export const TextSelectionMenu: React.FC<Props> = ({
           >
             <Underline className="h-3.5 w-3.5" />
             {!isMobile && <span>{isUnderlined ? t('menu.removeUnderline') : t('menu.underline')}</span>}
+          </button>
+
+          {/* Nota */}
+          <button
+            onClick={(event) => {
+              event.stopPropagation();
+              onAddNote();
+            }}
+            className={`tap-area flex flex-1 items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-xs font-medium transition-all hover:bg-zinc-800 active:scale-95 ${
+              hasNote ? 'text-amber-300' : 'text-zinc-100'
+            }`}
+            title={hasNote ? t('notes.edit') : t('notes.add')}
+            aria-label={hasNote ? t('notes.edit') : t('notes.add')}
+          >
+            <StickyNote className="h-3.5 w-3.5" />
+            {!isMobile && <span>{hasNote ? t('notes.edit') : t('notes.add')}</span>}
           </button>
 
           {/* Copiar */}
