@@ -8,6 +8,14 @@ se detallan en el [README](README.md#-licencia).
 
 Los libros de la biblioteca gratuita (repositorio [yomisuba-library](https://github.com/xelloss1012/yomisuba-library)) proceden de [Aozora Bunko](https://www.aozora.gr.jp/), la biblioteca digital de voluntarios: unos son obras de dominio público y otros traducciones modernas y obras de autores actuales que sus titulares publicaron allí con licencia CC BY o CC BY-SA. En estos últimos, la licencia, el crédito y la nota de cambios (se añaden portada, portadilla y página de créditos; el texto no se modifica) constan en la última página del EPUB y en el ATTRIBUTION.md del repositorio. Se conservan en cada EPUB la edición de base y los nombres de quienes transcribieron y revisaron el texto, como pide Aozora Bunko, y se repiten en el [ATTRIBUTION.md](https://github.com/xelloss1012/yomisuba-library/blob/main/ATTRIBUTION.md) de ese repositorio.
 
+## Readability
+
+Extractor del artículo de una página web (se usa al importar un archivo HTML),
+© Mozilla y colaboradores, bajo la
+[licencia Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0)
+([@mozilla/readability](https://github.com/mozilla/readability)). Se incluye
+como dependencia de npm.
+
 ## kuromoji.js
 
 Analizador morfológico japonés, © Takuya Asano y colaboradores, bajo la

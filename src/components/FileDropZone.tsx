@@ -1,12 +1,15 @@
 import React, { useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { UploadCloud, Sparkles, FileText, Languages, Smartphone, Github, ShieldCheck, Library } from 'lucide-react';
+import { UploadCloud, Sparkles, FileText, Languages, Smartphone, Github, ShieldCheck, Library, ClipboardPaste } from 'lucide-react';
 import { createSampleJapaneseEpub } from '../utils/sampleBook';
 import { RecentBook } from '../utils/recentBooks';
 import { GoogleDriveBook, GoogleDriveSession } from '../utils/googleDriveBackup';
 import { GoogleDriveBackupPanel } from './GoogleDriveBackupPanel';
 import { BookShelf } from './BookShelf';
 import { BookLibraryModal } from './BookLibraryModal';
+import { PasteTextModal } from './PasteTextModal';
+import { textToEpub } from '../utils/textToEpub';
+import { importFileAsEpub, isImportable } from '../utils/importFile';
 import { UpdateNotice } from './UpdateNotice';
 import { UpdateCheckToggle } from './UpdateCheckToggle';
 import { UpdateCheckNow } from './UpdateCheckNow';
@@ -65,26 +68,43 @@ export const FileDropZone: React.FC<Props> = ({
   const language = useLanguage();
   const [isDragOver, setIsDragOver] = useState(false);
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
+  const [isPasteOpen, setIsPasteOpen] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const isNative = Capacitor.isNativePlatform();
   const [updateChecks, setUpdateChecks] = useState(isUpdateCheckEnabled);
 
+  // An EPUB opens as it is; a text file is made into one first.
+  const openFile = async (file: File) => {
+    if (!isImportable(file)) {
+      alert(t('dropzone.alert'));
+      return;
+    }
+    try {
+      onFileLoaded(await importFileAsEpub(file, { textAuthor: t('import.textFileAuthor'), htmlAuthor: t('import.htmlFileAuthor') }));
+    } catch (error) {
+      alert(t('import.failed', { message: error instanceof Error ? error.message : String(error) }));
+    }
+  };
+
+  const openPastedText = async (text: string, title: string) => {
+    try {
+      const converted = await textToEpub(text, { title, author: t('import.pastedAuthor') });
+      setIsPasteOpen(false);
+      onFileLoaded(new File([converted.blob], `${converted.title}.epub`, { type: 'application/epub+zip' }));
+    } catch (error) {
+      throw new Error(t('import.failed', { message: error instanceof Error ? error.message : String(error) }));
+    }
+  };
+
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragOver(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const file = e.dataTransfer.files[0];
-      if (file.name.endsWith('.epub') || file.type.includes('epub') || file.type.includes('zip')) {
-        onFileLoaded(file);
-      } else {
-        alert(t('dropzone.alert'));
-      }
-    }
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) void openFile(e.dataTransfer.files[0]);
   };
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      onFileLoaded(e.target.files[0]);
+      void openFile(e.target.files[0]);
     }
     // So that choosing the same file again still fires a change.
     e.target.value = '';
@@ -162,11 +182,11 @@ export const FileDropZone: React.FC<Props> = ({
         />
 
         {/* Adding books */}
-        <div className="mt-6 grid gap-2 sm:grid-cols-2">
+        <div className="mt-6 grid gap-2 sm:grid-cols-3">
           <input
             ref={fileInput}
             type="file"
-            accept=".epub,application/epub+zip"
+            accept=".epub,.txt,.text,.html,.htm,.xhtml,application/epub+zip,text/plain,text/html,application/xhtml+xml"
             className="hidden"
             onChange={handleFileInput}
           />
@@ -188,6 +208,15 @@ export const FileDropZone: React.FC<Props> = ({
           >
             <Library className="h-4 w-4 shrink-0 text-indigo-500" />
             <span className="min-w-0">{t('library.button')}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsPasteOpen(true)}
+            disabled={isLoading}
+            className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-zinc-300 bg-stone-100 px-3 py-2.5 text-xs font-semibold text-zinc-800 shadow-sm transition-all hover:bg-stone-200 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+          >
+            <ClipboardPaste className="h-4 w-4 shrink-0 text-indigo-500" />
+            <span className="min-w-0">{t('import.pasteButton')}</span>
           </button>
         </div>
         {recentBooks.length === 0 && (
@@ -212,6 +241,12 @@ export const FileDropZone: React.FC<Props> = ({
           onSignOut={onGoogleDriveSignOut}
           onRestoreSettings={onRestoreDriveSettings}
           onRefreshBooks={onRefreshDriveBooks}
+        />
+
+        <PasteTextModal
+          isOpen={isPasteOpen}
+          onClose={() => setIsPasteOpen(false)}
+          onSubmit={openPastedText}
         />
 
         <BookLibraryModal

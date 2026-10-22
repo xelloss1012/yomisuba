@@ -200,7 +200,13 @@ los datos locales siguen disponibles y los cambios de lectura quedan en cola
 para sincronizarse al recuperar la conexión; las peticiones a Drive tienen un
 límite de espera.
 
-### Futuras fuentes de lectura (propuesta)
+### Fuentes de lectura distintas de EPUB
+
+**Hecho (fase 1):** texto pegado (botón «Pegar texto») y archivos `.txt`. Cada entrada se convierte al importarla en un EPUB (`src/utils/textToEpub.ts`), de modo que el lector, «Mis libros», Drive y los datos de lectura funcionan sin cambios. Se detecta la codificación (UTF-8, Shift_JIS, EUC-JP, UTF-16) y el idioma (el japonés se abre en vertical). Los textos con notación de Aozora Bunko se convierten: `漢字《かんじ》` pasa a furigana, las notas `［＃…］` se interpretan (encabezados, puntos de énfasis) o se quitan, y la nota de `底本` queda como última sección. Los textos largos se dividen en secciones, por encabezados o por tamaño.
+
+**Hecho (fase 2):** archivos HTML (`.html`, `.htm`, `.xhtml`; `src/utils/htmlToEpub.ts`). Se respeta el juego de caracteres que declara la página, se extrae el artículo (con la biblioteca [Readability](https://github.com/mozilla/readability), la del modo lectura de Firefox) y se limpia todo lo que pudiera ejecutarse o cargarse de fuera: scripts, estilos, formularios, atributos y enlaces. Se conservan el furigana (`<ruby>`), los puntos de énfasis y las imágenes incrustadas en el propio archivo (hasta 4 MB); las imágenes que no están dentro del archivo no se pueden recuperar y se sustituyen por su descripción (los gaiji de Aozora salen como texto). Los capítulos se cortan por el primer nivel de encabezado que aparece al menos dos veces. Las páginas de Aozora Bunko guardadas desde el navegador se leen con su texto y su furigana intactos.
+
+**Pendiente (propuesta):** páginas por URL, según la tabla de abajo.
 
 El lector está acoplado actualmente a la estructura de un EPUB, pero no sería
 necesario rehacer sus funciones para admitir otros tipos de entrada. Una
@@ -223,8 +229,8 @@ deben permanecer separados entre documentos aunque tengan títulos iguales. La
 adaptación también tendría que definir cómo resolver los recursos del documento
 y cómo obtener una tabla de contenidos cuando la fuente no la proporciona.
 
-Una implementación gradual podría empezar por texto pegado y TXT, continuar
-con HTML local y dejar las URL para una fase posterior con un alcance explícito
+Una implementación gradual empezó por texto pegado y TXT y siguió con HTML
+local (hecho); las URL quedan para una fase posterior con un alcance explícito
 (por ejemplo, páginas públicas compatibles, sin garantizar sitios con login,
 paywall o restricciones anti-extracción). Como orden de magnitud inicial,
 texto pegado, TXT y HTML local podrían requerir 1–3 días incluyendo integración
