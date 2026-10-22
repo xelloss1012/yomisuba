@@ -59,9 +59,25 @@ try {
   assert.deepEqual(surfaces('空気を読む'), ['空気', 'を', '読む']);
   assert.equal(words('不安気な顔')[0].token.basic_form, '不安気');
 
+  // The conditional ば and the contracted ちゃ / ちゃう / どく belong to the verb before them.
+  assert.deepEqual(surfaces('終われば'), ['終われば']);
+  assert.deepEqual(surfaces('浸かっていれば'), ['浸かっていれば']);
+  assert.deepEqual(surfaces('高ければ'), ['高ければ']);
+  assert.deepEqual(surfaces('食べなければ'), ['食べなければ']);
+  assert.deepEqual(surfaces('静かならば'), ['静かならば']);
+  assert.deepEqual(surfaces('鳴っちゃ'), ['鳴っちゃ']);
+  assert.deepEqual(surfaces('読んじゃ'), ['読んじゃ']);
+  assert.deepEqual(surfaces('鳴っちゃった'), ['鳴っちゃった']);
+  assert.deepEqual(surfaces('食べちゃう'), ['食べちゃう']);
+  assert.deepEqual(surfaces('読んどく'), ['読んどく']);
+  assert.deepEqual(surfaces('行けば試す'), ['行けば', '試す']);
+  // A prefix before a katakana word is not part of it.
+  assert.deepEqual(surfaces('今オリ'), ['今', 'オリ']);
+  assert.deepEqual(surfaces('オリごと'), ['オリごと']);
+
   // A する verb is one word, in every form, with the endings that follow it.
   assert.deepEqual(surfaces('察するに'), ['察する', 'に']);
-  assert.deepEqual(surfaces('察すれば'), ['察すれ', 'ば']);
+  assert.deepEqual(surfaces('察すれば'), ['察すれば']);
   assert.deepEqual(surfaces('察せない'), ['察せない']);
   assert.deepEqual(surfaces('勉強している'), ['勉強している']);
   assert.deepEqual(surfaces('彼女は勉強して'), ['彼女', 'は', '勉強して']);
@@ -101,6 +117,12 @@ try {
     assert.equal(lookup.baseForm, verb, text);
     const top = lookup.entries[0];
     assert((top.kanji.concat(top.kana)).includes(verb), text + ' should lead with ' + verb + ', not with its stem');
+  }
+  // 今オリ is found by its katakana word, and the verb of a conditional or a contraction is what is looked up.
+  assert((await kana('今オリ')).includes('檻'));
+  assert((await kana('オリごと')).includes('檻'));
+  for (const [text, verb] of [['終われば', '終わる'], ['浸かっていれば', '浸かる'], ['鳴っちゃ', '鳴る'], ['食べちゃう', '食べる'], ['高ければ', '高い']]) {
+    assert.equal((await getDictionarySearchTerms(text, 'es')).baseForm, verb, text);
   }
   const guess = await getDictionarySearchTerms('察すれば', 'es');
   assert.equal(guess.baseForm, '察する');

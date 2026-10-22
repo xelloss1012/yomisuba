@@ -1,5 +1,6 @@
 import {
   auxiliaryTeFormVerbs,
+  contractedTeFormVerbs,
   contractedTeRuForms,
   JapaneseMorphologicalToken,
 } from './dictionary';
@@ -57,10 +58,21 @@ export const mergeJapaneseTokens = (locatedTokens: LocatedToken[]): MergedToken[
       previous?.token.pos === '名詞' &&
       previous.token.pos_detail_1 === 'サ変接続' &&
       !previous.token.joinedSuffix;
+    // 食べちゃう, 読んどく, 書いてる: the contracted ている, てしまう, ておく.
     const isContractedTeRu = token.pos === '動詞' &&
       token.pos_detail_1 === '非自立' &&
-      contractedTeRuForms.has(token.surface_form) &&
+      (contractedTeRuForms.has(token.surface_form) || contractedTeFormVerbs.has(token.basic_form || '')) &&
       previous?.token.pos === '動詞';
+    // 終われば, 浸かっていれば, 高ければ: the conditional ば belongs to the form before it.
+    const isConditionalBa = token.pos === '助詞' &&
+      token.pos_detail_1 === '接続助詞' &&
+      token.surface_form === 'ば' &&
+      previous?.token.conjugated_form === '仮定形';
+    // 鳴っちゃ, 読んじゃ: the contracted ては and では.
+    const isContractedTeWa = token.pos === '助詞' &&
+      token.pos_detail_1 === '接続助詞' &&
+      ['ちゃ', 'じゃ'].includes(token.surface_form) &&
+      ['動詞', '形容詞'].includes(previous?.token.pos || '');
 
     // お金, 不安気: a prefix and the noun it starts are one word (kuromoji cuts 不安気な as 不 + 安気).
     if (adjacent && previous && isPrefixOfNoun(previous.token, token)) {
@@ -75,7 +87,9 @@ export const mergeJapaneseTokens = (locatedTokens: LocatedToken[]): MergedToken[
       isAuxiliary ||
       isTeFormConnector ||
       isTeFormAuxiliary ||
-      isContractedTeRu
+      isContractedTeRu ||
+      isConditionalBa ||
+      isContractedTeWa
     )) {
       const mergedSurface = previous.token.surface_form + token.surface_form;
       previous.token = {
@@ -96,7 +110,9 @@ export const mergeJapaneseTokens = (locatedTokens: LocatedToken[]): MergedToken[
           previous.token.joinedConjugation ||
           isSuruVerb ||
           isTeFormAuxiliary ||
-          isContractedTeRu
+          isContractedTeRu ||
+          isConditionalBa ||
+          isContractedTeWa
         ),
         joinedTeForm: Boolean(
           isTeFormConnector ||

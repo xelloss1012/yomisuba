@@ -146,7 +146,7 @@ const godanPotentialStemToDictionaryForm: Record<string, string> = {
 export const auxiliaryTeFormVerbs = new Set(['いる', 'おる', 'おく', 'しまう', 'くる', 'いく', 'みる', 'ある']);
 export const contractedTeRuForms = new Set(['てる', 'でる']);
 // Contracted て-form auxiliaries as kuromoji gives their basic form (書いてる, 送り出しちゃおう).
-const contractedTeFormVerbs = new Set([...contractedTeRuForms, 'ちゃう', 'じゃう', 'とく', 'どく']);
+export const contractedTeFormVerbs = new Set([...contractedTeRuForms, 'ちゃう', 'じゃう', 'とく', 'どく']);
 
 const guessBaseForms = (word: string): string[] => {
   if (!word) return [];
@@ -644,7 +644,7 @@ export const getDictionarySearchTerms = async (
     );
 
     if (meaningfulTokens.length > 1) {
-      const isSuffixToken = (token: JapaneseMorphologicalToken) => token.pos_detail_1 === '接尾';
+      const isSuffixToken = (token: JapaneseMorphologicalToken) => token.pos_detail_1 === '接尾' || token.pos === '接頭詞';
       const byImportance = [
         ...meaningfulTokens.filter((token) => !isSuffixToken(token)),
         ...meaningfulTokens.filter(isSuffixToken),

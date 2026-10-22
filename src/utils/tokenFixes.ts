@@ -9,9 +9,14 @@ const isAdjectivalNoun = (token: Token | undefined): boolean =>
 export const isKiSuffix = (previous: Token | undefined, token: Token): boolean =>
   token.pos === '名詞' && token.surface_form === '気' && isAdjectivalNoun(previous);
 
-/** お金, 不安気: a prefix and the noun it starts are one word. */
+const isKatakana = (text: string): boolean => /^[゠-ヿ]+$/.test(text);
+
+/**
+ * お金, 不安気: a prefix and the noun it starts are one word. Not before a word in katakana: that
+ * is usually a word written so for effect (今オリ is 今 + オリ), and joined it would be found nowhere.
+ */
 export const isPrefixOfNoun = (previous: Token | undefined, token: Token): boolean =>
-  previous?.pos === '接頭詞' && token.pos === '名詞';
+  previous?.pos === '接頭詞' && token.pos === '名詞' && !isKatakana(token.surface_form);
 
 /** The word made of a prefix and the noun after it, which takes the noun's grammar. */
 export const joinPrefix = (prefix: Token, noun: Token): Token => {
