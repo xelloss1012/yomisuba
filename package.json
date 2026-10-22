@@ -9,7 +9,7 @@
   "bugs": "https://github.com/xelloss1012/yomisuba/issues",
   "private": true,
   "license": "MIT",
-  "version": "1.2.7",
+  "version": "1.2.8",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -134,7 +134,12 @@ function authorRecord(rows, id) {
 const deathYearOf = (row) => Number(row['没年月日'].slice(0, 4)) || 0;
 
 /** A foreign author is written in Western order (the catalogue gives surname and given name apart). */
-const personName = (row, western) => (western ? [row['名'], row['姓']] : [row['姓'], row['名']]).filter(Boolean).join(western ? '・' : '');
+// A name written only with Han characters (瞿佑) is East Asian, so it keeps surname first and no dot.
+const isHanName = (row) => /^\p{Script=Han}+$/u.test(row['姓'] + row['名']) && Boolean(row['姓']) && Boolean(row['名']);
+const personName = (row, western) => {
+  const westernOrder = western && !isHanName(row);
+  return (westernOrder ? [row['名'], row['姓']] : [row['姓'], row['名']]).filter(Boolean).join(westernOrder ? '・' : '');
+};
 
 /** The Creative Commons licence a file says it is under, or null. Aozora words it in several ways. */
 function detectCreativeCommons(pageText) {
@@ -227,14 +232,23 @@ async function convertWork(record, source) {
   const html = new TextDecoder('shift_jis').decode(await fetchCached(htmlUrl, `${source.aozoraId}.html`));
   const mainStart = html.indexOf('<div class="main_text">');
   // The credits follow the text in a block Aozora names differently for translations.
-  const creditsMarker = ['<div class="bibliographical_information">', '<div class="after_text">']
+  let creditsMarker = ['<div class="bibliographical_information">', '<div class="after_text">']
     .map((marker) => ({ marker, index: html.indexOf(marker, mainStart) }))
     .filter((candidate) => candidate.index >= 0)
     .sort((left, right) => left.index - right.index)[0];
+  if (!creditsMarker && mainStart >= 0) {
+    // Older files have no credits block: the colophon (底本 …) follows the text, inside the same div.
+    const notesStart = html.indexOf('<div class="notation_notes">', mainStart);
+    const colophons = [...html.slice(mainStart, notesStart > 0 ? notesStart : undefined).matchAll(/(?:<br\s*\/>\s*)+底本/g)];
+    const last = colophons[colophons.length - 1];
+    if (last) creditsMarker = { marker: '底本', index: mainStart + last.index };
+  }
   if (mainStart < 0 || !creditsMarker) throw new Error(`${htmlUrl}: unexpected layout.`);
   const creditsStart = creditsMarker.index;
 
-  let body = html.slice(mainStart + '<div class="main_text">'.length, creditsStart).replace(/<\/div>\s*$/, '');
+  let body = html.slice(mainStart + '<div class="main_text">'.length, creditsStart);
+  // The block that holds the credits closes the text; an older file has the credits inside the text block.
+  if (creditsMarker.marker !== '底本') body = body.replace(/<\/div>\s*$/, '');
   body = closeVoidTags(body)
     .replace(/<script[\s\S]*?<\/script>/g, '')
     .replace(/&nbsp;/g, '&#160;')
