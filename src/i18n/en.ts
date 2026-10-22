@@ -161,6 +161,7 @@ export const en: Record<string, string> = {
   'import.read': 'Read',
   'import.emptyText': 'Type or paste some text.',
   'import.failed': 'The text could not be prepared for reading: {message}',
+  'import.sharedFailed': 'What was shared could not be opened: {message}',
   'import.pastedAuthor': 'Pasted text',
   'import.textFileAuthor': 'Text file',
   'import.htmlFileAuthor': 'HTML file',

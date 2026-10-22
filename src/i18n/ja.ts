@@ -161,6 +161,7 @@ export const ja: Record<string, string> = {
   'import.read': '読む',
   'import.emptyText': 'テキストを入力するか貼り付けてください。',
   'import.failed': 'テキストを読める形に変換できませんでした: {message}',
+  'import.sharedFailed': '共有された内容を開けませんでした：{message}',
   'import.pastedAuthor': '貼り付けたテキスト',
   'import.textFileAuthor': 'テキストファイル',
   'import.htmlFileAuthor': 'HTMLファイル',

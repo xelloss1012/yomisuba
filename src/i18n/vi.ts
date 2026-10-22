@@ -161,6 +161,7 @@ export const vi: Record<string, string> = {
   'import.read': 'Đọc',
   'import.emptyText': 'Hãy gõ hoặc dán một đoạn văn bản.',
   'import.failed': 'Không thể chuẩn bị văn bản để đọc: {message}',
+  'import.sharedFailed': 'Không thể mở nội dung được chia sẻ: {message}',
   'import.pastedAuthor': 'Văn bản đã dán',
   'import.textFileAuthor': 'Tệp văn bản',
   'import.htmlFileAuthor': 'Tệp HTML',

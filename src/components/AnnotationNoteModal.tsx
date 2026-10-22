@@ -20,22 +20,29 @@ export const AnnotationNoteModal: React.FC<Props> = ({ isOpen, quote, note, onSa
   const [text, setText] = useState(note);
   const area = useRef<HTMLTextAreaElement>(null);
 
+  // The parent hands over fresh callbacks on every render; the effect must not
+  // re-run for them, or the field is reset to the saved note while typing.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const noteRef = useRef(note);
+  noteRef.current = note;
+
   useEffect(() => {
     if (!isOpen) return undefined;
-    setText(note);
+    setText(noteRef.current);
     const focus = window.setTimeout(() => {
       const field = area.current;
       if (!field) return;
       field.focus();
       field.setSelectionRange(field.value.length, field.value.length);
     }, 50);
-    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onCloseRef.current(); };
     window.addEventListener('keydown', onKey);
     return () => {
       window.clearTimeout(focus);
       window.removeEventListener('keydown', onKey);
     };
-  }, [isOpen, note, onClose]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

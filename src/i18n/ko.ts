@@ -161,6 +161,7 @@ export const ko: Record<string, string> = {
   'import.read': '읽기',
   'import.emptyText': '텍스트를 입력하거나 붙여넣으세요.',
   'import.failed': '읽을 수 있도록 텍스트를 준비하지 못했습니다: {message}',
+  'import.sharedFailed': '공유된 내용을 열 수 없습니다: {message}',
   'import.pastedAuthor': '붙여넣은 텍스트',
   'import.textFileAuthor': '텍스트 파일',
   'import.htmlFileAuthor': 'HTML 파일',

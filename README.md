@@ -213,7 +213,7 @@ límite de espera.
 - **Android:** la descarga usa el cliente HTTP nativo de Capacitor (`CapacitorHttp`, sin plugin ni permiso nuevos), que no está sujeto a CORS: funciona con casi cualquier página pública.
 - **Web:** el navegador solo deja leer los sitios que lo permiten con CORS; en el resto la app explica que no se pudo y propone guardar la página como HTML (y abrirla como archivo) o pegar el texto.
 - **Límites:** páginas de hasta 10 MB; no funcionan las que generan su texto con JavaScript, ni las que exigen iniciar sesión o pagar. Es para uso personal y conviene respetar los derechos del sitio.
-- **Pendiente:** «Compartir → Yomisuba» desde el navegador de Android (requiere código nativo).
+- **Compartir → Yomisuba (Android):** la app recibe texto, direcciones web y archivos `.epub`, `.txt` y `.html` desde la hoja de compartir de otras apps, desde «Abrir con» de un gestor de archivos y desde el menú de texto seleccionado (`PROCESS_TEXT`). Una dirección se descarga como en «Desde una web»; un texto (con el asunto como título, si lo hay) se convierte como en «Pegar texto»; un archivo se importa como al abrirlo. Lo recibe `ShareTargetPlugin` (Java) y lo recoge `src/utils/sharedContent.ts`.
 
 El lector está acoplado actualmente a la estructura de un EPUB, pero no sería
 necesario rehacer sus funciones para admitir otros tipos de entrada. Una

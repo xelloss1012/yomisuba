@@ -1,6 +1,7 @@
 package io.github.xelloss1012.yomisuba;
 
 import ee.forgr.capacitor.social.login.ModifiedMainActivityForSocialLoginPlugin;
+import android.content.Intent;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.DisplayMetrics;
@@ -24,7 +25,15 @@ public class MainActivity extends BridgeActivity implements ModifiedMainActivity
         registerPlugin(ReaderFullscreenPlugin.class);
         registerPlugin(ReaderOrientationPlugin.class);
         registerPlugin(GoogleDriveTokenPlugin.class);
+        registerPlugin(ShareTargetPlugin.class);
         super.onCreate(savedInstanceState);
+        ShareTargetPlugin.deliver(this, getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        ShareTargetPlugin.deliver(this, intent);
     }
 
     private String getMotionActionName(int action) {

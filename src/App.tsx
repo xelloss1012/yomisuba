@@ -6,6 +6,7 @@ import { FileDropZone } from './components/FileDropZone';
 import { EpubReader } from './components/EpubReader';
 import { LanguageProvider } from './i18n/LanguageContext';
 import { AVAILABLE_LANGUAGES, setActiveLanguage, t } from './utils/i18n';
+import { SharedPayload, sharedToBook, watchSharedContent } from './utils/sharedContent';
 import { setReaderAutoRotate } from './utils/readerOrientation';
 import { createBookId, deleteRecentBook, getLastBookId, getRecentBook, listRecentBooks, loadRecentBook, MAX_SHELF_BOOKS, migrateBooksToNativeStorage, RecentBook, requestPersistentStorage, saveRecentBook, setLastBookId } from './utils/recentBooks';
 import {
@@ -512,6 +513,25 @@ export const App: React.FC = () => {
   const handleFileLoaded = (fileOrBlob: File | Blob) => {
     void openBook(fileOrBlob);
   };
+
+  // What other apps share with Yomisuba (text, an address, a file) opens as a book.
+  const openSharedRef = React.useRef<(payload: SharedPayload) => void>(() => undefined);
+  openSharedRef.current = (payload) => {
+    const language = settings.language;
+    setIsLoading(true);
+    const failed = (message: string) => setErrorMessage(t('import.sharedFailed', language, { message }));
+    if (payload.error) { setIsLoading(false); failed(payload.error); return; }
+    sharedToBook(payload, {
+      textAuthor: t('import.textFileAuthor', language),
+      htmlAuthor: t('import.htmlFileAuthor', language),
+      fallbackAuthor: t('import.htmlFileAuthor', language),
+      pastedAuthor: t('import.pastedAuthor', language),
+    }).then((file) => openBook(file), (error) => {
+      setIsLoading(false);
+      failed(error instanceof Error ? error.message : String(error));
+    });
+  };
+  useEffect(() => watchSharedContent((payload) => openSharedRef.current(payload)), []);
 
   useEffect(() => {
     let cancelled = false;

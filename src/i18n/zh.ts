@@ -161,6 +161,7 @@ export const zh: Record<string, string> = {
   'import.read': '阅读',
   'import.emptyText': '请输入或粘贴一些文本。',
   'import.failed': '无法将文本准备为可阅读的形式：{message}',
+  'import.sharedFailed': '无法打开分享的内容：{message}',
   'import.pastedAuthor': '粘贴的文本',
   'import.textFileAuthor': '文本文件',
   'import.htmlFileAuthor': 'HTML 文件',

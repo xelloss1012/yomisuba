@@ -395,6 +395,8 @@ export const EpubReader: React.FC<Props> = ({
   const [isSelectionUnderlined, setIsSelectionUnderlined] = useState(false);
   // The annotation whose note is open for writing.
   const [noteEditorId, setNoteEditorId] = useState<string | null>(null);
+  const noteEditorOpenRef = useRef(false);
+  noteEditorOpenRef.current = noteEditorId !== null;
   const [isSelectionAdjusting, setIsSelectionAdjusting] = useState(false);
   const selectionSettleRef = useRef<number | undefined>(undefined);
   // Set from the iframe's pointer events: the menu must wait for the finger to
@@ -1949,6 +1951,9 @@ export const EpubReader: React.FC<Props> = ({
         };
 
         const handleIframeSelectionChange = () => {
+          // Typing or pasting in the note field moves the selection of the
+          // parent document; that is not the passage losing its selection.
+          if (noteEditorOpenRef.current) return;
           if (programmaticWordSelectionRef.current) {
             setIsSelectionAdjusting(false);
             return;

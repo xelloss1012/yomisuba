@@ -161,6 +161,7 @@ export const de: Record<string, string> = {
   'import.read': 'Lesen',
   'import.emptyText': 'Gib einen Text ein oder füge ihn ein.',
   'import.failed': 'Der Text konnte nicht zum Lesen vorbereitet werden: {message}',
+  'import.sharedFailed': 'Das Geteilte konnte nicht geöffnet werden: {message}',
   'import.pastedAuthor': 'Eingefügter Text',
   'import.textFileAuthor': 'Textdatei',
   'import.htmlFileAuthor': 'HTML-Datei',
