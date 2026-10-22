@@ -78,6 +78,19 @@ export async function listRecentBooks(limit = Number.MAX_SAFE_INTEGER): Promise<
   return books;
 }
 
+/**
+ * Asks the browser not to clear this origin's storage when the device runs low (books and reading data
+ * live there). It is a request: Chrome grants it by its own rules, so the answer is only informative.
+ */
+export async function requestPersistentStorage(): Promise<boolean> {
+  try {
+    if (!navigator.storage?.persist) return false;
+    return (await navigator.storage.persisted?.()) || (await navigator.storage.persist());
+  } catch {
+    return false;
+  }
+}
+
 export async function getRecentBook(id: string): Promise<RecentBook | null> {
   const db = await openDatabase();
   const book = await new Promise<RecentBook | null>((resolve, reject) => {

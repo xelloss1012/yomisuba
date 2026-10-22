@@ -7,7 +7,7 @@ import { EpubReader } from './components/EpubReader';
 import { LanguageProvider } from './i18n/LanguageContext';
 import { AVAILABLE_LANGUAGES, setActiveLanguage, t } from './utils/i18n';
 import { setReaderAutoRotate } from './utils/readerOrientation';
-import { createBookId, deleteRecentBook, getLastBookId, getRecentBook, listRecentBooks, MAX_SHELF_BOOKS, RecentBook, saveRecentBook, setLastBookId } from './utils/recentBooks';
+import { createBookId, deleteRecentBook, getLastBookId, getRecentBook, listRecentBooks, MAX_SHELF_BOOKS, RecentBook, requestPersistentStorage, saveRecentBook, setLastBookId } from './utils/recentBooks';
 import {
   deleteGoogleDriveBook,
   downloadGoogleDriveBook,
@@ -468,9 +468,13 @@ export const App: React.FC = () => {
       };
       try {
         await saveRecentBook(recentBook);
+        // Read it back: a write that did not stick would only show up at the next launch, as a missing book.
+        if (!(await getRecentBook(id))) throw new Error('The book was not found after saving it.');
         setLastBookId(id);
+        void requestPersistentStorage();
       } catch (err) {
         console.warn('No se pudo guardar el libro en la biblioteca local:', err);
+        setErrorMessage(t('shelf.saveFailed', settings.language));
       }
       setRecentBooks((books) => [recentBook, ...books.filter((book) => book.id !== id)].slice(0, MAX_SHELF_BOOKS));
 
@@ -546,8 +550,10 @@ export const App: React.FC = () => {
         }
       } catch (err) {
         console.warn('No se pudo restaurar la biblioteca local:', err);
+        setErrorMessage(t('shelf.restoreFailed', settings.language));
       }
     };
+    void requestPersistentStorage();
     void restoreLibrary();
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -566,17 +572,17 @@ export const App: React.FC = () => {
         cloudBook = await findGoogleDriveBookForRecentBook(googleDriveSession.accessToken, book);
       }
 
-      let deleteDriveCopy = false;
-      if (cloudBook) {
-        deleteDriveCopy = window.confirm(t('drive.confirmDeleteCloudAndRecent', settings.language, { title: book.title }));
-      } else {
-        const confirmed = window.confirm(t(
-          googleDriveSession ? 'drive.confirmRemoveRecent' : 'drive.confirmRemoveRecentNoSession',
-          settings.language,
-          { title: book.title },
-        ));
-        if (!confirmed) return;
-      }
+      // Cancelling must cancel: the first question is only about this device, the second (when the book
+      // has a copy in Drive) about Drive, and refusing it keeps that copy.
+      const confirmed = window.confirm(t(
+        googleDriveSession ? 'drive.confirmRemoveRecent' : 'drive.confirmRemoveRecentNoSession',
+        settings.language,
+        { title: book.title },
+      ));
+      if (!confirmed) return;
+      const deleteDriveCopy = Boolean(cloudBook) && window.confirm(
+        t('drive.confirmDeleteBook', settings.language, { title: book.title }),
+      );
 
       if (deleteDriveCopy && cloudBook && googleDriveSession) {
         await deleteGoogleDriveBook(googleDriveSession.accessToken, cloudBook);

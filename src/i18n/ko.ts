@@ -152,6 +152,8 @@ export const ko: Record<string, string> = {
   'shelf.removeDevice': '기기에서 삭제',
   'shelf.openEpub': 'EPUB 열기',
   'shelf.dropHere': 'EPUB 파일을 놓아서 열기',
+  'shelf.saveFailed': '이 기기에 책을 저장할 수 없습니다. 앱을 다시 열면 "내 책"에 표시되지 않습니다. 저장 공간이 부족할 수 있습니다.',
+  'shelf.restoreFailed': '이 기기에 저장된 책 목록을 읽을 수 없습니다. 책은 아직 남아 있을 수 있습니다. 앱을 닫았다가 다시 여세요.',
   'language.label': '인터페이스 언어',
   'settings.translationLanguage': '번역 언어',
   'settings.translationLanguageAuto': '인터페이스와 동일 ({language})',

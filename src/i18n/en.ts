@@ -152,6 +152,8 @@ export const en: Record<string, string> = {
   'shelf.removeDevice': 'Remove from device',
   'shelf.openEpub': 'Open an EPUB',
   'shelf.dropHere': 'Drop the EPUB file to open it',
+  'shelf.saveFailed': 'The book could not be saved on this device: it will not be in "My books" when you reopen the app. Storage may be full.',
+  'shelf.restoreFailed': 'The list of books saved on this device could not be read. Your books may still be there: close and reopen the app.',
   'language.label': 'Interface Language',
   'settings.translationLanguage': 'Translation language',
   'settings.translationLanguageAuto': 'Same as interface ({language})',

@@ -152,6 +152,8 @@ export const de: Record<string, string> = {
   'shelf.removeDevice': 'Vom Gerät entfernen',
   'shelf.openEpub': 'EPUB öffnen',
   'shelf.dropHere': 'EPUB-Datei zum Öffnen hier ablegen',
+  'shelf.saveFailed': 'Das Buch konnte nicht auf diesem Gerät gespeichert werden: Es erscheint nach einem Neustart nicht unter „Meine Bücher“. Möglicherweise ist der Speicher voll.',
+  'shelf.restoreFailed': 'Die Liste der auf diesem Gerät gespeicherten Bücher konnte nicht gelesen werden. Deine Bücher sind vielleicht noch da: Schließe die App und öffne sie erneut.',
   'language.label': 'Oberflächensprache',
   'settings.translationLanguage': 'Übersetzungssprache',
   'settings.translationLanguageAuto': 'Wie die Oberfläche ({language})',

@@ -152,6 +152,8 @@ export const zh: Record<string, string> = {
   'shelf.removeDevice': '从设备移除',
   'shelf.openEpub': '打开 EPUB',
   'shelf.dropHere': '拖放 EPUB 文件以打开',
+  'shelf.saveFailed': '无法将图书保存到此设备：重新打开应用后它不会出现在“我的图书”中。可能是存储空间不足。',
+  'shelf.restoreFailed': '无法读取保存在此设备上的图书列表。图书可能仍在：请关闭并重新打开应用。',
   'language.label': '界面语言',
   'settings.translationLanguage': '翻译语言',
   'settings.translationLanguageAuto': '与界面相同（{language}）',

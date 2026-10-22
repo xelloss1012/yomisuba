@@ -152,6 +152,8 @@ export const ja: Record<string, string> = {
   'shelf.removeDevice': '端末から削除',
   'shelf.openEpub': 'EPUBを開く',
   'shelf.dropHere': 'EPUBファイルをドロップして開く',
+  'shelf.saveFailed': 'この端末に本を保存できませんでした。アプリを開き直すと「マイブック」に表示されません。空き容量が足りない可能性があります。',
+  'shelf.restoreFailed': 'この端末に保存した本の一覧を読み込めませんでした。本は残っている可能性があります。アプリを閉じて開き直してください。',
   'language.label': '表示言語',
   'settings.translationLanguage': '翻訳先の言語',
   'settings.translationLanguageAuto': '表示言語に合わせる（{language}）',

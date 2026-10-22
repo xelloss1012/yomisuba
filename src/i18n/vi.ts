@@ -152,6 +152,8 @@ export const vi: Record<string, string> = {
   'shelf.removeDevice': 'Xóa khỏi thiết bị',
   'shelf.openEpub': 'Mở tệp EPUB',
   'shelf.dropHere': 'Thả tệp EPUB vào đây để mở',
+  'shelf.saveFailed': 'Không thể lưu sách trên thiết bị này: sách sẽ không có trong "Sách của tôi" khi mở lại ứng dụng. Có thể bộ nhớ đã đầy.',
+  'shelf.restoreFailed': 'Không đọc được danh sách sách đã lưu trên thiết bị này. Sách có thể vẫn còn: hãy đóng và mở lại ứng dụng.',
   'language.label': 'Ngôn ngữ giao diện',
   'settings.translationLanguage': 'Ngôn ngữ dịch',
   'settings.translationLanguageAuto': 'Giống giao diện ({language})',
