@@ -10,7 +10,7 @@
 
 Lector EPUB con soporte de japonés vertical (縦書き). Una aplicación web moderna tipo Kindle desarrollada en **React + TypeScript + Vite + Tailwind CSS**, optimizada para la lectura de libros EPUB tanto en formato horizontal occidental como en **formato vertical tradicional japonés (`vertical-rl` / 縦書き)** con soporte completo de **furigana (`<ruby>`)**, ilustraciones, estilos e índice de contenidos.
 
-> **Nota sobre el proyecto**: Esta aplicación ha sido diseñada para uso personal, adaptada a las necesidades y preferencias del autor, y se publica en GitHub de forma totalmente libre y gratuita por si a alguien le resulta útil o desea crear su propia versión (fork). Ha sido desarrollada prácticamente en su totalidad con la asistencia de Inteligencia Artificial.
+> **Nota sobre el proyecto**: Esta aplicación ha sido diseñada para uso personal, adaptada a las necesidades y preferencias del autor, y se publica en GitHub de forma totalmente libre y gratuita por si a alguien le resulta útil o desea crear su propia versión (fork). Ha sido desarrollada prácticamente en su totalidad con la asistencia de Inteligencia Artificial (Claude, GitHub Copilot, Gemini, Antigravity, Cline y Aider).
 
 ---
 
