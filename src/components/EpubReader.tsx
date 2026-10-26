@@ -2868,18 +2868,33 @@ export const EpubReader: React.FC<Props> = ({
     // those files are written to Drive instead of the whole book snapshot.
     const previous = lastUploadedBackupRef.current;
     const dirty: ReaderDataGroup[] = [];
-    const readingChanged = !previous
-      || JSON.stringify(previous.position) !== JSON.stringify(backup.position)
-      || previous.printedPages !== backup.printedPages
-      || JSON.stringify(previous.chapterPageCounts) !== JSON.stringify(backup.chapterPageCounts);
+    const readingChanged = previous
+      ? JSON.stringify(previous.position) !== JSON.stringify(backup.position)
+        || previous.printedPages !== backup.printedPages
+        || JSON.stringify(previous.chapterPageCounts) !== JSON.stringify(backup.chapterPageCounts)
+      : Boolean(backup.position && (backup.position.spineIndex > 0 || backup.position.page > 0));
     if (readingChanged) dirty.push('reading');
-    if (!previous || JSON.stringify(previous.bookmarks) !== JSON.stringify(backup.bookmarks)) dirty.push('bookmarks');
-    if (!previous || JSON.stringify(previous.annotations) !== JSON.stringify(backup.annotations)) dirty.push('annotations');
-    const historyChanged = !previous
-      || JSON.stringify(previous.translationHistory) !== JSON.stringify(backup.translationHistory)
-      || JSON.stringify(previous.frequentQueries) !== JSON.stringify(backup.frequentQueries);
+
+    const bookmarksChanged = previous
+      ? JSON.stringify(previous.bookmarks) !== JSON.stringify(backup.bookmarks)
+      : backup.bookmarks.length > 0;
+    if (bookmarksChanged) dirty.push('bookmarks');
+
+    const annotationsChanged = previous
+      ? JSON.stringify(previous.annotations) !== JSON.stringify(backup.annotations)
+      : backup.annotations.length > 0;
+    if (annotationsChanged) dirty.push('annotations');
+
+    const historyChanged = previous
+      ? JSON.stringify(previous.translationHistory) !== JSON.stringify(backup.translationHistory)
+        || JSON.stringify(previous.frequentQueries) !== JSON.stringify(backup.frequentQueries)
+      : backup.translationHistory.length > 0 || Boolean(backup.frequentQueries && backup.frequentQueries.length > 0);
     if (historyChanged) dirty.push('history');
-    if (!previous || JSON.stringify(previous.favorites) !== JSON.stringify(backup.favorites)) dirty.push('favorites');
+
+    const favoritesChanged = previous
+      ? JSON.stringify(previous.favorites) !== JSON.stringify(backup.favorites)
+      : backup.favorites.length > 0;
+    if (favoritesChanged) dirty.push('favorites');
     if (!dirty.length) {
       backupDirtyRef.current = false;
       return;

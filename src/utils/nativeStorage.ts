@@ -29,6 +29,7 @@ export interface NativeFiles {
 const ROOT = 'yomisuba';
 const BOOKS = `${ROOT}/books`;
 const STATE_FILE = `${ROOT}/state.json`;
+const STATE_BACKUP_FILE = `${ROOT}/state.backup.json`;
 const EPUB_TYPE = 'application/epub+zip';
 // A multiple of 3, so that every chunk is base64 on its own and they can be appended one after another.
 const CHUNK_BYTES = 3 * 1024 * 1024;
@@ -170,43 +171,87 @@ export const isMirroredKey = (key: string): boolean =>
 type StorageLike = Pick<Storage, 'getItem' | 'setItem' | 'removeItem' | 'key' | 'length'>;
 
 export interface StateMirror {
-  /** Writes the current reading data to the private copy. */
-  snapshot(): Promise<void>;
+  /** Writes the current reading data to the private copy, merging with existing data. */
+  snapshot(explicitlyDeletedKeys?: string | string[] | Set<string>): Promise<void>;
   /**
-   * Brings back what is missing when the WebView's storage has been cleared. It only runs when the
-   * `sentinelKey` (always written by the app) is gone, and never overwrites a value that is there.
+   * Brings back what is missing in storage from the private copy.
+   * Restores any mirrored key that is present in the mirror but null in storage.
    * Returns how many entries it restored.
    */
-  restoreIfCleared(sentinelKey: string): Promise<number>;
+  restoreIfCleared(sentinelKey?: string): Promise<number>;
+}
+
+async function readStateEntries(files: NativeFiles): Promise<Record<string, string>> {
+  for (const path of [STATE_FILE, STATE_BACKUP_FILE]) {
+    try {
+      const text = await files.readText(path);
+      if (!text) continue;
+      const parsed = JSON.parse(text) as { entries?: Record<string, unknown> };
+      if (parsed?.entries && typeof parsed.entries === 'object') {
+        const valid: Record<string, string> = {};
+        for (const [k, v] of Object.entries(parsed.entries)) {
+          if (typeof v === 'string' && isMirroredKey(k)) {
+            valid[k] = v;
+          }
+        }
+        if (Object.keys(valid).length > 0) return valid;
+      }
+    } catch {
+      // try backup file
+    }
+  }
+  return {};
 }
 
 export function createStateMirror(files: NativeFiles, storage: StorageLike): StateMirror {
   return {
-    async snapshot() {
-      const entries: Record<string, string> = {};
+    async snapshot(explicitlyDeletedKeys?: string | string[] | Set<string>) {
+      const existing = await readStateEntries(files);
+
+      const current: Record<string, string> = {};
       for (let index = 0; index < storage.length; index += 1) {
         const key = storage.key(index);
         const value = key === null ? null : storage.getItem(key);
-        if (key !== null && value !== null && isMirroredKey(key)) entries[key] = value;
+        if (key !== null && value !== null && isMirroredKey(key)) {
+          current[key] = value;
+        }
       }
-      // An empty snapshot is not written: it would replace a good copy with nothing if the storage was just cleared.
-      if (Object.keys(entries).length === 0) return;
-      await files.writeText(STATE_FILE, JSON.stringify({ version: 1, savedAt: Date.now(), entries }));
+
+      // Merge: preserve keys that were already in the mirror, update with current storage values
+      const merged: Record<string, string> = { ...existing, ...current };
+
+      if (explicitlyDeletedKeys) {
+        if (typeof explicitlyDeletedKeys === 'string') {
+          delete merged[explicitlyDeletedKeys];
+        } else {
+          for (const k of explicitlyDeletedKeys) {
+            delete merged[k];
+          }
+        }
+      }
+
+      if (Object.keys(merged).length === 0) return;
+
+      const payload = JSON.stringify({ version: 1, savedAt: Date.now(), entries: merged });
+
+      // Rotate: keep current STATE_FILE as STATE_BACKUP_FILE before overwriting
+      try {
+        const oldText = await files.readText(STATE_FILE);
+        if (oldText && oldText !== payload) {
+          await files.writeText(STATE_BACKUP_FILE, oldText);
+        }
+      } catch {
+        // ignore backup error
+      }
+
+      await files.writeText(STATE_FILE, payload);
     },
 
-    async restoreIfCleared(sentinelKey) {
-      if (storage.getItem(sentinelKey) !== null) return 0;
-      const text = await files.readText(STATE_FILE);
-      if (!text) return 0;
-      let entries: Record<string, unknown>;
-      try {
-        entries = (JSON.parse(text) as { entries?: Record<string, unknown> }).entries ?? {};
-      } catch {
-        return 0;
-      }
+    async restoreIfCleared(_sentinelKey?: string) {
+      const entries = await readStateEntries(files);
       let restored = 0;
       for (const [key, value] of Object.entries(entries)) {
-        if (typeof value === 'string' && isMirroredKey(key) && storage.getItem(key) === null) {
+        if (storage.getItem(key) === null) {
           storage.setItem(key, value);
           restored += 1;
         }

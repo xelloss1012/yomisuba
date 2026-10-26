@@ -170,7 +170,30 @@ try {
     await createStateMirror(files, memoryStorage()).snapshot();
     assert.equal(JSON.parse(files.store.get('yomisuba/state.json').toString()).entries.yomisuba_settings_v1, '{"language":"es"}');
 
-    // No copy yet, or a damaged one: the app just starts empty.
+    // Partial storage loss: book keys are restored even if settings (sentinel) are already present.
+    const partialStorage = memoryStorage({ yomisuba_settings_v1: '{"language":"es"}' });
+    assert.equal(await createStateMirror(files, partialStorage).restoreIfCleared('yomisuba_settings_v1'), 1);
+    assert.equal(partialStorage.getItem('yomisuba_book_x_position'), '{"page":42}', 'missing book data is recovered');
+
+    // Safe merge: a snapshot with partial storage preserves other stored keys in state.json.
+    const singleKeyStorage = memoryStorage({ yomisuba_settings_v1: '{"language":"ja"}' });
+    await createStateMirror(files, singleKeyStorage).snapshot();
+    const mergedSaved = JSON.parse(files.store.get('yomisuba/state.json').toString()).entries;
+    assert.equal(mergedSaved.yomisuba_settings_v1, '{"language":"ja"}', 'updated key is written');
+    assert.equal(mergedSaved.yomisuba_book_x_position, '{"page":42}', 'absent key is preserved');
+
+    // Explicit deletion removes key from state.json.
+    await createStateMirror(files, memoryStorage({ yomisuba_settings_v1: '{"language":"ja"}' })).snapshot('yomisuba_book_x_position');
+    const afterDelete = JSON.parse(files.store.get('yomisuba/state.json').toString()).entries;
+    assert.equal(afterDelete.yomisuba_book_x_position, undefined, 'explicitly deleted key is removed');
+
+    // Corrupted state.json recovers from state.backup.json.
+    files.store.set('yomisuba/state.json', Buffer.from('{corrupted'));
+    const recovered = memoryStorage();
+    assert.ok((await createStateMirror(files, recovered).restoreIfCleared()) > 0, 'restores from backup file');
+    assert.ok(recovered.getItem('yomisuba_settings_v1'), 'settings restored from backup');
+
+    // No copy yet, or a damaged one without backup: the app just starts empty.
     assert.equal(await createStateMirror(createFiles(), memoryStorage()).restoreIfCleared('yomisuba_settings_v1'), 0);
     const damaged = createFiles();
     damaged.store.set('yomisuba/state.json', Buffer.from('nope'));

@@ -57,20 +57,38 @@ export async function sharedToBook(payload: SharedPayload, labels: SharedLabels)
   return new File([converted.blob], `${converted.title}.epub`, { type: 'application/epub+zip' });
 }
 
+let pendingSharedPromise: Promise<SharedPayload | null> | null = null;
+
+/** Checks if there is shared content waiting to be picked up on app launch. */
+export function checkPendingShared(): Promise<SharedPayload | null> {
+  if (!Capacitor.isNativePlatform()) return Promise.resolve(null);
+  if (!pendingSharedPromise) {
+    pendingSharedPromise = ShareTarget.getPending().then(
+      (payload) => (payload && Object.keys(payload).length > 0 ? payload : null),
+      () => null,
+    );
+  }
+  return pendingSharedPromise;
+}
+
 /** Calls `onShared` for what other apps share, including what was shared to open the app. Returns how to stop. */
 export function watchSharedContent(onShared: (payload: SharedPayload) => void): () => void {
   if (!Capacitor.isNativePlatform()) return () => undefined;
   let stopped = false;
   const pickUp = async () => {
     try {
-      const payload = await ShareTarget.getPending();
-      if (!stopped && Object.keys(payload).length > 0) onShared(payload);
+      const payload = await checkPendingShared();
+      pendingSharedPromise = null;
+      if (!stopped && payload && Object.keys(payload).length > 0) onShared(payload);
     } catch {
       // No share target in this build: nothing arrives.
     }
   };
   let handle: { remove: () => Promise<void> } | undefined;
-  void ShareTarget.addListener('shared', () => { void pickUp(); }).then((added) => {
+  void ShareTarget.addListener('shared', () => {
+    pendingSharedPromise = null;
+    void pickUp();
+  }).then((added) => {
     if (stopped) void added.remove();
     else handle = added;
   }).catch(() => undefined);

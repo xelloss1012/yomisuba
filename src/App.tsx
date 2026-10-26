@@ -6,7 +6,7 @@ import { FileDropZone } from './components/FileDropZone';
 import { EpubReader } from './components/EpubReader';
 import { LanguageProvider } from './i18n/LanguageContext';
 import { AVAILABLE_LANGUAGES, setActiveLanguage, t } from './utils/i18n';
-import { SharedPayload, sharedToBook, watchSharedContent } from './utils/sharedContent';
+import { SharedPayload, sharedToBook, watchSharedContent, checkPendingShared } from './utils/sharedContent';
 import { setReaderAutoRotate } from './utils/readerOrientation';
 import { createBookId, deleteRecentBook, getLastBookId, getRecentBook, listRecentBooks, loadRecentBook, MAX_SHELF_BOOKS, migrateBooksToNativeStorage, RecentBook, requestPersistentStorage, saveRecentBook, setLastBookId } from './utils/recentBooks';
 import {
@@ -66,6 +66,9 @@ const OFFLINE_MESSAGES = AVAILABLE_LANGUAGES.map(({ code }) => t('sync.offline',
 
 export const App: React.FC = () => {
   const [currentEpub, setCurrentEpub] = useState<ParsedEpub | null>(null);
+  const [currentBookId, setCurrentBookId] = useState<string | null>(null);
+  const openBookRequestIdRef = React.useRef(0);
+  const isOpeningSharedRef = React.useRef(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -313,6 +316,32 @@ export const App: React.FC = () => {
       });
   }, [googleDriveSession, isOnline]);
 
+  // When Google Drive session becomes active while a book is open, check if reader data can be synced
+  useEffect(() => {
+    if (!googleDriveSession || !currentEpub || !currentBookId || !navigator.onLine) return;
+    const title = currentEpub.metadata.title;
+    const creator = currentEpub.metadata.creator;
+    const bookKey = `yomisuba_book_${encodeURIComponent(`${title}|${creator}`)}`;
+    const pos = localStorage.getItem(`${bookKey}_position`);
+    const bm = localStorage.getItem(`${bookKey}_bookmark`);
+    const an = localStorage.getItem(`${bookKey}_annotations`);
+    const fav = localStorage.getItem(`${bookKey}_translation_favorites`);
+    const isLocalEmpty = (!pos || (pos.includes('"page":0') && pos.includes('"spineIndex":0'))) && !bm && !an && !fav;
+
+    if (isLocalEmpty) {
+      void restoreGoogleDriveReaderData(googleDriveSession.accessToken, {
+        bookKey,
+        title,
+        creator,
+      }).then((readerData) => {
+        if (readerData) {
+          applyGoogleDriveReaderData(readerData);
+          setSettingsRevision((rev) => rev + 1);
+        }
+      }).catch(() => undefined);
+    }
+  }, [googleDriveSession, currentEpub, currentBookId]);
+
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (!navigator.onLine || document.visibilityState !== 'visible' || !googleDriveSessionRef.current || driveSessionRefreshPromiseRef.current) return;
@@ -431,17 +460,33 @@ export const App: React.FC = () => {
   };
 
   const openBook = async (fileOrBlob: File | Blob, preferredId?: string, preferredName?: string) => {
+    const requestId = ++openBookRequestIdRef.current;
     setIsLoading(true);
     setErrorMessage(null);
 
     try {
       if (currentEpub) {
         currentEpub.close();
+        setCurrentEpub(null);
+        setCurrentBookId(null);
       }
 
       const buffer = await fileOrBlob.arrayBuffer();
+      if (requestId !== openBookRequestIdRef.current) return;
       const parsed = await parseEpub(buffer);
-      const driveSession = googleDriveSession;
+      if (requestId !== openBookRequestIdRef.current) return;
+
+      let driveSession = googleDriveSession;
+      if (!driveSession && driveSessionRefreshPromiseRef.current && navigator.onLine) {
+        try {
+          await driveSessionRefreshPromiseRef.current;
+          driveSession = googleDriveSessionRef.current;
+        } catch {
+          // continue with local data
+        }
+      }
+      if (requestId !== openBookRequestIdRef.current) return;
+
       if (driveSession && navigator.onLine) {
         try {
           const readerData = await restoreGoogleDriveReaderData(driveSession.accessToken, {
@@ -456,6 +501,8 @@ export const App: React.FC = () => {
           }
         }
       }
+      if (requestId !== openBookRequestIdRef.current) return;
+
       const name = preferredName || (fileOrBlob instanceof File ? fileOrBlob.name : `${parsed.metadata.title}.epub`);
       const id = preferredId || createBookId(name, parsed.metadata.title, parsed.metadata.creator);
       const recentBook: RecentBook = {
@@ -469,6 +516,7 @@ export const App: React.FC = () => {
       };
       try {
         await saveRecentBook(recentBook);
+        if (requestId !== openBookRequestIdRef.current) return;
         // Read it back: a write that did not stick would only show up at the next launch, as a missing book.
         if (!(await getRecentBook(id))) throw new Error('The book was not found after saving it.');
         setLastBookId(id);
@@ -477,6 +525,7 @@ export const App: React.FC = () => {
         console.warn('No se pudo guardar el libro en la biblioteca local:', err);
         setErrorMessage(t('shelf.saveFailed', settings.language));
       }
+      if (requestId !== openBookRequestIdRef.current) return;
       setRecentBooks((books) => [recentBook, ...books.filter((book) => book.id !== id)].slice(0, MAX_SHELF_BOOKS));
 
       // Auto-detect writing mode and progression direction based on language and metadata
@@ -499,14 +548,18 @@ export const App: React.FC = () => {
           fontFamily: 'serif',
         });
       }
+      setCurrentBookId(id);
       setCurrentEpub(parsed);
     } catch (err: any) {
+      if (requestId !== openBookRequestIdRef.current) return;
       console.error('Error al abrir el archivo EPUB:', err);
       setErrorMessage(
         err?.message || t('drive.alertReadEpubError', settings.language)
       );
     } finally {
-      setIsLoading(false);
+      if (requestId === openBookRequestIdRef.current) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -517,6 +570,7 @@ export const App: React.FC = () => {
   // What other apps share with Yomisuba (text, an address, a file) opens as a book.
   const openSharedRef = React.useRef<(payload: SharedPayload) => void>(() => undefined);
   openSharedRef.current = (payload) => {
+    isOpeningSharedRef.current = true;
     const language = settings.language;
     setIsLoading(true);
     const failed = (message: string) => setErrorMessage(t('import.sharedFailed', language, { message }));
@@ -570,11 +624,16 @@ export const App: React.FC = () => {
         };
         void hydrateCovers();
 
+        // If the app was launched by a share action from another app, do not restore the last book;
+        // the shared content will open as its own book instead.
+        const pendingShared = await checkPendingShared();
+        if (pendingShared || isOpeningSharedRef.current || cancelled) return;
+
         const lastBookId = getLastBookId();
         if (lastBookId) {
           const listed = books.find((book) => book.id === lastBookId);
           const lastBook = listed && listed.blobLoaded !== false ? listed : await getRecentBook(lastBookId);
-          if (lastBook && !cancelled) {
+          if (lastBook && !cancelled && !isOpeningSharedRef.current) {
             await openBook(lastBook.blob, lastBook.id, lastBook.name);
           }
         }
@@ -639,6 +698,7 @@ export const App: React.FC = () => {
       currentEpub.close();
       setCurrentEpub(null);
     }
+    setCurrentBookId(null);
   };
 
   const runDriveAction = async (action: () => Promise<void>) => {
@@ -764,8 +824,9 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {currentEpub ? (
+        {currentEpub && currentBookId ? (
           <EpubReader
+            key={currentBookId}
             epub={currentEpub}
             onCloseBook={handleCloseBook}
             settings={effectiveSettings}

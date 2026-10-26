@@ -839,6 +839,109 @@ export async function saveGoogleDriveReaderData(
   clearPendingGoogleDriveReaderData(data);
 }
 
+interface DriveRevision {
+  id: string;
+  modifiedTime?: string;
+  size?: string;
+}
+
+async function listFileRevisions(accessToken: string, fileId: string): Promise<DriveRevision[]> {
+  try {
+    const query = new URLSearchParams({ fields: 'revisions(id,modifiedTime,size)', pageSize: '30' });
+    const response = await driveRequest(accessToken, `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/revisions?${query}`);
+    const result = await response.json() as { revisions?: DriveRevision[] };
+    return result.revisions || [];
+  } catch {
+    return [];
+  }
+}
+
+async function downloadRevision(accessToken: string, fileId: string, revisionId: string): Promise<Blob> {
+  const response = await driveRequest(
+    accessToken,
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/revisions/${encodeURIComponent(revisionId)}?alt=media`,
+  );
+  return response.blob();
+}
+
+function groupHasData(group: ReaderDataGroup, data: Record<string, unknown>): boolean {
+  switch (group) {
+    case 'reading': {
+      const pos = data.position as { spineIndex?: number; page?: number } | undefined;
+      return Boolean(pos && (Number(pos.spineIndex || 0) > 0 || Number(pos.page || 0) > 0));
+    }
+    case 'bookmarks':
+    case 'annotations':
+    case 'favorites':
+      return Array.isArray(data.items) && data.items.length > 0;
+    case 'history':
+      return (Array.isArray(data.translationHistory) && data.translationHistory.length > 0)
+        || (Array.isArray(data.frequentQueries) && data.frequentQueries.length > 0);
+  }
+}
+
+function validateGroup(group: ReaderDataGroup, value: unknown, bookKey: string): boolean {
+  switch (group) {
+    case 'reading': return isReadingFile(value, bookKey);
+    case 'bookmarks': return isPositionsFile(value, bookKey);
+    case 'annotations': return isAnnotationsFile(value, bookKey);
+    case 'history': return isHistoryFile(value, bookKey);
+    case 'favorites': return isFavoritesFile(value, bookKey);
+  }
+}
+
+function applyGroupToLocalStorage(
+  group: ReaderDataGroup,
+  title: string,
+  creator: string,
+  remoteData: Record<string, unknown>,
+): void {
+  const prefix = `yomisuba_book_${encodeURIComponent(`${title}|${creator}`)}`;
+  try {
+    switch (group) {
+      case 'reading': {
+        const pos = remoteData.position as ReaderBookBackup['position'];
+        if (pos) localStorage.setItem(`${prefix}_position`, JSON.stringify(pos));
+        if (remoteData.printedPages) localStorage.setItem(`${prefix}_printed_pages`, String(remoteData.printedPages));
+        break;
+      }
+      case 'bookmarks': {
+        const items = remoteData.items as ReaderBookBackup['bookmarks'];
+        if (Array.isArray(items) && items.length > 0) {
+          localStorage.setItem(`${prefix}_bookmark`, JSON.stringify(items));
+        }
+        break;
+      }
+      case 'annotations': {
+        const items = remoteData.items as ReaderBookBackup['annotations'];
+        if (Array.isArray(items) && items.length > 0) {
+          localStorage.setItem(`${prefix}_annotations`, JSON.stringify(items));
+        }
+        break;
+      }
+      case 'history': {
+        const history = remoteData.translationHistory as ReaderBookBackup['translationHistory'];
+        if (Array.isArray(history) && history.length > 0) {
+          localStorage.setItem(`${prefix}_translation_history`, JSON.stringify(history));
+        }
+        if (remoteData.frequentQueries) {
+          localStorage.setItem(`${prefix}_frequent_queries`, JSON.stringify(remoteData.frequentQueries));
+        }
+        break;
+      }
+      case 'favorites': {
+        const items = remoteData.items as TranslationFavorite[];
+        if (Array.isArray(items) && items.length > 0) {
+          localStorage.setItem(`${prefix}_translation_favorites`, JSON.stringify(items));
+        }
+        break;
+      }
+    }
+  } catch (error) {
+    console.warn(`[DriveSync] Could not apply recovered remote ${group} to localStorage:`, error);
+  }
+}
+
 /** Serializes one data group to its own JSON file inside the book folder. */
 async function saveReaderGroup(
   accessToken: string,
@@ -882,6 +985,31 @@ async function saveReaderGroup(
   const previous = readerBackupQueues.get(queueKey) || Promise.resolve();
   const save = previous.catch(() => undefined).then(async () => {
     const existing = await findFile(accessToken, fileName, folderId);
+
+    // Safeguard: Do not overwrite non-empty Drive files with empty local data!
+    if (existing) {
+      const isLocalEmpty =
+        (group === 'bookmarks' && data.bookmarks.length === 0) ||
+        (group === 'annotations' && data.annotations.length === 0) ||
+        (group === 'favorites' && data.favorites.length === 0) ||
+        (group === 'history' && data.translationHistory.length === 0) ||
+        (group === 'reading' && (!data.position || (data.position.spineIndex === 0 && data.position.page === 0)));
+
+      if (isLocalEmpty) {
+        try {
+          const remoteText = await (await downloadFile(accessToken, existing)).text();
+          const remoteData = JSON.parse(remoteText) as Record<string, unknown>;
+          if (validateGroup(group, remoteData, bookKey) && groupHasData(group, remoteData)) {
+            console.warn(`[DriveSync] Guard protected: refusing to overwrite non-empty remote ${group} with empty local data.`);
+            applyGroupToLocalStorage(group, data.title, data.creator, remoteData);
+            return;
+          }
+        } catch {
+          // If checking remote fails, proceed with normal upload
+        }
+      }
+    }
+
     const json = JSON.stringify(payload);
     await uploadFile(accessToken, fileName, SETTINGS_FILE_TYPE, new Blob([json], { type: SETTINGS_FILE_TYPE }), existing, undefined, folderId);
   });
@@ -912,8 +1040,16 @@ export async function syncPendingGoogleDriveReaderData(accessToken: string): Pro
 export function queueGoogleDriveReaderData(data: ReaderBookBackup): void {
   try {
     const pending = getPendingGoogleDriveReaderData();
-    // Store the snapshot without the transient `dirtyGroups` hint so the offline
-    // queue performs a full write of every group when connectivity returns.
+    const existing = pending[data.bookKey];
+    if (existing) {
+      const isNewEmpty = (!data.position || (data.position.spineIndex === 0 && data.position.page === 0))
+        && data.bookmarks.length === 0 && data.annotations.length === 0 && data.favorites.length === 0;
+      const existingHasData = Boolean(existing.position && (existing.position.spineIndex > 0 || existing.position.page > 0))
+        || existing.bookmarks.length > 0 || existing.annotations.length > 0 || existing.favorites.length > 0;
+      if (isNewEmpty && existingHasData) {
+        return; // Don't replace existing non-empty pending snapshot with empty
+      }
+    }
     const { dirtyGroups: _ignored, ...snapshot } = data;
     pending[data.bookKey] = { ...snapshot, formatVersion: 1 };
     localStorage.setItem(PENDING_READER_DATA_KEY, JSON.stringify(pending));
@@ -994,10 +1130,47 @@ export async function restoreGoogleDriveReaderData(
     ) => {
       const file = await findFile(accessToken, fileName, folderId);
       if (!file) return;
-      const data: unknown = JSON.parse(await (await downloadFile(accessToken, file)).text());
-      if (!validate(data, bookKey)) return;
-      present.push(group);
-      apply(data as Record<string, unknown>);
+
+      let chosenData: Record<string, unknown> | null = null;
+      try {
+        const text = await (await downloadFile(accessToken, file)).text();
+        const data: unknown = JSON.parse(text);
+        if (validate(data, bookKey)) {
+          chosenData = data as Record<string, unknown>;
+        }
+      } catch {
+        // ignore parse/download error
+      }
+
+      // If the latest file exists but has NO data (e.g. was overwritten with empty items),
+      // look for previous revisions in Google Drive!
+      if (!chosenData || !groupHasData(group, chosenData)) {
+        try {
+          const revisions = await listFileRevisions(accessToken, file.id);
+          // Look backwards from newest revision
+          for (let i = revisions.length - 1; i >= 0; i--) {
+            const rev = revisions[i];
+            try {
+              const revBlob = await downloadRevision(accessToken, file.id, rev.id);
+              const revData: unknown = JSON.parse(await revBlob.text());
+              if (validate(revData, bookKey) && groupHasData(group, revData as Record<string, unknown>)) {
+                chosenData = revData as Record<string, unknown>;
+                console.info(`[DriveSync] Recovered ${group} from previous revision (${rev.modifiedTime || rev.id})`);
+                break;
+              }
+            } catch {
+              continue;
+            }
+          }
+        } catch {
+          // ignore revision checking error
+        }
+      }
+
+      if (chosenData) {
+        present.push(group);
+        apply(chosenData);
+      }
     };
 
     await loadGroup('reading', READING_FILE_NAME, isReadingFile, (data) => {
