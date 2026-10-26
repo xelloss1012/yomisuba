@@ -2099,7 +2099,11 @@ export const EpubReader: React.FC<Props> = ({
           const token = pageWordsRef.current.find(({ range }) =>
             range.isPointInRange(caretPosition.node, caretPosition.offset)
           );
-          return token ? selectPageWord(token) : false;
+          if (!token) return false;
+          const hitToken = Array.from(token.range.getClientRects()).some((rect) =>
+            cx >= rect.left && cx <= rect.right && cy >= rect.top && cy <= rect.bottom
+          );
+          return hitToken ? selectPageWord(token) : false;
         };
 
         // Returns true when the gesture selected a word in analysis mode, so the
