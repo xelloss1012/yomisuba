@@ -71,6 +71,7 @@ import {
   warmUpDictionary,
 } from '../utils/dictionary';
 import { mergeJapaneseTokens } from '../utils/tokenMerging';
+import { wrapVerticalText } from '../utils/verticalText';
 import {
   annotateFurigana,
   applyFuriganaClasses,
@@ -241,35 +242,6 @@ const countScrollerPages = (
   }
   const extent = Math.max(scroller.scrollWidth, Math.abs(rect.width), viewportWidth);
   return Math.max(1, Math.ceil(extent / viewportWidth));
-};
-
-// Force common Japanese ellipsis, exclamation and question marks upright in
-// vertical writing. Shared by the live reader and the hidden frame that finds
-// where a search hit falls, so both lay out exactly the same DOM.
-const wrapVerticalPunctuation = (doc: Document) => {
-  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
-  const textNodes: Text[] = [];
-  let node: Node | null;
-  while ((node = walker.nextNode())) {
-    if (node.parentElement?.closest('style, script, .vertical-punctuation')) continue;
-    if (/[…⋯︙!?！？‼⁇⁉]/.test(node.nodeValue || '')) textNodes.push(node as Text);
-  }
-  textNodes.forEach((textNode) => {
-    const parts = (textNode.nodeValue || '').split(/([…⋯︙!?！？‼⁇⁉]+)/g);
-    const fragment = doc.createDocumentFragment();
-    parts.forEach((part) => {
-      if (!part) return;
-      if (/^[…⋯︙!?！？‼⁇⁉]+$/.test(part)) {
-        const span = doc.createElement('span');
-        span.className = 'vertical-punctuation';
-        span.textContent = part;
-        fragment.appendChild(span);
-      } else {
-        fragment.appendChild(doc.createTextNode(part));
-      }
-    });
-    textNode.parentNode?.replaceChild(fragment, textNode);
-  });
 };
 
 const hashString = (value: string) => {
@@ -978,7 +950,7 @@ export const EpubReader: React.FC<Props> = ({
     img, svg { max-height: ${imgMaxH}; max-width: ${imgMaxW}; object-fit: contain;
       break-inside: avoid-column; page-break-inside: avoid;
       margin: 0.4rem auto; display: inline-block; vertical-align: top; }
-    .vertical-punctuation {
+    .vertical-punctuation, .vertical-number {
       text-orientation: upright; -webkit-text-orientation: upright;
       display: inline-block; line-height: 1;
     }
@@ -1718,7 +1690,7 @@ export const EpubReader: React.FC<Props> = ({
         doc.write(fullHtml);
         doc.close();
 
-        if (isVertical) wrapVerticalPunctuation(doc);
+        if (isVertical) wrapVerticalText(doc);
 
         const scroller = doc.getElementById('reader-scroller');
         if (scroller) applyFuriganaClasses(scroller, furiganaModeRef.current);
@@ -3106,7 +3078,7 @@ export const EpubReader: React.FC<Props> = ({
       doc.open();
       doc.write(buildChapterDocument(rawHtml).html);
       doc.close();
-      if (isVertical) wrapVerticalPunctuation(doc);
+      if (isVertical) wrapVerticalText(doc);
       await Promise.all([
         Promise.race([
           doc.fonts?.ready?.catch(() => undefined),

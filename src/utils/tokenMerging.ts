@@ -6,6 +6,8 @@ import {
 } from './dictionary';
 import { isKiSuffix, isPrefixOfNoun, joinPrefix } from './tokenFixes';
 
+const WORD_CHARACTER = /[\p{L}\p{N}]/u;
+
 export interface LocatedToken {
   token: JapaneseMorphologicalToken;
   start: number;
@@ -30,7 +32,11 @@ export interface MergedToken {
 export const mergeJapaneseTokens = (locatedTokens: LocatedToken[]): MergedToken[] => {
   const mergedTokens: MergedToken[] = [];
   locatedTokens.forEach(({ token, start, end }) => {
-    if (!token.surface_form.trim() || token.pos === '記号') return;
+    if (
+      !token.surface_form.trim() ||
+      token.pos === '記号' ||
+      !WORD_CHARACTER.test(token.surface_form)
+    ) return;
     const previous = mergedTokens[mergedTokens.length - 1];
     const adjacent = previous?.end === start;
     const previousIsAdjectivalNoun =

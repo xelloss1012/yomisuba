@@ -47,6 +47,9 @@ try {
   };
   const surfaces = (text) => words(text).map(({ token }) => token.surface_form);
 
+  // Kuromoji can misclassify punctuation sequences as nouns.
+  assert.deepEqual(surfaces('!!」次'), ['次']);
+
   // A noun and its suffix are one word.
   assert.deepEqual(surfaces('ワニ系の生き物'), ['ワニ系', 'の', '生き物']);
   assert.deepEqual(surfaces('習得済みの技術'), ['習得済み', 'の', '技術']);
