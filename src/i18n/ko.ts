@@ -158,6 +158,8 @@ export const ko: Record<string, string> = {
   'import.textPlaceholder': '여기에 텍스트를 붙여넣거나 입력하세요…',
   'import.titleLabel': '제목(선택)',
   'import.fromClipboard': '클립보드에서 붙여넣기',
+  'import.clipboardEmpty': '클립보드에 텍스트가 없습니다.',
+  'import.clipboardUnavailable': '클립보드를 읽을 수 없습니다.',
   'import.read': '읽기',
   'import.emptyText': '텍스트를 입력하거나 붙여넣으세요.',
   'import.failed': '읽을 수 있도록 텍스트를 준비하지 못했습니다: {message}',

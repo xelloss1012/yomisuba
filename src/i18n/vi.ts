@@ -158,6 +158,8 @@ export const vi: Record<string, string> = {
   'import.textPlaceholder': 'Dán hoặc gõ văn bản vào đây…',
   'import.titleLabel': 'Tiêu đề (không bắt buộc)',
   'import.fromClipboard': 'Dán từ bộ nhớ tạm',
+  'import.clipboardEmpty': 'Bộ nhớ tạm không có văn bản.',
+  'import.clipboardUnavailable': 'Không thể đọc bộ nhớ tạm.',
   'import.read': 'Đọc',
   'import.emptyText': 'Hãy gõ hoặc dán một đoạn văn bản.',
   'import.failed': 'Không thể chuẩn bị văn bản để đọc: {message}',

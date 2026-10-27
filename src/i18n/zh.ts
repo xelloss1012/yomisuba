@@ -158,6 +158,8 @@ export const zh: Record<string, string> = {
   'import.textPlaceholder': '在此粘贴或输入文本…',
   'import.titleLabel': '标题（可选）',
   'import.fromClipboard': '从剪贴板粘贴',
+  'import.clipboardEmpty': '剪贴板中没有文本。',
+  'import.clipboardUnavailable': '无法读取剪贴板。',
   'import.read': '阅读',
   'import.emptyText': '请输入或粘贴一些文本。',
   'import.failed': '无法将文本准备为可阅读的形式：{message}',

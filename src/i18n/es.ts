@@ -158,6 +158,8 @@ export const es: Record<string, string> = {
   'import.textPlaceholder': 'Pega o escribe el texto aquí…',
   'import.titleLabel': 'Título (opcional)',
   'import.fromClipboard': 'Pegar del portapapeles',
+  'import.clipboardEmpty': 'El portapapeles no contiene texto.',
+  'import.clipboardUnavailable': 'No se pudo leer el portapapeles.',
   'import.read': 'Leer',
   'import.emptyText': 'Escribe o pega algún texto.',
   'import.failed': 'No se pudo preparar el texto para leerlo: {message}',

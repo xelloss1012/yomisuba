@@ -26,6 +26,7 @@ public class MainActivity extends BridgeActivity implements ModifiedMainActivity
         registerPlugin(ReaderOrientationPlugin.class);
         registerPlugin(GoogleDriveTokenPlugin.class);
         registerPlugin(ShareTargetPlugin.class);
+        registerPlugin(ReaderClipboardPlugin.class);
         super.onCreate(savedInstanceState);
         ShareTargetPlugin.deliver(this, getIntent());
     }

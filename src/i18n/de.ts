@@ -158,6 +158,8 @@ export const de: Record<string, string> = {
   'import.textPlaceholder': 'Text hier einfügen oder eintippen …',
   'import.titleLabel': 'Titel (optional)',
   'import.fromClipboard': 'Aus der Zwischenablage einfügen',
+  'import.clipboardEmpty': 'Die Zwischenablage enthält keinen Text.',
+  'import.clipboardUnavailable': 'Die Zwischenablage konnte nicht gelesen werden.',
   'import.read': 'Lesen',
   'import.emptyText': 'Gib einen Text ein oder füge ihn ein.',
   'import.failed': 'Der Text konnte nicht zum Lesen vorbereitet werden: {message}',

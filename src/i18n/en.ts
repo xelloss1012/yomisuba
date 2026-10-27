@@ -158,6 +158,8 @@ export const en: Record<string, string> = {
   'import.textPlaceholder': 'Paste or type the text here…',
   'import.titleLabel': 'Title (optional)',
   'import.fromClipboard': 'Paste from clipboard',
+  'import.clipboardEmpty': 'The clipboard does not contain any text.',
+  'import.clipboardUnavailable': 'Could not read the clipboard.',
   'import.read': 'Read',
   'import.emptyText': 'Type or paste some text.',
   'import.failed': 'The text could not be prepared for reading: {message}',

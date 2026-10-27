@@ -158,6 +158,8 @@ export const fr: Record<string, string> = {
   'import.textPlaceholder': 'Collez ou saisissez le texte ici…',
   'import.titleLabel': 'Titre (facultatif)',
   'import.fromClipboard': 'Coller depuis le presse-papiers',
+  'import.clipboardEmpty': 'Le presse-papiers ne contient aucun texte.',
+  'import.clipboardUnavailable': 'Impossible de lire le presse-papiers.',
   'import.read': 'Lire',
   'import.emptyText': 'Saisissez ou collez un texte.',
   'import.failed': 'Le texte n\'a pas pu être préparé pour la lecture : {message}',

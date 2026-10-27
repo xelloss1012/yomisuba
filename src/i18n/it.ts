@@ -158,6 +158,8 @@ export const it: Record<string, string> = {
   'import.textPlaceholder': 'Incolla o scrivi il testo qui…',
   'import.titleLabel': 'Titolo (facoltativo)',
   'import.fromClipboard': 'Incolla dagli appunti',
+  'import.clipboardEmpty': 'Gli appunti non contengono testo.',
+  'import.clipboardUnavailable': 'Impossibile leggere gli appunti.',
   'import.read': 'Leggi',
   'import.emptyText': 'Scrivi o incolla del testo.',
   'import.failed': 'Impossibile preparare il testo per la lettura: {message}',

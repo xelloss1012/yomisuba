@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ClipboardPaste, X } from 'lucide-react';
 import { useT } from '../i18n/LanguageContext';
+import { canReadClipboard, readClipboardText } from '../utils/readerClipboard';
 
 interface Props {
   isOpen: boolean;
@@ -19,9 +20,9 @@ export const PasteTextModal: React.FC<Props> = ({ isOpen, onClose, onSubmit }) =
   const [text, setText] = useState('');
   const [title, setTitle] = useState('');
   const [busy, setBusy] = useState(false);
+  const [clipboardBusy, setClipboardBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const textArea = useRef<HTMLTextAreaElement>(null);
-  const canReadClipboard = typeof navigator !== 'undefined' && Boolean(navigator.clipboard?.readText);
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -34,11 +35,19 @@ export const PasteTextModal: React.FC<Props> = ({ isOpen, onClose, onSubmit }) =
   if (!isOpen) return null;
 
   const pasteFromClipboard = async () => {
+    setClipboardBusy(true);
+    setError(null);
     try {
-      const pasted = await navigator.clipboard.readText();
-      if (pasted) setText((current) => (current ? `${current}\n${pasted}` : pasted));
-    } catch {
-      // Not allowed: the reader can still paste into the field by hand.
+      const pasted = await readClipboardText();
+      if (pasted) {
+        setText((current) => (current ? `${current}\n${pasted}` : pasted));
+      } else {
+        setError(t('import.clipboardEmpty'));
+      }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : t('import.clipboardUnavailable'));
+    } finally {
+      setClipboardBusy(false);
       textArea.current?.focus();
     }
   };
@@ -112,14 +121,14 @@ export const PasteTextModal: React.FC<Props> = ({ isOpen, onClose, onSubmit }) =
         </div>
 
         <footer className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-zinc-200 px-4 py-3 dark:border-zinc-800">
-          {canReadClipboard ? (
+          {canReadClipboard() ? (
             <button
               type="button"
               onClick={() => { void pasteFromClipboard(); }}
-              disabled={busy}
+              disabled={busy || clipboardBusy}
               className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-zinc-300 px-3 py-2 text-xs font-semibold text-zinc-700 hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
             >
-              <ClipboardPaste className="h-4 w-4" /> {t('import.fromClipboard')}
+              <ClipboardPaste className="h-4 w-4" /> {clipboardBusy ? t('common.loading') : t('import.fromClipboard')}
             </button>
           ) : <span />}
           <button

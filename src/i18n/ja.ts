@@ -158,6 +158,8 @@ export const ja: Record<string, string> = {
   'import.textPlaceholder': 'ここにテキストを貼り付けるか入力…',
   'import.titleLabel': 'タイトル（任意）',
   'import.fromClipboard': 'クリップボードから貼り付け',
+  'import.clipboardEmpty': 'クリップボードにテキストがありません。',
+  'import.clipboardUnavailable': 'クリップボードを読み取れませんでした。',
   'import.read': '読む',
   'import.emptyText': 'テキストを入力するか貼り付けてください。',
   'import.failed': 'テキストを読める形に変換できませんでした: {message}',
