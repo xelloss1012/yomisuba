@@ -13,6 +13,23 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 @CapacitorPlugin(name = "ReaderClipboard")
 public class ReaderClipboardPlugin extends Plugin {
     @PluginMethod
+    public void writeText(PluginCall call) {
+        String text = call.getString("text");
+        if (text == null) {
+            call.reject("No se recibió texto para copiar.");
+            return;
+        }
+        ClipboardManager clipboard = (ClipboardManager) getContext()
+            .getSystemService(Context.CLIPBOARD_SERVICE);
+        if (clipboard == null) {
+            call.reject("No se pudo acceder al portapapeles.");
+            return;
+        }
+        clipboard.setPrimaryClip(ClipData.newPlainText("Yomisuba diagnostics", text));
+        call.resolve();
+    }
+
+    @PluginMethod
     public void readText(PluginCall call) {
         ClipboardManager clipboard = (ClipboardManager) getContext()
             .getSystemService(Context.CLIPBOARD_SERVICE);

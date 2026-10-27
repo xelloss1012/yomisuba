@@ -9,7 +9,7 @@
   "bugs": "https://github.com/xelloss1012/yomisuba/issues",
   "private": true,
   "license": "MIT",
-  "version": "1.2.14",
+  "version": "1.2.15",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -33,6 +33,7 @@
     "words:test": "node scripts/test-word-segmentation.mjs",
     "vertical-text:test": "node scripts/test-vertical-text.mjs",
     "reading-position:test": "node scripts/test-reading-position.mjs",
+    "google-drive-diagnostics:test": "node scripts/test-google-drive-diagnostics.mjs",
     "storage:test": "node scripts/test-native-storage.mjs",
     "import:test": "node scripts/test-text-import.mjs",
     "html:test": "node scripts/test-html-import.mjs",

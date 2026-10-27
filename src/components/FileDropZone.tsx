@@ -36,6 +36,9 @@ interface Props {
   googleDriveSettingsDate: string | null;
   googleDriveBooks: GoogleDriveBook[];
   isDriveBusy: boolean;
+  isGoogleDriveSignInPending: boolean;
+  googleDriveError: string | null;
+  onCopyGoogleDriveDiagnostics: () => Promise<void>;
   onGoogleDriveSignIn: () => void;
   onGoogleDriveSignOut: () => void;
   onRestoreDriveSettings: () => void;
@@ -57,6 +60,9 @@ export const FileDropZone: React.FC<Props> = ({
   googleDriveSettingsDate,
   googleDriveBooks,
   isDriveBusy,
+  isGoogleDriveSignInPending,
+  googleDriveError,
+  onCopyGoogleDriveDiagnostics,
   onGoogleDriveSignIn,
   onGoogleDriveSignOut,
   onRestoreDriveSettings,
@@ -263,6 +269,9 @@ export const FileDropZone: React.FC<Props> = ({
           session={googleDriveSession}
           settingsDate={googleDriveSettingsDate}
           busy={isDriveBusy}
+          signingIn={isGoogleDriveSignInPending}
+          error={googleDriveError}
+          onCopyDiagnostics={onCopyGoogleDriveDiagnostics}
           onSignIn={onGoogleDriveSignIn}
           onSignOut={onGoogleDriveSignOut}
           onRestoreSettings={onRestoreDriveSettings}

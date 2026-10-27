@@ -8,6 +8,10 @@ import { DictionaryHistoryData } from './translationHistory';
 import { FREQUENT_QUERIES_VERSION, FrequentQuery } from './frequentQueries';
 import { AVAILABLE_LANGUAGES, TRANSLATION_LANGUAGES, tr } from './i18n';
 import { FURIGANA_MODES } from './furigana';
+import {
+  describeGoogleDriveAuthError,
+  recordGoogleDriveAuthDiagnostic,
+} from './googleDriveDiagnostics';
 
 const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const DRIVE_SESSION_EXPECTED_KEY = 'yomisuba_google_drive_session_expected';
@@ -128,11 +132,15 @@ function initializeGoogleLogin(): Promise<void> {
   const webClientId = import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID;
   if (!webClientId) throw new Error(tr('drive.missingId'));
   if (!initializePromise) {
+    recordGoogleDriveAuthDiagnostic('initialize:started');
     initializePromise = withTimeout(
       SocialLogin.initialize({ google: { webClientId, mode: 'online' } }),
       GOOGLE_AUTH_TIMEOUT_MS,
       'La conexión con Google está tardando demasiado. Puedes seguir usando la aplicación sin Drive e intentarlo más tarde.',
-    ).catch((error: unknown) => {
+    ).then(() => {
+      recordGoogleDriveAuthDiagnostic('initialize:succeeded');
+    }).catch((error: unknown) => {
+      recordGoogleDriveAuthDiagnostic('initialize:failed', error);
       initializePromise = null;
       throw error;
     });
@@ -141,26 +149,38 @@ function initializeGoogleLogin(): Promise<void> {
 }
 
 export async function signInToGoogleDrive(): Promise<GoogleDriveSession> {
-  await initializeGoogleLogin();
-  const result = await withTimeout(
-    SocialLogin.login({ provider: 'google', options: { scopes: DRIVE_SCOPES } }),
-    GOOGLE_LOGIN_TIMEOUT_MS,
-    'El inicio de sesión de Google no respondió. Puedes seguir usando la aplicación sin Drive e intentarlo más tarde.',
-  );
-  if (result.result.responseType !== 'online') {
-    throw new Error(tr('err.gdBadSignIn'));
+  recordGoogleDriveAuthDiagnostic('sign-in:started');
+  try {
+    await initializeGoogleLogin();
+    recordGoogleDriveAuthDiagnostic('credential-picker:requested');
+    const result = await withTimeout(
+      SocialLogin.login({ provider: 'google', options: { scopes: DRIVE_SCOPES } }),
+      GOOGLE_LOGIN_TIMEOUT_MS,
+      'El inicio de sesión de Google no respondió. Puedes seguir usando la aplicación sin Drive e intentarlo más tarde.',
+    );
+    recordGoogleDriveAuthDiagnostic(
+      `credential-picker:resolved responseType=${result.result.responseType}`,
+    );
+    if (result.result.responseType !== 'online') {
+      throw new Error(tr('err.gdBadSignIn'));
+    }
+    const accessToken = result.result.accessToken?.token;
+    if (!accessToken) {
+      throw new Error(tr('err.gdNoAccessToken'));
+    }
+    if (!result.result.idToken) {
+      throw new Error(tr('err.gdNoIdToken'));
+    }
+    recordGoogleDriveAuthDiagnostic('tokens:received; validating identity');
+    const session = await createGoogleDriveSession(accessToken, result.result.idToken);
+    localStorage.setItem(DRIVE_SESSION_EXPECTED_KEY, 'true');
+    localStorage.setItem(DRIVE_SESSION_SCOPE_VERSION_KEY, DRIVE_SESSION_SCOPE_VERSION);
+    recordGoogleDriveAuthDiagnostic('sign-in:succeeded');
+    return rememberSession(session);
+  } catch (error) {
+    recordGoogleDriveAuthDiagnostic('sign-in:failed', error);
+    throw new Error(describeGoogleDriveAuthError(error));
   }
-  const accessToken = result.result.accessToken?.token;
-  if (!accessToken) {
-    throw new Error(tr('err.gdNoAccessToken'));
-  }
-  if (!result.result.idToken) {
-    throw new Error(tr('err.gdNoIdToken'));
-  }
-  const session = await createGoogleDriveSession(accessToken, result.result.idToken);
-  localStorage.setItem(DRIVE_SESSION_EXPECTED_KEY, 'true');
-  localStorage.setItem(DRIVE_SESSION_SCOPE_VERSION_KEY, DRIVE_SESSION_SCOPE_VERSION);
-  return rememberSession(session);
 }
 
 /** Keeps the session in memory (for resumes) and its profile on disk (for silent restores). */

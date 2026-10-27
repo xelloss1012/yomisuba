@@ -1,5 +1,5 @@
-import React from 'react';
-import { CloudDownload, LogIn, LogOut, RefreshCw } from 'lucide-react';
+import React, { useState } from 'react';
+import { Check, CloudDownload, Copy, Loader2, LogIn, LogOut, RefreshCw } from 'lucide-react';
 import { GoogleDriveSession } from '../utils/googleDriveBackup';
 import { useT } from '../i18n/LanguageContext';
 
@@ -8,6 +8,9 @@ interface Props {
   session: GoogleDriveSession | null;
   settingsDate: string | null;
   busy: boolean;
+  signingIn: boolean;
+  error: string | null;
+  onCopyDiagnostics: () => Promise<void>;
   onSignIn: () => void;
   onSignOut: () => void;
   onRestoreSettings: () => void;
@@ -20,12 +23,28 @@ export const GoogleDriveBackupPanel: React.FC<Props> = ({
   session,
   settingsDate,
   busy,
+  signingIn,
+  error,
+  onCopyDiagnostics,
   onSignIn,
   onSignOut,
   onRestoreSettings,
   onRefreshBooks,
 }) => {
   const t = useT();
+  const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
+  const handleCopyDiagnostics = async () => {
+    try {
+      await onCopyDiagnostics();
+      setCopied(true);
+      setCopyFailed(false);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setCopyFailed(true);
+      setCopied(false);
+    }
+  };
   return (
     <section className="mt-6 w-full min-w-0 rounded-2xl border border-indigo-200 bg-indigo-50/60 p-3 text-left dark:border-indigo-900/60 dark:bg-indigo-950/20">
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
@@ -68,6 +87,28 @@ export const GoogleDriveBackupPanel: React.FC<Props> = ({
           </div>
         )}
       </div>
+
+      {signingIn && (
+        <p className="mt-3 flex items-center gap-2 rounded-lg bg-white/70 p-2 text-[11px] text-indigo-800 dark:bg-zinc-900/70 dark:text-indigo-200">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t('drive.signInPending')}
+        </p>
+      )}
+
+      {error && !session && (
+        <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-2.5 text-[11px] text-rose-900 dark:border-rose-900/70 dark:bg-rose-950/30 dark:text-rose-200">
+          <p className="font-semibold">{t('drive.authError')}</p>
+          <p className="mt-1 break-words">{error}</p>
+          <button
+            type="button"
+            onClick={() => void handleCopyDiagnostics()}
+            className="mt-2 inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-rose-300 bg-white px-2.5 py-1.5 font-semibold hover:bg-rose-100 dark:border-rose-800 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+          >
+            {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+            {copied ? t('drive.diagnosticsCopied') : t('drive.copyDiagnostics')}
+          </button>
+          {copyFailed && <p className="mt-1">{t('drive.copyDiagnosticsFailed')}</p>}
+        </div>
+      )}
 
       {!configured && (
         <p className="mt-3 rounded-lg bg-white/70 p-2 text-[11px] text-amber-800 dark:bg-zinc-900/70 dark:text-amber-300">

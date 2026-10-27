@@ -35,6 +35,8 @@ import {
   signOutGoogleDrive,
   uploadGoogleDriveBook,
 } from './utils/googleDriveBackup';
+import { getGoogleDriveAuthDiagnostics } from './utils/googleDriveDiagnostics';
+import { writeClipboardText } from './utils/readerClipboard';
 
 const SETTINGS_STORAGE_KEY = 'yomisuba_settings_v1';
 
@@ -72,6 +74,7 @@ export const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [isGoogleDriveSignInPending, setIsGoogleDriveSignInPending] = useState(false);
   const [recentBooks, setRecentBooks] = useState<RecentBook[]>([]);
   const [googleDriveSession, setGoogleDriveSession] = useState<GoogleDriveSession | null>(null);
   const googleDriveSessionRef = React.useRef<GoogleDriveSession | null>(null);
@@ -714,12 +717,18 @@ export const App: React.FC = () => {
   };
 
   const handleGoogleDriveSignIn = () => {
+    setSyncError(null);
+    setIsGoogleDriveSignInPending(true);
     void runDriveAction(async () => {
       const session = await signInToGoogleDrive();
       setGoogleDriveSession(session);
       googleDriveSessionRef.current = session;
       void loadDriveData(session);
-    });
+    }).finally(() => setIsGoogleDriveSignInPending(false));
+  };
+
+  const handleCopyGoogleDriveDiagnostics = async () => {
+    await writeClipboardText(getGoogleDriveAuthDiagnostics());
   };
 
   const handleGoogleDriveSignOut = () => {
@@ -853,6 +862,9 @@ export const App: React.FC = () => {
             googleDriveSettingsDate={googleDriveSettingsDate}
             googleDriveBooks={googleDriveBooks}
             isDriveBusy={isDriveBusy}
+            isGoogleDriveSignInPending={isGoogleDriveSignInPending}
+            googleDriveError={syncError}
+            onCopyGoogleDriveDiagnostics={handleCopyGoogleDriveDiagnostics}
             onGoogleDriveSignIn={handleGoogleDriveSignIn}
             onGoogleDriveSignOut={handleGoogleDriveSignOut}
             onRestoreDriveSettings={handleRestoreDriveSettings}
