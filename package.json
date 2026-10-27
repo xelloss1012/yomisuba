@@ -32,6 +32,7 @@
     "update:test": "node scripts/test-update-check.mjs",
     "words:test": "node scripts/test-word-segmentation.mjs",
     "vertical-text:test": "node scripts/test-vertical-text.mjs",
+    "reading-position:test": "node scripts/test-reading-position.mjs",
     "storage:test": "node scripts/test-native-storage.mjs",
     "import:test": "node scripts/test-text-import.mjs",
     "html:test": "node scripts/test-html-import.mjs",

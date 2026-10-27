@@ -100,6 +100,7 @@ import {
   SearchHit,
   textOffsetOfPage,
 } from '../utils/bookSearch';
+import { mapPageToLayout, resolveReadingPage } from '../utils/readingPosition';
 
 type ReadingPosition = ReaderBookmark;
 
@@ -128,12 +129,6 @@ const readBookmarks = (storageKey: string, spineLength: number): ReadingPosition
   } catch {
     return [];
   }
-};
-
-const mapPageToLayout = (page: number, savedPageCount: number | undefined, currentPageCount: number) => {
-  if (!savedPageCount || savedPageCount <= 1 || currentPageCount <= 1) return page;
-  const progress = Math.min(1, Math.max(0, page / (savedPageCount - 1)));
-  return Math.round(progress * (currentPageCount - 1));
 };
 
 const pageWordHighlightNames: PageWordCategory[] = ['noun', 'verb', 'adjective', 'particle', 'other'];
@@ -2367,11 +2362,14 @@ export const EpubReader: React.FC<Props> = ({
           const measuredPageCount = totalPagesRef.current;
           const knownPageCount = chapterPageCountsRef.current[spineIndex] || 0;
           const fallbackPageCount = Math.max(knownPageCount, targetPageCount || 0);
+          const textAnchorLayoutReady = measuredPageCount > 1
+            && (!doc.fonts || doc.fonts.status === 'loaded')
+            && Array.from(doc.images).every((image) => image.complete);
           if (
             !wantsLastPage &&
+            targetTextOffset !== undefined &&
             targetPage > 0 &&
-            measuredPageCount <= 1 &&
-            fallbackPageCount <= 1 &&
+            !textAnchorLayoutReady &&
             !allowEmptyChapter
           ) {
             return false;
@@ -2393,19 +2391,21 @@ export const EpubReader: React.FC<Props> = ({
             // target counts as resolved, nothing ever put it right again.
             if (!lastPageResolved) currentPageRef.current = 0;
           } else {
-            const hasMatchingPagination = targetPageCount === resolvedPageCount;
-            const anchoredPage = targetTextOffset === undefined || hasMatchingPagination
-              ? null
-              : getPageForTextOffset(spineIndex, targetTextOffset);
-            const resolvedPage = Math.min(
-              anchoredPage ?? mapPageToLayout(targetPage, targetPageCount, resolvedPageCount),
-              Math.max(0, resolvedPageCount - 1),
+            const canUseTextAnchor = targetTextOffset !== undefined && textAnchorLayoutReady;
+            const resolvedPage = resolveReadingPage(
+              {
+                page: targetPage,
+                pageCount: targetPageCount,
+                textOffset: canUseTextAnchor ? targetTextOffset : undefined,
+              },
+              resolvedPageCount,
+              (offset) => getPageForTextOffset(spineIndex, offset),
             );
             currentPageRef.current = resolvedPage;
             setCurrentPage(resolvedPage);
           }
           updatePagination();
-          if (lastPageResolved) setIsLoadingChapter(false);
+          if (lastPageResolved && targetApplied) setIsLoadingChapter(false);
           return true;
         };
 
@@ -2532,7 +2532,7 @@ export const EpubReader: React.FC<Props> = ({
           // Resolving "last page" may legitimately take up to its deadline;
           // lifting the overlay before that would flash an intermediate page.
           resolveLastPage();
-          if (lastPageResolved) setIsLoadingChapter(false);
+          if (lastPageResolved && targetApplied) setIsLoadingChapter(false);
         }, 3000);
         setTimeout(() => {
           if (currentSpineRef.current !== spineIndex) return;
@@ -2948,12 +2948,10 @@ export const EpubReader: React.FC<Props> = ({
         ? totalPagesRef.current
         : chapterPageCountsRef.current[position.spineIndex] || 1,
     );
-    const targetPage = Math.min(
-      position.textOffset === undefined || position.pageCount === pageCount
-        ? mapPageToLayout(position.page, position.pageCount, pageCount)
-        : getPageForTextOffset(position.spineIndex, position.textOffset)
-          ?? mapPageToLayout(position.page, position.pageCount, pageCount),
-      pageCount - 1,
+    const targetPage = resolveReadingPage(
+      position,
+      pageCount,
+      (offset) => getPageForTextOffset(position.spineIndex, offset),
     );
     if (position.spineIndex === currentSpineRef.current) {
       currentPageRef.current = targetPage;
