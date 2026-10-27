@@ -438,6 +438,7 @@ export const EpubReader: React.FC<Props> = ({
   const selectionEdgeClearRef = useRef<() => void>(() => {});
   const startEdgeActivationRef = useRef<(direction: 'next' | 'previous') => void>(() => {});
   const cancelEdgeActivationRef = useRef<() => void>(() => {});
+  const selectionEdgeActivationSuppressedRef = useRef(false);
   const lastPageTurnTimeRef = useRef(0);
   const selectionAnnotationRef = useRef<Omit<TextAnnotation, 'id'> | null>(null);
   const selectedTextAnnotationIdRef = useRef<string | null>(null);
@@ -1541,6 +1542,9 @@ export const EpubReader: React.FC<Props> = ({
         );
         nativeTouchIsSelection = !selectionMenuTarget &&
           (startsInsideReader || Boolean(selectedTextRef.current));
+        if (nativeTouchIsSelection) {
+          selectionEdgeActivationSuppressedRef.current = false;
+        }
         pointerActiveRef.current = true;
         if (nativeTouchIsSelection && selectionSettleRef.current !== undefined) {
           window.clearTimeout(selectionSettleRef.current);
@@ -1580,6 +1584,7 @@ export const EpubReader: React.FC<Props> = ({
     };
 
     const handleWindowContextMenu = () => {
+      selectionEdgeActivationSuppressedRef.current = true;
       cancelEdgeActivation();
       selectionEdgeClearRef.current();
     };
@@ -2000,7 +2005,7 @@ export const EpubReader: React.FC<Props> = ({
           }
           handleSelection();
           const edgeDirection = getSelectionEdgeDirection();
-          if (edgeDirection) {
+          if (edgeDirection && !selectionEdgeActivationSuppressedRef.current && !openOverlayRef.current) {
             setIsSelectionAdjusting(true);
             placeSelectionEdgeIndicator(edgeDirection);
             startEdgeActivationRef.current(edgeDirection);
@@ -2011,6 +2016,7 @@ export const EpubReader: React.FC<Props> = ({
         };
 
         const onStart = (cx: number, cy: number) => {
+          selectionEdgeActivationSuppressedRef.current = false;
           sx = cx; sy = cy; st = Date.now(); moved = false; selecting = false;
           gestureNudgeStart = pageNudgeRef.current;
           const currentSel = iframe.contentWindow?.getSelection();
@@ -4260,10 +4266,16 @@ export const EpubReader: React.FC<Props> = ({
           setIsSelectionUnderlined(false);
         }}
         onOpenTranslate={() => {
+          selectionEdgeActivationSuppressedRef.current = true;
+          cancelEdgeActivationRef.current();
+          selectionEdgeClearRef.current();
           setAiTranslationProvider(undefined);
           setIsTranslateOpen(true);
         }}
         onOpenDictionary={() => {
+          selectionEdgeActivationSuppressedRef.current = true;
+          cancelEdgeActivationRef.current();
+          selectionEdgeClearRef.current();
           setAiTranslationProvider(undefined);
           setIsTranslateOpen(true);
         }}
