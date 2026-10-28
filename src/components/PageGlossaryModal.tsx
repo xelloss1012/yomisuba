@@ -14,6 +14,7 @@ import {
 import { useDictionaryOptions, useT, useTranslationLanguage } from '../i18n/LanguageContext';
 import { classifyWord, difficultyOf, isWithinLevel, JlptLevel, WordLevel } from '../utils/wordLevels';
 import { useWordLevels, WordLevelBadge } from './WordLevelBadge';
+import { GlossaryScope, ScopeSwitch } from './BookGlossaryModal';
 
 export interface PageWordToken extends JapaneseMorphologicalToken {
   range: Range;
@@ -32,6 +33,8 @@ interface Props {
   onClose: () => void;
   onSelectWord: (token: PageWordToken) => void;
   onToggleFavorite: (candidate: TranslationFavoriteCandidate) => void;
+  /** Switches to the glossary of the chapter or of the whole book. */
+  onChangeScope?: (scope: GlossaryScope) => void;
 }
 
 interface GlossaryItem {
@@ -95,6 +98,7 @@ export const PageGlossaryModal: React.FC<Props> = ({
   onClose,
   onSelectWord,
   onToggleFavorite,
+  onChangeScope,
 }) => {
   const t = useT();
   const translationLanguage = useTranslationLanguage();
@@ -244,7 +248,9 @@ export const PageGlossaryModal: React.FC<Props> = ({
           </button>
         </header>
 
-        <label className="relative mx-3 mt-3 block">
+        {onChangeScope && <ScopeSwitch scope="page" onChange={onChangeScope} />}
+
+        <label className={`relative mx-3 block ${onChangeScope ? 'mt-2' : 'mt-3'}`}>
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
           <input
             value={search}

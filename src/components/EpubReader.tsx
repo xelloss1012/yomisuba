@@ -57,6 +57,7 @@ import {
   writeTranslationFavorites,
 } from '../utils/translationFavorites';
 import { readableText, sentenceForRange, sentenceForWord } from '../utils/contextSentence';
+import { BookGlossaryModal } from './BookGlossaryModal';
 import {
   readFrequentQueries,
   recordFrequentQuery,
@@ -315,6 +316,8 @@ export const EpubReader: React.FC<Props> = ({
   const fullscreenExitTimerRef = useRef<number | undefined>(undefined);
   const [isBookmarksOpen, setIsBookmarksOpen] = useState(false);
   const [isPageGlossaryOpen, setIsPageGlossaryOpen] = useState(false);
+  // The glossary of the chapter or of the whole book, when open.
+  const [bookGlossaryScope, setBookGlossaryScope] = useState<'chapter' | 'book' | null>(null);
   const [pageWords, setPageWords] = useState<PageWordToken[]>([]);
   const [isAnalyzingPage, setIsAnalyzingPage] = useState(false);
   const [isWordSelectionMode, setIsWordSelectionMode] = useState(false);
@@ -2827,8 +2830,8 @@ export const EpubReader: React.FC<Props> = ({
   }, []);
   useEffect(() => {
     selectedTextRef.current = selectedText;
-    openOverlayRef.current = isBookmarksOpen || isSearchOpen || isTranslationHistoryOpen || isPageGlossaryOpen || isTocOpen || isSettingsOpen || isTranslateOpen || Boolean(imageViewerSrc);
-  }, [imageViewerSrc, isBookmarksOpen, isPageGlossaryOpen, isSearchOpen, isSettingsOpen, isTocOpen, isTranslateOpen, isTranslationHistoryOpen, selectedText]);
+    openOverlayRef.current = isBookmarksOpen || isSearchOpen || isTranslationHistoryOpen || isPageGlossaryOpen || bookGlossaryScope !== null || isTocOpen || isSettingsOpen || isTranslateOpen || Boolean(imageViewerSrc);
+  }, [bookGlossaryScope, imageViewerSrc, isBookmarksOpen, isPageGlossaryOpen, isSearchOpen, isSettingsOpen, isTocOpen, isTranslateOpen, isTranslationHistoryOpen, selectedText]);
 
   useEffect(() => {
     const query = selectedText.trim();
@@ -3575,6 +3578,10 @@ export const EpubReader: React.FC<Props> = ({
         if (e.key === 'Escape') setIsPageGlossaryOpen(false);
         return;
       }
+      if (bookGlossaryScope) {
+        if (e.key === 'Escape') setBookGlossaryScope(null);
+        return;
+      }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
         e.preventDefault();
         openSearch(selectedTextRef.current);
@@ -3613,7 +3620,7 @@ export const EpubReader: React.FC<Props> = ({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [imageViewerSrc, isBookmarksOpen, isPageGlossaryOpen, isRtl, isSearchOpen, isSettingsOpen, isTocOpen, isTranslateOpen, isTranslationHistoryOpen, handleNextPage, handlePrevPage, onCloseBook, openSearch]);
+  }, [bookGlossaryScope, imageViewerSrc, isBookmarksOpen, isPageGlossaryOpen, isRtl, isSearchOpen, isSettingsOpen, isTocOpen, isTranslateOpen, isTranslationHistoryOpen, handleNextPage, handlePrevPage, onCloseBook, openSearch]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3622,6 +3629,7 @@ export const EpubReader: React.FC<Props> = ({
       if (cancelled) return;
       if (imageViewerSrc) setImageViewerSrc(null);
       else if (isPageGlossaryOpen) setIsPageGlossaryOpen(false);
+      else if (bookGlossaryScope) setBookGlossaryScope(null);
       else if (isTranslationHistoryOpen) setIsTranslationHistoryOpen(false);
       else if (isSearchOpen) setIsSearchOpen(false);
       else if (isBookmarksOpen) setIsBookmarksOpen(false);
@@ -3633,7 +3641,7 @@ export const EpubReader: React.FC<Props> = ({
       cancelled = true;
       if (removeListener) void removeListener();
     };
-  }, [imageViewerSrc, isBookmarksOpen, isPageGlossaryOpen, isSearchOpen, isTranslationHistoryOpen, onCloseBook]);
+  }, [bookGlossaryScope, imageViewerSrc, isBookmarksOpen, isPageGlossaryOpen, isSearchOpen, isTranslationHistoryOpen, onCloseBook]);
 
   const handleCopyDebug = async () => {
     const text = debugLines.join('\n');
@@ -4309,7 +4317,7 @@ export const EpubReader: React.FC<Props> = ({
         // panel open it covered the bottom of the dictionary result. Fold it
         // away while any overlay is on screen, as it is already folded away
         // while the selection is being dragged.
-        isAdjusting={isSelectionAdjusting || isTranslateOpen || isBookmarksOpen || isSearchOpen || isTranslationHistoryOpen || isPageGlossaryOpen || isTocOpen || isSettingsOpen || noteEditorId !== null || Boolean(imageViewerSrc)}
+        isAdjusting={isSelectionAdjusting || isTranslateOpen || isBookmarksOpen || isSearchOpen || isTranslationHistoryOpen || isPageGlossaryOpen || bookGlossaryScope !== null || isTocOpen || isSettingsOpen || noteEditorId !== null || Boolean(imageViewerSrc)}
         dictionaryPreview={dictionaryPreview}
         isUnderlined={isSelectionUnderlined}
         onToggleUnderline={handleToggleUnderline}
@@ -4384,6 +4392,36 @@ export const EpubReader: React.FC<Props> = ({
         onClose={() => setIsPageGlossaryOpen(false)}
         onSelectWord={selectPageWord}
         onToggleFavorite={handleToggleTranslationFavorite}
+        onChangeScope={(scope) => {
+          if (scope === 'page') return;
+          setIsPageGlossaryOpen(false);
+          setBookGlossaryScope(scope);
+        }}
+      />
+
+      <BookGlossaryModal
+        isOpen={bookGlossaryScope !== null}
+        scope={bookGlossaryScope ?? 'chapter'}
+        onChangeScope={(scope) => {
+          if (scope === 'page') {
+            setBookGlossaryScope(null);
+            handleOpenPageGlossary();
+          } else {
+            setBookGlossaryScope(scope);
+          }
+        }}
+        onClose={() => setBookGlossaryScope(null)}
+        epub={epub}
+        currentSpineIndex={currentSpineIndex}
+        spineLabels={spineLabels}
+        studyLevel={settings.studyLevel}
+        favorites={translationFavorites}
+        onToggleFavorite={handleToggleTranslationFavorite}
+        onSearchInBook={(text) => {
+          setBookGlossaryScope(null);
+          openSearch(text);
+        }}
+        onChangeStudyLevel={(level) => onUpdateSettings({ studyLevel: level })}
       />
 
       <BookSearchModal
