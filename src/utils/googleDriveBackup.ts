@@ -764,9 +764,14 @@ async function deleteDriveFile(accessToken: string, fileId: string): Promise<voi
   );
 }
 
+/**
+ * Deletes a book from Drive. With `keepData` only the EPUB goes: its reading data stays in its folder and
+ * comes back if the same book is uploaded or opened again.
+ */
 export async function deleteGoogleDriveBook(
   accessToken: string,
   cloudBook: GoogleDriveBook,
+  { keepData = false }: { keepData?: boolean } = {},
 ): Promise<void> {
   const file = await getDriveFile(accessToken, cloudBook.id);
   if (!file.name.toLowerCase().endsWith('.epub')) {
@@ -783,7 +788,7 @@ export async function deleteGoogleDriveBook(
   }
 
   await deleteDriveFile(accessToken, file.id);
-  if (typeof metadata.title === 'string' && typeof metadata.creator === 'string') {
+  if (!keepData && typeof metadata.title === 'string' && typeof metadata.creator === 'string') {
     const identity: BookDriveIdentity = {
       bookKey: `yomisuba_book_${encodeURIComponent(`${metadata.title}|${metadata.creator}`)}`,
       title: metadata.title,
@@ -1180,7 +1185,7 @@ function clearPendingGoogleDriveReaderData(data: ReaderBookBackup): void {
   }
 }
 
-function removePendingGoogleDriveReaderData(bookKey: string): void {
+export function removePendingGoogleDriveReaderData(bookKey: string): void {
   try {
     const pending = getPendingGoogleDriveReaderData();
     if (!pending[bookKey]) return;

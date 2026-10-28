@@ -28,6 +28,7 @@ import {
   DriveWriter,
   getGoogleDriveLastWriter,
   getGoogleDriveReadingPosition,
+  removePendingGoogleDriveReaderData,
   restoreGoogleDriveReaderData,
   restoreGoogleDriveSession,
   restoreGoogleDriveSettings,
@@ -44,6 +45,8 @@ import { getGoogleDriveAuthDiagnostics } from './utils/googleDriveDiagnostics';
 import { writeClipboardText } from './utils/readerClipboard';
 import { BookPosition, comparePositions, describeDevice, getDeviceId, latestPaginationCounts } from './utils/driveDevice';
 import { DriveConflict, DriveConflictModal } from './components/DriveConflictModal';
+import { DeleteBookChoice, DeleteBookModal, DeleteBookRequest } from './components/DeleteBookModal';
+import { bookDataKeys, bookKeyOf } from './utils/studyData';
 
 const SETTINGS_STORAGE_KEY = 'yomisuba_settings_v1';
 
@@ -97,6 +100,8 @@ export const App: React.FC = () => {
   const lastWriterCheckRef = React.useRef(0);
   const [driveConflict, setDriveConflict] = useState<DriveConflict | null>(null);
   const driveConflictAnswerRef = React.useRef<((choice: 'load' | 'keep') => void) | null>(null);
+  const [deleteRequest, setDeleteRequest] = useState<DeleteBookRequest | null>(null);
+  const deleteAnswerRef = React.useRef<((choice: DeleteBookChoice | null) => void) | null>(null);
   const currentEpubRef = React.useRef<ParsedEpub | null>(null);
   const currentBookIdRef = React.useRef<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -853,6 +858,31 @@ export const App: React.FC = () => {
     })();
   };
 
+  /** Asks how a book is deleted; null when the person cancels. */
+  const askDeleteBook = (request: DeleteBookRequest): Promise<DeleteBookChoice | null> => new Promise((resolve) => {
+    deleteAnswerRef.current = resolve;
+    setDeleteRequest(request);
+  });
+
+  const answerDeleteBook = (choice: DeleteBookChoice | null) => {
+    setDeleteRequest(null);
+    const answer = deleteAnswerRef.current;
+    deleteAnswerRef.current = null;
+    answer?.(choice);
+  };
+
+  /** Removes from this device everything saved about a book: progress, bookmarks, notes, favorites, history. */
+  const handleDeleteBookData = (bookKey: string) => {
+    removePendingGoogleDriveReaderData(bookKey);
+    for (const key of bookDataKeys(bookKey)) {
+      try {
+        localStorage.removeItem(key);
+      } catch {
+        // Nothing else to do without storage.
+      }
+    }
+  };
+
   const handleRemoveRecentBook = async (book: RecentBook) => {
     setIsDriveBusy(true);
     setErrorMessage(null);
@@ -862,24 +892,22 @@ export const App: React.FC = () => {
         cloudBook = await findGoogleDriveBookForRecentBook(googleDriveSession.accessToken, book);
       }
 
-      // Cancelling must cancel: the first question is only about this device, the second (when the book
-      // has a copy in Drive) about Drive, and refusing it keeps that copy.
-      const confirmed = window.confirm(t(
-        googleDriveSession ? 'drive.confirmRemoveRecent' : 'drive.confirmRemoveRecentNoSession',
-        settings.language,
-        { title: book.title },
-      ));
-      if (!confirmed) return;
-      const deleteDriveCopy = Boolean(cloudBook) && window.confirm(
-        t('drive.confirmDeleteBook', settings.language, { title: book.title }),
-      );
+      // Cancelling cancels everything; by default only the book goes and its data stays.
+      const choice = await askDeleteBook({
+        title: book.title,
+        scope: 'device',
+        hasDriveCopy: Boolean(cloudBook),
+        signedIn: Boolean(googleDriveSession),
+      });
+      if (!choice) return;
 
-      if (deleteDriveCopy && cloudBook && googleDriveSession) {
-        await deleteGoogleDriveBook(googleDriveSession.accessToken, cloudBook);
+      if (choice.alsoDrive && cloudBook && googleDriveSession) {
+        await deleteGoogleDriveBook(googleDriveSession.accessToken, cloudBook, { keepData: choice.keepData });
         setGoogleDriveBooks(await listGoogleDriveBooks(googleDriveSession.accessToken));
       }
       await deleteRecentBook(book.id);
       setRecentBooks((books) => books.filter((item) => item.id !== book.id));
+      if (!choice.keepData) handleDeleteBookData(bookKeyOf(book.title, book.creator));
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -956,12 +984,12 @@ export const App: React.FC = () => {
     });
   };
 
-  const handleDeleteDriveBook = (cloudBook: GoogleDriveBook) => {
-    if (!googleDriveSession || !window.confirm(
-      t('drive.confirmDeleteBook', settings.language, { title: cloudBook.title }),
-    )) return;
+  const handleDeleteDriveBook = async (cloudBook: GoogleDriveBook) => {
+    if (!googleDriveSession) return;
+    const choice = await askDeleteBook({ title: cloudBook.title, scope: 'drive', hasDriveCopy: true, signedIn: true });
+    if (!choice) return;
     void runDriveAction(async () => {
-      await deleteGoogleDriveBook(googleDriveSession.accessToken, cloudBook);
+      await deleteGoogleDriveBook(googleDriveSession.accessToken, cloudBook, { keepData: choice.keepData });
       setGoogleDriveBooks(await listGoogleDriveBooks(googleDriveSession.accessToken));
     });
   };
@@ -1068,12 +1096,18 @@ export const App: React.FC = () => {
             onRestoreDriveSettings={handleRestoreDriveSettings}
             onUploadDriveBook={handleUploadDriveBook}
             onDownloadDriveBook={handleDownloadDriveBook}
-            onDeleteDriveBook={handleDeleteDriveBook}
+            onDeleteDriveBook={(book) => { void handleDeleteDriveBook(book); }}
+            onDeleteBookData={handleDeleteBookData}
             onRefreshDriveBooks={handleRefreshDriveBooks}
             onUpdateSettings={handleUpdateSettings}
           />
         )}
       </div>
+      <DeleteBookModal
+        request={deleteRequest}
+        onConfirm={answerDeleteBook}
+        onCancel={() => answerDeleteBook(null)}
+      />
       <DriveConflictModal
         conflict={driveConflict}
         onLoad={() => answerDriveConflict('load')}

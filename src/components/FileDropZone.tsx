@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { UploadCloud, Sparkles, FileText, Languages, Smartphone, Github, ShieldCheck, Library, ClipboardPaste, Globe } from 'lucide-react';
+import { UploadCloud, Sparkles, FileText, Languages, Smartphone, Github, ShieldCheck, Library, ClipboardPaste, Globe, GraduationCap, ChevronRight } from 'lucide-react';
 import { createSampleJapaneseEpub } from '../utils/sampleBook';
 import { RecentBook } from '../utils/recentBooks';
 import { GoogleDriveBook, GoogleDriveSession } from '../utils/googleDriveBackup';
@@ -9,6 +9,7 @@ import { BookShelf } from './BookShelf';
 import { BookLibraryModal } from './BookLibraryModal';
 import { PasteTextModal } from './PasteTextModal';
 import { ImportUrlModal } from './ImportUrlModal';
+import { StudyDashboard } from './StudyDashboard';
 import { importUrlAsEpub, UrlImportError } from '../utils/urlImport';
 import { textToEpub } from '../utils/textToEpub';
 import { importFileAsEpub, isImportable } from '../utils/importFile';
@@ -46,6 +47,8 @@ interface Props {
   onDownloadDriveBook: (book: GoogleDriveBook) => void;
   onDeleteDriveBook: (book: GoogleDriveBook) => void;
   onRefreshDriveBooks: () => void;
+  /** Removes from this device the data of a book no longer on the shelf. */
+  onDeleteBookData: (bookKey: string) => void;
   onUpdateSettings: (newSettings: Partial<ReaderSettingsState>) => void;
 }
 
@@ -70,6 +73,7 @@ export const FileDropZone: React.FC<Props> = ({
   onDownloadDriveBook,
   onDeleteDriveBook,
   onRefreshDriveBooks,
+  onDeleteBookData,
   onUpdateSettings,
 }) => {
   const t = useT();
@@ -78,6 +82,7 @@ export const FileDropZone: React.FC<Props> = ({
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [isPasteOpen, setIsPasteOpen] = useState(false);
   const [isUrlOpen, setIsUrlOpen] = useState(false);
+  const [isStudyOpen, setIsStudyOpen] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const isNative = Capacitor.isNativePlatform();
   const [updateChecks, setUpdateChecks] = useState(isUpdateCheckEnabled);
@@ -204,6 +209,19 @@ export const FileDropZone: React.FC<Props> = ({
           onDeleteDriveBook={onDeleteDriveBook}
         />
 
+        <button
+          type="button"
+          onClick={() => setIsStudyOpen(true)}
+          className="mt-4 flex min-h-12 w-full items-center gap-3 rounded-xl border border-indigo-100 bg-indigo-50/70 px-3 py-2.5 text-left transition-colors hover:bg-indigo-100 dark:border-indigo-900/60 dark:bg-indigo-950/30 dark:hover:bg-indigo-950/60"
+        >
+          <GraduationCap className="h-5 w-5 shrink-0 text-indigo-600 dark:text-indigo-400" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-xs font-semibold text-indigo-900 dark:text-indigo-200">{t('study.button')}</span>
+            <span className="block text-[11px] text-indigo-700/80 dark:text-indigo-300/80">{t('study.buttonHint')}</span>
+          </span>
+          <ChevronRight className="h-4 w-4 shrink-0 text-indigo-400" />
+        </button>
+
         {/* Adding books */}
         <div className="mt-6 grid gap-2 sm:grid-cols-2">
           <input
@@ -288,6 +306,14 @@ export const FileDropZone: React.FC<Props> = ({
           isOpen={isPasteOpen}
           onClose={() => setIsPasteOpen(false)}
           onSubmit={openPastedText}
+        />
+
+        <StudyDashboard
+          isOpen={isStudyOpen}
+          recentBooks={recentBooks}
+          onClose={() => setIsStudyOpen(false)}
+          onOpenBook={(book) => { setIsStudyOpen(false); onOpenRecent(book); }}
+          onDeleteBookData={onDeleteBookData}
         />
 
         <BookLibraryModal

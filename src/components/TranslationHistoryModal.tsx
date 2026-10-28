@@ -60,7 +60,7 @@ interface DisplayItem {
 const renderItemResponse = (item: DisplayItem, language: UiLanguage): string =>
   getHistoryEntryResponse(item, language);
 
-const getKindLabel = (entry: { kind: TranslationFavoriteKind; provider?: string }, t: Translate) => {
+export const getKindLabel = (entry: { kind: TranslationFavoriteKind; provider?: string }, t: Translate) => {
   if (entry.kind === 'dictionary') return t('common.dictionary');
   if (entry.kind === 'glossary') return t('nav.glossary');
   if (entry.kind === 'ai' && entry.provider) {
