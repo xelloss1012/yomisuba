@@ -2,13 +2,17 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { CloudDownload, Smartphone } from 'lucide-react';
 import { useLanguage, useT } from '../i18n/LanguageContext';
+import type { PaginationMode } from '../types/epub';
+import type { PositionComparison } from '../utils/driveDevice';
 
 export interface DriveConflict {
   /** The device that wrote to Drive last; null when an older version did (it did not say). */
   deviceName: string | null;
   savedAt: string | null;
-  /** The book being read, with its position here and in Drive, already worded. */
-  book?: { title: string; from: string | null; to: string | null };
+  /** The way of counting pages the person uses, shown first. */
+  paginationMode: PaginationMode;
+  /** The book being read, with its position here and in Drive. */
+  book?: { title: string; comparison: PositionComparison };
 }
 
 interface Props {
@@ -26,10 +30,34 @@ export const DriveConflictModal: React.FC<Props> = ({ conflict, onLoad, onKeep }
   const date = conflict.savedAt ? new Date(conflict.savedAt) : null;
   const when = date && !Number.isNaN(date.getTime()) ? date.toLocaleString(language) : null;
   const book = conflict.book;
-  let move: string | null = null;
-  if (book?.to && book.from && book.from !== book.to) move = t('driveConflict.move', { title: book.title, from: book.from, to: book.to });
-  else if (book?.to && book.from === book.to) move = t('driveConflict.same', { title: book.title, to: book.to });
-  else if (book?.to) move = t('driveConflict.moveTo', { title: book.title, to: book.to });
+  const comparison = book?.comparison;
+  const of = (value: number | null, total: number | null) => (value === null
+    ? '—'
+    : total ? t('driveConflict.valueOf', { value, total }) : String(value));
+  const rows: { mode: PaginationMode | 'chapter'; label: string; from: string; to: string }[] = [];
+  if (comparison?.device) {
+    const { device } = comparison;
+    rows.push({
+      mode: 'device',
+      label: device.layout === 'here'
+        ? t('driveConflict.rowDevice')
+        : conflict.deviceName ? t('driveConflict.rowDeviceOf', { device: conflict.deviceName }) : t('driveConflict.rowDeviceOther'),
+      from: of(device.from, device.total),
+      to: of(device.to, device.total),
+    });
+  }
+  if (comparison?.printed) {
+    rows.push({ mode: 'printed', label: t('driveConflict.rowPrinted'), from: of(comparison.printed.from, comparison.printed.total), to: of(comparison.printed.to, comparison.printed.total) });
+  }
+  if (comparison && (comparison.percent.from !== null || comparison.percent.to !== null)) {
+    const percent = (value: number | null) => (value === null ? '—' : `${value}%`);
+    rows.push({ mode: 'percent', label: t('driveConflict.rowPercent'), from: percent(comparison.percent.from), to: percent(comparison.percent.to) });
+  }
+  if (comparison) {
+    rows.push({ mode: 'chapter', label: t('driveConflict.rowChapter'), from: of(comparison.chapter.from, comparison.chapter.total), to: of(comparison.chapter.to, comparison.chapter.total) });
+  }
+  // The way of counting the person uses goes first; the rest follow for reference.
+  rows.sort((a, b) => Number(b.mode === conflict.paginationMode) - Number(a.mode === conflict.paginationMode));
 
   return createPortal(
     <div className="fixed inset-0 z-[90] flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center">
@@ -49,7 +77,40 @@ export const DriveConflictModal: React.FC<Props> = ({ conflict, onLoad, onKeep }
               ? t(when ? 'driveConflict.lastSaved' : 'driveConflict.lastSavedNoDate', { device: conflict.deviceName, date: when ?? '' })
               : t('driveConflict.olderVersion')}
           </p>
-          {move && <p className="rounded-lg bg-indigo-50 px-3 py-2 font-medium text-indigo-900 dark:bg-indigo-950/50 dark:text-indigo-200">{move}</p>}
+          {book && rows.length > 0 && (
+            <div className="rounded-lg border border-zinc-200 dark:border-zinc-700">
+              <p className="px-3 pt-2 font-medium text-zinc-900 dark:text-zinc-100">{t('driveConflict.where', { title: book.title })}</p>
+              <table className="mt-1 w-full text-left text-xs">
+                <thead>
+                  <tr className="text-zinc-500 dark:text-zinc-400">
+                    <th scope="col" className="px-3 py-1 font-normal"><span className="sr-only">{t('driveConflict.rowKind')}</span></th>
+                    <th scope="col" className="px-2 py-1 font-normal">{t('driveConflict.here')}</th>
+                    <th scope="col" className="px-3 py-1 font-normal">{t('driveConflict.drive')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row) => {
+                    const current = row.mode === conflict.paginationMode;
+                    return (
+                      <tr
+                        key={row.mode}
+                        className={current
+                          ? 'bg-indigo-50 font-medium text-indigo-900 dark:bg-indigo-950/50 dark:text-indigo-200'
+                          : 'border-t border-zinc-100 dark:border-zinc-800'}
+                      >
+                        <th scope="row" className="px-3 py-1.5 font-normal">
+                          {row.label}
+                          {current && <span className="block text-[11px] opacity-75">{t('driveConflict.current')}</span>}
+                        </th>
+                        <td className="whitespace-nowrap px-2 py-1.5">{row.from}</td>
+                        <td className="whitespace-nowrap px-3 py-1.5">{row.to}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
           <p className="text-xs text-zinc-500 dark:text-zinc-400">{t('driveConflict.explain')}</p>
         </div>
         <div className="mt-5 flex flex-col gap-2 sm:flex-row-reverse">

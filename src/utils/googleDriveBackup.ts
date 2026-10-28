@@ -664,17 +664,18 @@ export async function claimGoogleDriveWriter(accessToken: string, writer: DriveW
 export async function getGoogleDriveReadingPosition(
   accessToken: string,
   identity: BookDriveIdentity,
-): Promise<{ position: NonNullable<ReaderBookBackup['position']>; chapterPageCounts?: number[] } | null> {
+): Promise<{ position: NonNullable<ReaderBookBackup['position']>; chapterPageCounts?: number[]; printedPages?: number } | null> {
   const folderId = await getBookFolderId(accessToken, identity);
   const file = await findFile(accessToken, READING_FILE_NAME, folderId);
   if (!file) return null;
   const data: unknown = JSON.parse(await (await downloadFile(accessToken, file)).text());
   if (!isReadingFile(data, identity.bookKey)) return null;
-  const reading = data as { position?: ReaderBookBackup['position']; chapterPageCounts?: number[] };
+  const reading = data as { position?: ReaderBookBackup['position']; chapterPageCounts?: number[]; printedPages?: number };
   if (!reading.position) return null;
   return {
     position: reading.position,
     ...(Array.isArray(reading.chapterPageCounts) ? { chapterPageCounts: reading.chapterPageCounts } : {}),
+    ...(typeof reading.printedPages === 'number' && reading.printedPages > 0 ? { printedPages: reading.printedPages } : {}),
   };
 }
 

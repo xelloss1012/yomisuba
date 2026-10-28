@@ -209,8 +209,11 @@ de los datos de Drive (al abrir la app, al iniciar sesión, al volver a ella y, 
 mucho cada dos minutos, antes de guardar) se comprueba ese indicador:
 - Si lo escribió este mismo dispositivo, todo sigue como siempre.
 - Si lo escribió otro (o una versión anterior que no lo indicaba), se pregunta
-  antes de nada, indicando qué dispositivo guardó, cuándo y a qué página pasaría
-  el libro que se está leyendo. «Cargar los datos de Drive» aplica los ajustes, el
+  antes de nada, indicando qué dispositivo guardó, cuándo y dónde quedaría el libro
+  que se está leyendo: una tabla compara la posición de este dispositivo con la de
+  Drive en cada sistema de paginación (páginas de este dispositivo, páginas
+  impresas, porcentaje y capítulo), con el que se usa resaltado y en primer lugar.
+  «Cargar los datos de Drive» aplica los ajustes, el
   progreso, los marcadores y las notas de Drive; «Mantener los de este dispositivo»
   no carga nada y lo que se guarde en Drive desde entonces será lo de este
   dispositivo. En ambos casos el dispositivo pasa a ser el último que escribió.

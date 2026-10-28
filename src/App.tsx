@@ -42,7 +42,7 @@ import {
 } from './utils/googleDriveBackup';
 import { getGoogleDriveAuthDiagnostics } from './utils/googleDriveDiagnostics';
 import { writeClipboardText } from './utils/readerClipboard';
-import { bookPage, BookPosition, describeDevice, getDeviceId } from './utils/driveDevice';
+import { BookPosition, comparePositions, describeDevice, getDeviceId, latestPaginationCounts } from './utils/driveDevice';
 import { DriveConflict, DriveConflictModal } from './components/DriveConflictModal';
 
 const SETTINGS_STORAGE_KEY = 'yomisuba_settings_v1';
@@ -218,14 +218,6 @@ export const App: React.FC = () => {
     savedAt: new Date().toISOString(),
   });
 
-  const describeBookPosition = (position: BookPosition, chapterPageCounts: number[] | undefined): string => {
-    const language = settingsRef.current.language;
-    const whole = bookPage(position, chapterPageCounts);
-    return whole
-      ? t('driveConflict.page', language, whole)
-      : t('driveConflict.chapterPage', language, { page: position.page + 1, chapter: position.spineIndex + 1 });
-  };
-
   /** Asks whether what another device saved replaces this device's data, saying where the book being read would go. */
   const askDriveConflict = async (session: GoogleDriveSession, writer: DriveWriter | null): Promise<'load' | 'keep'> => {
     let book: DriveConflict['book'];
@@ -247,19 +239,43 @@ export const App: React.FC = () => {
         } catch {
           // Without a position here the question only says where Drive's is.
         }
-        const counts = remote?.chapterPageCounts;
-        book = {
-          title: identity.title,
-          to: remote ? describeBookPosition(remote.position, counts) : null,
-          from: local ? describeBookPosition(local, counts) : null,
-        };
+        let printedPages = remote?.printedPages;
+        try {
+          const storedPrinted = Number(localStorage.getItem(`${bookKey}_printed_pages`));
+          if (storedPrinted > 0) printedPages = storedPrinted;
+        } catch {
+          // Drive's count of printed pages, if any, is used.
+        }
+        let localCounts: number[] | undefined;
+        try {
+          localCounts = latestPaginationCounts(localStorage.getItem(`${bookKey}_pagination`));
+        } catch {
+          // Pages are then counted with Drive's layout.
+        }
+        if (remote || local) {
+          book = {
+            title: identity.title,
+            comparison: comparePositions({
+              local,
+              localCounts,
+              remote: remote?.position ?? null,
+              remoteCounts: remote?.chapterPageCounts,
+              printedPages,
+            }),
+          };
+        }
       }
     } catch {
       // The question still makes sense without the page.
     }
     return new Promise((resolve) => {
       driveConflictAnswerRef.current = resolve;
-      setDriveConflict({ deviceName: writer?.deviceName ?? null, savedAt: writer?.savedAt ?? null, book });
+      setDriveConflict({
+        deviceName: writer?.deviceName ?? null,
+        savedAt: writer?.savedAt ?? null,
+        paginationMode: settingsRef.current.paginationMode,
+        book,
+      });
     });
   };
 

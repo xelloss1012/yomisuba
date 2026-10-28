@@ -19,7 +19,7 @@ try {
     setItem: (key, value) => storage.set(key, String(value)),
     removeItem: (key) => storage.delete(key),
   };
-  const { bookPage, describeDevice, getDeviceId } = await server.ssrLoadModule('/src/utils/driveDevice.ts');
+  const { bookPage, comparePositions, describeDevice, getDeviceId, latestPaginationCounts } = await server.ssrLoadModule('/src/utils/driveDevice.ts');
 
   // --- The identifier of this device is made once and kept ---------------------------
   const id = getDeviceId();
@@ -46,7 +46,42 @@ try {
   assert.equal(bookPage({ spineIndex: 1, page: 3 }, undefined), null);
   assert.equal(bookPage({ spineIndex: 1, page: 3 }, []), null);
 
-  console.log('PASS: the device keeps one identifier, is named by model or system and browser, and positions are placed in the whole book.');
+  // --- This device's last measured layout ---------------------------------------------------
+  assert.deepEqual(latestPaginationCounts(JSON.stringify({
+    a: { counts: [1, 2], savedAt: 1 },
+    b: { counts: [3, 4], savedAt: 5 },
+    c: { counts: [0, 4], savedAt: 9 },
+  })), [3, 4], 'the newest valid layout');
+  assert.equal(latestPaginationCounts(null), undefined);
+  assert.equal(latestPaginationCounts('not json'), undefined);
+
+  // --- Positions here and in Drive, in each way of counting pages ---------------------------
+  // Here the book has 2 + 10 + 20 = 32 pages; the other device, with a bigger screen, 1 + 5 + 10 = 16.
+  const here = [2, 10, 20];
+  const there = [1, 5, 10];
+  const compared = comparePositions({
+    local: { spineIndex: 1, page: 4, pageCount: 10 },
+    localCounts: here,
+    remote: { spineIndex: 2, page: 4, pageCount: 10 },
+    remoteCounts: there,
+    printedPages: 200,
+  });
+  assert.deepEqual(compared.device, { from: 7, to: 21, total: 32, layout: 'here' }, 'both counted with the pages of this device');
+  assert.deepEqual(compared.percent, { from: 22, to: 69 }, 'each position with its own layout');
+  assert.deepEqual(compared.printed, { from: 40, to: 134, total: 200 });
+  assert.deepEqual(compared.chapter, { from: 2, to: 3, total: 3 });
+
+  const withoutHere = comparePositions({ local: { spineIndex: 0, page: 0 }, remote: { spineIndex: 1, page: 2, pageCount: 5 }, remoteCounts: there });
+  assert.equal(withoutHere.device.layout, 'drive', 'without a layout here, the one in Drive is used');
+  assert.deepEqual([withoutHere.device.from, withoutHere.device.to, withoutHere.device.total], [1, 4, 16]);
+  assert.equal(withoutHere.printed, null);
+
+  const nothingHere = comparePositions({ local: null, remote: { spineIndex: 1, page: 0 } });
+  assert.equal(nothingHere.device, null);
+  assert.deepEqual(nothingHere.percent, { from: null, to: null });
+  assert.deepEqual(nothingHere.chapter, { from: null, to: 2, total: null });
+
+  console.log('PASS: the device keeps one identifier, is named by model or system and browser, positions are placed in the whole book and compared in each way of counting pages.');
 } finally {
   await server.close();
 }
