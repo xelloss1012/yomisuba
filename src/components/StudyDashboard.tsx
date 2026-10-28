@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { BarChart3, BookOpen, Clock, CloudDownload, Download, GraduationCap, Loader2, NotebookPen, RefreshCw, Search, Star, Trash2, X } from 'lucide-react';
+import { BarChart3, BookOpen, Check, Clock, CloudDownload, Download, EyeOff, GraduationCap, Loader2, NotebookPen, RefreshCw, Repeat, RotateCcw, Search, Star, Trash2, X } from 'lucide-react';
 import { Translate, useLanguage, useT } from '../i18n/LanguageContext';
 import { RecentBook } from '../utils/recentBooks';
 import {
@@ -22,8 +22,33 @@ import { getHistoryEntryResponse } from '../utils/translationHistory';
 import { classifyWord } from '../utils/wordLevels';
 import { useWordLevels, WordLevelBadge } from './WordLevelBadge';
 import { getKindLabel } from './TranslationHistoryModal';
+import { formatDue, StudyReview } from './StudyReview';
+import {
+  answer,
+  countStatuses,
+  Grade,
+  isDue,
+  markIgnored,
+  markKnown,
+  readStudyProgress,
+  resetCard,
+  reviewQueue,
+  setCard,
+  statusOf,
+  StudyProgress,
+  StudyStatus,
+  writeStudyProgress,
+} from '../utils/studyProgress';
 
-type Tab = 'summary' | 'vocabulary' | 'notes' | 'history' | 'searches';
+type Tab = 'summary' | 'review' | 'vocabulary' | 'notes' | 'history' | 'searches';
+type StatusFilter = 'all' | 'due' | StudyStatus;
+
+const STATUS_STYLES: Record<StudyStatus, string> = {
+  new: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300',
+  learning: 'bg-amber-50 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
+  known: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
+  ignored: 'bg-zinc-100 text-zinc-400 line-through dark:bg-zinc-800 dark:text-zinc-500',
+};
 
 export interface DriveStudyState {
   status: 'idle' | 'loading' | 'done' | 'error';
@@ -90,6 +115,19 @@ export const StudyDashboard: React.FC<Props> = ({
   const [expanded, setExpanded] = useState<string | null>(null);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [exportFailed, setExportFailed] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  // What is known of each word; read again whenever the dashboard opens (Drive may have brought changes).
+  const [progress, setProgress] = useState<StudyProgress>(readStudyProgress);
+  useEffect(() => {
+    if (isOpen) setProgress(readStudyProgress());
+  }, [isOpen]);
+  const updateProgress = (update: (current: StudyProgress) => StudyProgress) => {
+    setProgress((current) => {
+      const next = update(current);
+      writeStudyProgress(next);
+      return next;
+    });
+  };
 
   const shelf = useMemo(() => new Map(recentBooks.map((book) => [bookKeyOf(book.title, book.creator), book])), [recentBooks]);
 
@@ -111,7 +149,7 @@ export const StudyDashboard: React.FC<Props> = ({
     setShown(PAGE_SIZE);
     setExpanded(null);
     setExportMenuOpen(false);
-  }, [tab, query, bookFilter, sort, onlyWithNote]);
+  }, [tab, query, bookFilter, sort, onlyWithNote, statusFilter]);
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -124,11 +162,20 @@ export const StudyDashboard: React.FC<Props> = ({
 
   const vocabulary = useMemo(() => (data
     ? sortVocabulary(data.vocabulary, sort).filter((item) => inBook(item.books)
+      && (statusFilter === 'all'
+        || (statusFilter === 'due' ? isDue(progress.cards[item.key], Date.now()) : statusOf(progress.cards[item.key]) === statusFilter))
       && matches(query, item.word, item.reading, item.favorite.query, getHistoryEntryResponse(item.favorite, language),
         ...item.contexts.map((context) => context.text)))
     : []),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [data, sort, query, bookFilter, language]);
+  [data, sort, query, bookFilter, language, statusFilter, progress]);
+
+  // New words are taken oldest first: in the order they were met while reading.
+  const reviewItems = useMemo(() => (data ? [...data.vocabulary].sort((a, b) => a.firstSavedAt - b.firstSavedAt) : []), [data]);
+  const reviewCounts = useMemo(() => {
+    const queue = reviewQueue(reviewItems.map((item) => item.key), progress, Date.now());
+    return { ...countStatuses(reviewItems.map((item) => item.key), progress, Date.now()), toReview: queue.due.length + queue.fresh.length };
+  }, [reviewItems, progress]);
 
   const chapterLabel = (spineIndex: number) => `${t('common.chapter')} ${spineIndex + 1}`;
   const notes = useMemo(() => (data
@@ -202,6 +249,7 @@ export const StudyDashboard: React.FC<Props> = ({
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode; count?: number }[] = [
     { id: 'summary', label: t('study.tabSummary'), icon: <BarChart3 className="h-3.5 w-3.5" /> },
+    { id: 'review', label: t('study.tabReview'), icon: <Repeat className="h-3.5 w-3.5" />, count: reviewCounts.toReview },
     { id: 'vocabulary', label: t('study.tabVocabulary'), icon: <Star className="h-3.5 w-3.5" />, count: data.vocabulary.length },
     { id: 'notes', label: t('study.tabNotes'), icon: <NotebookPen className="h-3.5 w-3.5" />, count: data.notes.length },
     { id: 'history', label: t('study.tabHistory'), icon: <Clock className="h-3.5 w-3.5" />, count: data.history.length },
@@ -267,11 +315,13 @@ export const StudyDashboard: React.FC<Props> = ({
       { label: t('study.statWords'), value: data.vocabulary.length },
       { label: t('study.statNotes'), value: data.notes.filter((note) => note.annotation.note).length },
       { label: t('study.statLookups'), value: data.lookups.reduce((sum, item) => sum + item.count, 0) },
+      { label: t('study.statDue'), value: reviewCounts.toReview },
+      { label: t('study.statKnown'), value: reviewCounts.known },
     ];
     return (
       <div className="space-y-5">
         {renderDrive()}
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {tiles.map((tile) => (
             <div key={tile.label} className="rounded-xl border border-zinc-200 bg-zinc-50/60 px-3 py-2.5 dark:border-zinc-800 dark:bg-zinc-800/30">
               <div className="text-xl font-bold tabular-nums text-zinc-900 dark:text-zinc-100">{tile.value.toLocaleString(language)}</div>
@@ -346,6 +396,41 @@ export const StudyDashboard: React.FC<Props> = ({
     );
   };
 
+  const statusLabel = (key: string): string => {
+    const card = progress.cards[key];
+    const status = statusOf(card);
+    if (status === 'learning' || status === 'known') {
+      const now = Date.now();
+      const when = card && card.due > now ? formatDue(card.due, now, language) : '';
+      return when ? t('study.statusNext', { status: t(`study.status_${status}`), when }) : t('study.statusDueNow');
+    }
+    return t(`study.status_${status}`);
+  };
+
+  const renderCardActions = (key: string) => {
+    const card = progress.cards[key];
+    const status = statusOf(card);
+    const action = (label: string, icon: React.ReactNode, run: () => void) => (
+      <button
+        type="button"
+        onClick={run}
+        className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-zinc-200 px-2 text-[11px] font-semibold text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+      >
+        {icon} {label}
+      </button>
+    );
+    const now = Date.now();
+    return (
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {status !== 'known' && action(t('study.markKnown'), <Check className="h-3.5 w-3.5" />, () => updateProgress((current) => setCard(current, key, markKnown(current.cards[key], now))))}
+        {status === 'ignored'
+          ? action(t('study.unignore'), <RotateCcw className="h-3.5 w-3.5" />, () => updateProgress((current) => setCard(current, key, resetCard(now))))
+          : action(t('study.ignore'), <EyeOff className="h-3.5 w-3.5" />, () => updateProgress((current) => setCard(current, key, markIgnored(current.cards[key], now))))}
+        {status !== 'new' && status !== 'ignored' && action(t('study.reset'), <RotateCcw className="h-3.5 w-3.5" />, () => updateProgress((current) => setCard(current, key, resetCard(now))))}
+      </div>
+    );
+  };
+
   const renderVocabulary = () => (
     <>
       <ul className="space-y-2">
@@ -368,6 +453,9 @@ export const StudyDashboard: React.FC<Props> = ({
                       {item.lookups} {t('history.queries')}
                     </span>
                   )}
+                  <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${STATUS_STYLES[statusOf(progress.cards[item.key])]}`}>
+                    {statusLabel(item.key)}
+                  </span>
                 </span>
                 <span className={`mt-1 block whitespace-pre-line text-xs text-zinc-600 dark:text-zinc-300 ${isExpanded ? '' : 'line-clamp-2'}`}>
                   {isExpanded ? getHistoryEntryResponse(item.favorite, language) : favoriteFields(item.favorite).meaning}
@@ -380,6 +468,7 @@ export const StudyDashboard: React.FC<Props> = ({
                 ))}
                 {bookChips(item.books)}
               </button>
+              {isExpanded && renderCardActions(item.key)}
             </li>
           );
         })}
@@ -512,7 +601,7 @@ export const StudyDashboard: React.FC<Props> = ({
           ))}
         </div>
 
-        {tab !== 'summary' && !isEmpty && (
+        {tab !== 'summary' && tab !== 'review' && !isEmpty && (
           <div className="flex flex-wrap items-center gap-2 border-b border-zinc-100 px-3 py-2 dark:border-zinc-800/80">
             <input
               type="search"
@@ -531,6 +620,21 @@ export const StudyDashboard: React.FC<Props> = ({
               <option value="">{t('study.allBooks')}</option>
               {data.books.map((book) => <option key={book.bookKey} value={book.bookKey}>{book.title}</option>)}
             </select>
+            {tab === 'vocabulary' && (
+              <select
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
+                aria-label={t('study.statusLabel')}
+                className="min-h-9 rounded-lg border border-zinc-300 bg-white px-2 text-xs text-zinc-800 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
+              >
+                <option value="all">{t('study.statusAll')}</option>
+                <option value="due">{t('study.statusDue')}</option>
+                <option value="new">{t('study.status_new')}</option>
+                <option value="learning">{t('study.status_learning')}</option>
+                <option value="known">{t('study.status_known')}</option>
+                <option value="ignored">{t('study.status_ignored')}</option>
+              </select>
+            )}
             {tab === 'vocabulary' && (
               <select
                 value={sort}
@@ -588,6 +692,14 @@ export const StudyDashboard: React.FC<Props> = ({
               <p className="px-4 py-12 text-center text-sm text-zinc-500 dark:text-zinc-400">{t('study.empty')}</p>
             </div>
           ) : tab === 'summary' ? renderSummary()
+            : tab === 'review' ? (
+              <StudyReview
+                items={reviewItems}
+                progress={progress}
+                onAnswer={(key: string, grade: Grade) => updateProgress((current) => answer(current, key, grade, Date.now()))}
+                onChangeNewPerDay={(count) => updateProgress((current) => ({ ...current, newPerDay: count, settingsUpdatedAt: Date.now() }))}
+              />
+            )
             : listEmpty ? <p className="py-12 text-center text-sm text-zinc-500 dark:text-zinc-400">{t('study.noResults')}</p>
               : tab === 'vocabulary' ? renderVocabulary()
                 : tab === 'notes' ? renderNotes()

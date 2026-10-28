@@ -28,6 +28,8 @@ import {
   DriveWriter,
   getGoogleDriveLastWriter,
   getGoogleDriveReadingPosition,
+  getGoogleDriveStudyProgress,
+  saveGoogleDriveStudyProgress,
   removePendingGoogleDriveReaderData,
   bookFolderName,
   DriveStudyBook,
@@ -50,6 +52,7 @@ import { BookPosition, comparePositions, describeDevice, getDeviceId, latestPagi
 import { DriveConflict, DriveConflictModal } from './components/DriveConflictModal';
 import { DeleteBookChoice, DeleteBookModal, DeleteBookRequest } from './components/DeleteBookModal';
 import { bookDataKeys, bookKeyOf, listStoredBooks } from './utils/studyData';
+import { mergeProgress, readStudyProgress, STUDY_PROGRESS_EVENT, writeStudyProgress } from './utils/studyProgress';
 import type { DriveStudyState } from './components/StudyDashboard';
 
 const SETTINGS_STORAGE_KEY = 'yomisuba_settings_v1';
@@ -83,6 +86,8 @@ const FRESH_DEVICE = (() => {
 
 // How often, at most, saving checks whether another device has written to Drive in between.
 const WRITER_CHECK_INTERVAL_MS = 2 * 60 * 1000;
+// The state of study is copied to Drive this long after its last change.
+const STUDY_UPLOAD_DELAY_MS = 3_000;
 
 const isNightTime = () => {
   const hour = new Date().getHours();
@@ -378,6 +383,7 @@ export const App: React.FC = () => {
               // Saving still works; the next check simply finds no claim of this device.
             }
             lastWriterCheckRef.current = Date.now();
+            await syncStudyProgress(session, choice);
             if (choice === 'load') {
               await reopenCurrentBook();
               // What the closed reader left queued is older than what was just loaded.
@@ -433,6 +439,56 @@ export const App: React.FC = () => {
     void loadDriveData(session, true);
     return false;
   };
+
+  /**
+   * The state of study of the vocabulary, once the device question is settled: "load" joins Drive's with
+   * this device's word by word (the latest review of each word wins), "keep" leaves Drive's aside; either
+   * way the result is what Drive keeps from then on.
+   */
+  const syncStudyProgress = async (session: GoogleDriveSession, choice: 'load' | 'keep') => {
+    try {
+      let progress = readStudyProgress();
+      if (choice === 'load') {
+        const remote = await getGoogleDriveStudyProgress(session.accessToken);
+        if (remote) {
+          progress = mergeProgress(progress, remote);
+          writeStudyProgress(progress, false);
+        }
+      }
+      await saveGoogleDriveStudyProgress(session.accessToken, progress);
+    } catch {
+      // The next change of the progress tries again.
+    }
+  };
+
+  // Every change of the state of study is copied to Drive a few seconds later, as long as this device is
+  // still the one whose data Drive keeps.
+  useEffect(() => {
+    let timer: number | undefined;
+    const upload = () => {
+      timer = undefined;
+      const session = googleDriveSessionRef.current;
+      if (!session || !navigator.onLine || !driveDecidedRef.current) return;
+      void checkDriveWriter(session).then((stillWriter) => {
+        if (stillWriter) return saveGoogleDriveStudyProgress(session.accessToken, readStudyProgress());
+        return undefined;
+      }).catch(() => undefined);
+    };
+    const onChange = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(upload, STUDY_UPLOAD_DELAY_MS);
+    };
+    window.addEventListener(STUDY_PROGRESS_EVENT, onChange);
+    return () => {
+      window.removeEventListener(STUDY_PROGRESS_EVENT, onChange);
+      if (timer !== undefined) {
+        window.clearTimeout(timer);
+        upload();
+      }
+    };
+    // The handler reads everything it needs from refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleRetrySync = () => {
     setSyncError(null);

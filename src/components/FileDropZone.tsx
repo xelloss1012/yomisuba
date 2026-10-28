@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { UploadCloud, Sparkles, FileText, Languages, Smartphone, Github, ShieldCheck, Library, ClipboardPaste, Globe, GraduationCap, ChevronRight } from 'lucide-react';
 import { createSampleJapaneseEpub } from '../utils/sampleBook';
@@ -10,6 +10,8 @@ import { BookLibraryModal } from './BookLibraryModal';
 import { PasteTextModal } from './PasteTextModal';
 import { ImportUrlModal } from './ImportUrlModal';
 import { DriveStudyState, StudyDashboard } from './StudyDashboard';
+import { bookKeyOf, collectStudyData, listStoredBooks } from '../utils/studyData';
+import { readStudyProgress, reviewQueue } from '../utils/studyProgress';
 import { importUrlAsEpub, UrlImportError } from '../utils/urlImport';
 import { textToEpub } from '../utils/textToEpub';
 import { importFileAsEpub, isImportable } from '../utils/importFile';
@@ -88,6 +90,18 @@ export const FileDropZone: React.FC<Props> = ({
   const [isPasteOpen, setIsPasteOpen] = useState(false);
   const [isUrlOpen, setIsUrlOpen] = useState(false);
   const [isStudyOpen, setIsStudyOpen] = useState(false);
+  // Words to review now, for the button of the vocabulary panel: read again when the panel closes.
+  const wordsToReview = useMemo(() => {
+    if (isStudyOpen) return 0;
+    try {
+      const known = recentBooks.map((book) => ({ bookKey: bookKeyOf(book.title, book.creator), title: book.title, creator: book.creator }));
+      const keys = collectStudyData(localStorage, listStoredBooks(localStorage, known)).vocabulary.map((item) => item.key);
+      const queue = reviewQueue(keys, readStudyProgress(), Date.now());
+      return queue.due.length + queue.fresh.length;
+    } catch {
+      return 0;
+    }
+  }, [isStudyOpen, recentBooks]);
   const fileInput = useRef<HTMLInputElement>(null);
   const isNative = Capacitor.isNativePlatform();
   const [updateChecks, setUpdateChecks] = useState(isUpdateCheckEnabled);
@@ -224,6 +238,11 @@ export const FileDropZone: React.FC<Props> = ({
             <span className="block text-xs font-semibold text-indigo-900 dark:text-indigo-200">{t('study.button')}</span>
             <span className="block text-[11px] text-indigo-700/80 dark:text-indigo-300/80">{t('study.buttonHint')}</span>
           </span>
+          {wordsToReview > 0 && (
+            <span className="shrink-0 rounded-full bg-indigo-600 px-2 py-0.5 text-[11px] font-semibold text-white">
+              {t('study.dueBadge', { count: wordsToReview })}
+            </span>
+          )}
           <ChevronRight className="h-4 w-4 shrink-0 text-indigo-400" />
         </button>
 

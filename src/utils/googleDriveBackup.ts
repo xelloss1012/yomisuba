@@ -8,6 +8,7 @@ import { DictionaryHistoryData } from './translationHistory';
 import { FREQUENT_QUERIES_VERSION, FrequentQuery } from './frequentQueries';
 import { AVAILABLE_LANGUAGES, TRANSLATION_LANGUAGES, tr } from './i18n';
 import { FURIGANA_MODES } from './furigana';
+import { parseProgress, StudyProgress } from './studyProgress';
 import {
   describeGoogleDriveAuthError,
   recordGoogleDriveAuthDiagnostic,
@@ -656,6 +657,30 @@ export async function claimGoogleDriveWriter(accessToken: string, writer: DriveW
     DEVICE_FILE_NAME,
     SETTINGS_FILE_TYPE,
     new Blob([JSON.stringify({ formatVersion: 1, writer })], { type: SETTINGS_FILE_TYPE }),
+    file,
+  );
+}
+
+const STUDY_FILE_NAME = 'vocabulary.json';
+
+/** The state of study of the vocabulary as Drive has it, or null when there is none (or it is damaged). */
+export async function getGoogleDriveStudyProgress(accessToken: string): Promise<StudyProgress | null> {
+  const file = await findFile(accessToken, STUDY_FILE_NAME);
+  if (!file) return null;
+  try {
+    return parseProgress(JSON.parse(await (await downloadFile(accessToken, file)).text()));
+  } catch {
+    return null;
+  }
+}
+
+export async function saveGoogleDriveStudyProgress(accessToken: string, progress: StudyProgress): Promise<void> {
+  const file = await findFile(accessToken, STUDY_FILE_NAME);
+  await uploadFile(
+    accessToken,
+    STUDY_FILE_NAME,
+    SETTINGS_FILE_TYPE,
+    new Blob([JSON.stringify(progress)], { type: SETTINGS_FILE_TYPE }),
     file,
   );
 }
