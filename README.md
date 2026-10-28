@@ -202,6 +202,21 @@ los datos locales siguen disponibles y los cambios de lectura quedan en cola
 para sincronizarse al recuperar la conexión; las peticiones a Drive tienen un
 límite de espera.
 
+**Varios dispositivos.** Drive guarda en `.yomisuba/device.json` qué dispositivo
+escribió por última vez (un identificador aleatorio de la instalación y un nombre
+legible, como «Android · Pixel 7»). Antes de cualquier carga o guardado automático
+de los datos de Drive (al abrir la app, al iniciar sesión, al volver a ella y, como
+mucho cada dos minutos, antes de guardar) se comprueba ese indicador:
+- Si lo escribió este mismo dispositivo, todo sigue como siempre.
+- Si lo escribió otro (o una versión anterior que no lo indicaba), se pregunta
+  antes de nada, indicando qué dispositivo guardó, cuándo y a qué página pasaría
+  el libro que se está leyendo. «Cargar los datos de Drive» aplica los ajustes, el
+  progreso, los marcadores y las notas de Drive; «Mantener los de este dispositivo»
+  no carga nada y lo que se guarde en Drive desde entonces será lo de este
+  dispositivo. En ambos casos el dispositivo pasa a ser el último que escribió.
+- Un dispositivo recién instalado carga los datos de Drive sin preguntar: no tiene
+  nada propio que perder.
+
 ### Fuentes de lectura distintas de EPUB
 
 **Hecho (fase 1):** texto pegado (botón «Pegar texto») y archivos `.txt`. Cada entrada se convierte al importarla en un EPUB (`src/utils/textToEpub.ts`), de modo que el lector, «Mis libros», Drive y los datos de lectura funcionan sin cambios. Se detecta la codificación (UTF-8, Shift_JIS, EUC-JP, UTF-16) y el idioma (el japonés se abre en vertical). Los textos con notación de Aozora Bunko se convierten: `漢字《かんじ》` pasa a furigana, las notas `［＃…］` se interpretan (encabezados, puntos de énfasis) o se quitan, y la nota de `底本` queda como última sección. Los textos largos se dividen en secciones, por encabezados o por tamaño.

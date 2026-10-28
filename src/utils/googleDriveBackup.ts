@@ -32,7 +32,9 @@ const MAX_COVER_METADATA_LENGTH = 32 * 1024;
 const DRIVE_REQUEST_TIMEOUT_MS = 12_000;
 const GOOGLE_AUTH_TIMEOUT_MS = 12_000;
 const GOOGLE_LOGIN_TIMEOUT_MS = 60_000;
-const READER_RESTORE_TIMEOUT_MS = 4_000;
+// Several requests per book: a new device (no folder cache yet) on a mobile network needs time.
+const READER_RESTORE_TIMEOUT_MS = 20_000;
+const DEVICE_FILE_NAME = 'device.json';
 
 // ─── Segmented per-book storage ───────────────────────────────────────────────
 // Each book lives in its own folder (named after the real book title) and each
@@ -377,6 +379,8 @@ async function getOrCreateDriveFolder(
       spaces: 'drive',
       pageSize: '100',
       fields: 'files(id)',
+      // Should there ever be two folders of the same name, every device picks the same one.
+      orderBy: 'createdTime',
     });
     const response = await driveRequest(accessToken, `https://www.googleapis.com/drive/v3/files?${query}`);
     const result = await response.json() as { files?: Array<{ id: string }> };
@@ -614,6 +618,73 @@ export async function restoreGoogleDriveSettings(accessToken: string): Promise<R
 export async function getGoogleDriveSettingsDate(accessToken: string): Promise<string | null> {
   const file = await findFile(accessToken, SETTINGS_FILE_NAME);
   return file?.modifiedTime || null;
+}
+
+/** The device that last wrote to Drive: another one means the copy in Drive may be newer than this device's. */
+export interface DriveWriter {
+  deviceId: string;
+  deviceName: string;
+  savedAt: string;
+}
+
+const isDriveWriter = (value: unknown): value is DriveWriter => {
+  if (!value || typeof value !== 'object') return false;
+  const writer = value as Partial<DriveWriter>;
+  return typeof writer.deviceId === 'string' && Boolean(writer.deviceId)
+    && typeof writer.deviceName === 'string'
+    && typeof writer.savedAt === 'string';
+};
+
+/** Who wrote last, or null when no device has said so yet (copies made by older versions). */
+export async function getGoogleDriveLastWriter(accessToken: string): Promise<DriveWriter | null> {
+  const file = await findFile(accessToken, DEVICE_FILE_NAME);
+  if (!file) return null;
+  try {
+    const data: unknown = JSON.parse(await (await downloadFile(accessToken, file)).text());
+    const writer = data && typeof data === 'object' ? (data as { writer?: unknown }).writer : undefined;
+    return isDriveWriter(writer) ? writer : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Records this device as the one whose data Drive now holds. */
+export async function claimGoogleDriveWriter(accessToken: string, writer: DriveWriter): Promise<void> {
+  const file = await findFile(accessToken, DEVICE_FILE_NAME);
+  await uploadFile(
+    accessToken,
+    DEVICE_FILE_NAME,
+    SETTINGS_FILE_TYPE,
+    new Blob([JSON.stringify({ formatVersion: 1, writer })], { type: SETTINGS_FILE_TYPE }),
+    file,
+  );
+}
+
+/** The reading position of a book as Drive has it, without touching anything else. */
+export async function getGoogleDriveReadingPosition(
+  accessToken: string,
+  identity: BookDriveIdentity,
+): Promise<{ position: NonNullable<ReaderBookBackup['position']>; chapterPageCounts?: number[] } | null> {
+  const folderId = await getBookFolderId(accessToken, identity);
+  const file = await findFile(accessToken, READING_FILE_NAME, folderId);
+  if (!file) return null;
+  const data: unknown = JSON.parse(await (await downloadFile(accessToken, file)).text());
+  if (!isReadingFile(data, identity.bookKey)) return null;
+  const reading = data as { position?: ReaderBookBackup['position']; chapterPageCounts?: number[] };
+  if (!reading.position) return null;
+  return {
+    position: reading.position,
+    ...(Array.isArray(reading.chapterPageCounts) ? { chapterPageCounts: reading.chapterPageCounts } : {}),
+  };
+}
+
+/** Drops the reader data waiting to be uploaded: Drive's copy was chosen over it. */
+export function clearPendingGoogleDriveReaderDataQueue(): void {
+  try {
+    localStorage.removeItem(PENDING_READER_DATA_KEY);
+  } catch {
+    // Nothing queued can be read either.
+  }
 }
 
 export async function listGoogleDriveBooks(accessToken: string): Promise<GoogleDriveBook[]> {
@@ -1193,28 +1264,31 @@ export async function restoreGoogleDriveReaderData(
       }
     };
 
-    await loadGroup('reading', READING_FILE_NAME, isReadingFile, (data) => {
-      const position = data.position as ReaderBookBackup['position'];
-      if (position) backup.position = position;
-      const printedPages = data.printedPages as number | undefined;
-      if (printedPages) backup.printedPages = printedPages;
-      const chapterPageCounts = data.chapterPageCounts as number[] | undefined;
-      if (chapterPageCounts) backup.chapterPageCounts = chapterPageCounts;
-    });
-    await loadGroup('bookmarks', BOOKMARKS_FILE_NAME, isPositionsFile, (data) => {
-      backup.bookmarks = data.items as ReaderBookBackup['bookmarks'];
-    });
-    await loadGroup('annotations', ANNOTATIONS_FILE_NAME, isAnnotationsFile, (data) => {
-      backup.annotations = data.items as ReaderBookBackup['annotations'];
-    });
-    await loadGroup('history', HISTORY_FILE_NAME, isHistoryFile, (data) => {
-      backup.translationHistory = data.translationHistory as ReaderBookBackup['translationHistory'];
-      if (data.frequentQueries) backup.frequentQueries = data.frequentQueries as FrequentQuery[];
-      if (data.frequentQueriesVersion) backup.frequentQueriesVersion = data.frequentQueriesVersion as number;
-    });
-    await loadGroup('favorites', FAVORITES_FILE_NAME, isFavoritesFile, (data) => {
-      backup.favorites = data.items as TranslationFavorite[];
-    });
+    // The groups are independent files: fetching them at once keeps a new device within the time limit.
+    await Promise.all([
+      loadGroup('reading', READING_FILE_NAME, isReadingFile, (data) => {
+        const position = data.position as ReaderBookBackup['position'];
+        if (position) backup.position = position;
+        const printedPages = data.printedPages as number | undefined;
+        if (printedPages) backup.printedPages = printedPages;
+        const chapterPageCounts = data.chapterPageCounts as number[] | undefined;
+        if (chapterPageCounts) backup.chapterPageCounts = chapterPageCounts;
+      }),
+      loadGroup('bookmarks', BOOKMARKS_FILE_NAME, isPositionsFile, (data) => {
+        backup.bookmarks = data.items as ReaderBookBackup['bookmarks'];
+      }),
+      loadGroup('annotations', ANNOTATIONS_FILE_NAME, isAnnotationsFile, (data) => {
+        backup.annotations = data.items as ReaderBookBackup['annotations'];
+      }),
+      loadGroup('history', HISTORY_FILE_NAME, isHistoryFile, (data) => {
+        backup.translationHistory = data.translationHistory as ReaderBookBackup['translationHistory'];
+        if (data.frequentQueries) backup.frequentQueries = data.frequentQueries as FrequentQuery[];
+        if (data.frequentQueriesVersion) backup.frequentQueriesVersion = data.frequentQueriesVersion as number;
+      }),
+      loadGroup('favorites', FAVORITES_FILE_NAME, isFavoritesFile, (data) => {
+        backup.favorites = data.items as TranslationFavorite[];
+      }),
+    ]);
 
     if (!present.length) return null;
     // Signal which groups exist remotely so `applyGoogleDriveReaderData` only

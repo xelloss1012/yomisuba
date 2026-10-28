@@ -23,6 +23,11 @@ import {
   updateGoogleDriveBookCover,
   ReaderBookBackup,
   applyGoogleDriveReaderData,
+  claimGoogleDriveWriter,
+  clearPendingGoogleDriveReaderDataQueue,
+  DriveWriter,
+  getGoogleDriveLastWriter,
+  getGoogleDriveReadingPosition,
   restoreGoogleDriveReaderData,
   restoreGoogleDriveSession,
   restoreGoogleDriveSettings,
@@ -37,6 +42,8 @@ import {
 } from './utils/googleDriveBackup';
 import { getGoogleDriveAuthDiagnostics } from './utils/googleDriveDiagnostics';
 import { writeClipboardText } from './utils/readerClipboard';
+import { bookPage, BookPosition, describeDevice, getDeviceId } from './utils/driveDevice';
+import { DriveConflict, DriveConflictModal } from './components/DriveConflictModal';
 
 const SETTINGS_STORAGE_KEY = 'yomisuba_settings_v1';
 
@@ -58,6 +65,18 @@ const DEFAULT_SETTINGS: ReaderSettingsState = {
   language: 'es',
 };
 
+// A device that had never been used: nothing of its own can be lost by loading what Drive has.
+const FRESH_DEVICE = (() => {
+  try {
+    return !localStorage.getItem(SETTINGS_STORAGE_KEY);
+  } catch {
+    return false;
+  }
+})();
+
+// How often, at most, saving checks whether another device has written to Drive in between.
+const WRITER_CHECK_INTERVAL_MS = 2 * 60 * 1000;
+
 const isNightTime = () => {
   const hour = new Date().getHours();
   return hour >= 20 || hour < 8;
@@ -71,6 +90,15 @@ export const App: React.FC = () => {
   const [currentBookId, setCurrentBookId] = useState<string | null>(null);
   const openBookRequestIdRef = React.useRef(0);
   const isOpeningSharedRef = React.useRef(false);
+  // Nothing is loaded from or saved to Drive automatically until it is settled whose data Drive keeps:
+  // this device's, or what another device saved (the person is asked).
+  const driveDecidedRef = React.useRef(false);
+  const driveDecisionRef = React.useRef<Promise<void> | null>(null);
+  const lastWriterCheckRef = React.useRef(0);
+  const [driveConflict, setDriveConflict] = useState<DriveConflict | null>(null);
+  const driveConflictAnswerRef = React.useRef<((choice: 'load' | 'keep') => void) | null>(null);
+  const currentEpubRef = React.useRef<ParsedEpub | null>(null);
+  const currentBookIdRef = React.useRef<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -90,6 +118,8 @@ export const App: React.FC = () => {
   const driveSessionRefreshPromiseRef = React.useRef<Promise<void> | null>(null);
   googleDriveSessionRef.current = googleDriveSession;
   recentBooksRef.current = recentBooks;
+  currentEpubRef.current = currentEpub;
+  currentBookIdRef.current = currentBookId;
 
   const [settings, setSettings] = useState<ReaderSettingsState>(() => {
     try {
@@ -100,6 +130,8 @@ export const App: React.FC = () => {
     }
     return DEFAULT_SETTINGS;
   });
+  const settingsRef = React.useRef(settings);
+  settingsRef.current = settings;
   const [nightTime, setNightTime] = useState(isNightTime);
   // Errors thrown by the utilities are written in this language.
   setActiveLanguage(settings.language);
@@ -127,8 +159,10 @@ export const App: React.FC = () => {
     if (!googleDriveSession || !driveSettingsReady || settingsRevision === 0 || !isOnline) return;
     const timer = window.setTimeout(() => {
       setIsDriveBusy(true);
-      void saveGoogleDriveSettings(googleDriveSession.accessToken, settings)
+      void checkDriveWriter(googleDriveSession)
+        .then((stillWriter) => (stillWriter ? saveGoogleDriveSettings(googleDriveSession.accessToken, settings) : null))
         .then((date) => {
+          if (date === null) return;
           setGoogleDriveSettingsDate(date);
           setSyncError(null);
         })
@@ -178,14 +212,93 @@ export const App: React.FC = () => {
     }
   }, [isOnline, googleDriveSession, syncError, settings.language]);
 
+  const thisDevice = (): DriveWriter => ({
+    deviceId: getDeviceId(),
+    deviceName: describeDevice(navigator.userAgent),
+    savedAt: new Date().toISOString(),
+  });
+
+  const describeBookPosition = (position: BookPosition, chapterPageCounts: number[] | undefined): string => {
+    const language = settingsRef.current.language;
+    const whole = bookPage(position, chapterPageCounts);
+    return whole
+      ? t('driveConflict.page', language, whole)
+      : t('driveConflict.chapterPage', language, { page: position.page + 1, chapter: position.spineIndex + 1 });
+  };
+
+  /** Asks whether what another device saved replaces this device's data, saying where the book being read would go. */
+  const askDriveConflict = async (session: GoogleDriveSession, writer: DriveWriter | null): Promise<'load' | 'keep'> => {
+    let book: DriveConflict['book'];
+    try {
+      const epub = currentEpubRef.current;
+      const lastBookId = getLastBookId();
+      const last = lastBookId ? recentBooksRef.current.find((item) => item.id === lastBookId) : undefined;
+      const identity = epub
+        ? { title: epub.metadata.title, creator: epub.metadata.creator }
+        : last ? { title: last.title, creator: last.creator } : null;
+      if (identity) {
+        const bookKey = `yomisuba_book_${encodeURIComponent(`${identity.title}|${identity.creator}`)}`;
+        const remote = await getGoogleDriveReadingPosition(session.accessToken, { bookKey, ...identity });
+        let local: BookPosition | null = null;
+        try {
+          const stored: unknown = JSON.parse(localStorage.getItem(`${bookKey}_position`) || 'null');
+          if (stored && typeof stored === 'object' && typeof (stored as BookPosition).spineIndex === 'number'
+            && typeof (stored as BookPosition).page === 'number') local = stored as BookPosition;
+        } catch {
+          // Without a position here the question only says where Drive's is.
+        }
+        const counts = remote?.chapterPageCounts;
+        book = {
+          title: identity.title,
+          to: remote ? describeBookPosition(remote.position, counts) : null,
+          from: local ? describeBookPosition(local, counts) : null,
+        };
+      }
+    } catch {
+      // The question still makes sense without the page.
+    }
+    return new Promise((resolve) => {
+      driveConflictAnswerRef.current = resolve;
+      setDriveConflict({ deviceName: writer?.deviceName ?? null, savedAt: writer?.savedAt ?? null, book });
+    });
+  };
+
+  const answerDriveConflict = (choice: 'load' | 'keep') => {
+    setDriveConflict(null);
+    const answer = driveConflictAnswerRef.current;
+    driveConflictAnswerRef.current = null;
+    answer?.(choice);
+  };
+
+  /**
+   * Whose data Drive keeps. The same device, or a device that has nothing yet, loads it as always;
+   * after another device (or an older version that did not say which) the person decides.
+   */
+  const decideDriveSync = async (
+    session: GoogleDriveSession,
+    writer: DriveWriter | null,
+    driveHasData: boolean,
+  ): Promise<'load' | 'keep'> => {
+    if (writer?.deviceId === getDeviceId()) return 'load';
+    if (!writer && (FRESH_DEVICE || !driveHasData)) return 'load';
+    return askDriveConflict(session, writer);
+  };
+
+  /** Opens again the book being read, so that it shows the data just taken from Drive. */
+  const reopenCurrentBook = async () => {
+    const id = currentBookIdRef.current;
+    if (!id) return;
+    const book = await getRecentBook(id);
+    if (book) await openBookRef.current(book.blob, book.id, book.name, true);
+  };
+
   const loadDriveData = async (session: GoogleDriveSession, restoreSettings = true): Promise<void> => {
     setIsDriveBusy(true);
     try {
-      const settingsRevisionAtStart = settingsRevisionRef.current;
-      if (restoreSettings) setDriveSettingsReady(false);
-      const [settingsDateResult, booksResult] = await Promise.allSettled([
+      const [settingsDateResult, booksResult, writerResult] = await Promise.allSettled([
         getGoogleDriveSettingsDate(session.accessToken),
         listGoogleDriveBooks(session.accessToken),
+        getGoogleDriveLastWriter(session.accessToken),
       ]);
 
       if (settingsDateResult.status === 'fulfilled') {
@@ -195,38 +308,77 @@ export const App: React.FC = () => {
         setGoogleDriveBooks(booksResult.value);
       }
 
-      let settingsLoaded = false;
-      if (settingsDateResult.status === 'fulfilled') {
-        if (!restoreSettings) {
-          settingsLoaded = true;
-        } else if (!settingsDateResult.value) {
-          settingsLoaded = restoreSettings;
-        } else if (restoreSettings) {
+      const writer = writerResult.status === 'fulfilled' ? writerResult.value : null;
+      // Another device has written since this one settled it: ask again before loading or saving anything.
+      const anotherWriter = Boolean(writer && writer.deviceId !== getDeviceId());
+      const mustDecide = restoreSettings || !driveDecidedRef.current || anotherWriter;
+      if (mustDecide && settingsDateResult.status === 'fulfilled' && writerResult.status === 'fulfilled') {
+        if (driveDecisionRef.current) {
+          await driveDecisionRef.current;
+        } else {
+          const settingsDate = settingsDateResult.value;
+          const decision = (async () => {
+            driveDecidedRef.current = false;
+            setDriveSettingsReady(false);
+            const choice = await decideDriveSync(session, writer, Boolean(settingsDate));
+            let settingsLoaded = choice === 'keep' || !settingsDate;
+            if (choice === 'load') {
+              clearPendingGoogleDriveReaderDataQueue();
+              if (settingsDate) {
+                try {
+                  const restored = await restoreGoogleDriveSettings(session.accessToken);
+                  // The direction of the text comes from the book being read, not from the other device.
+                  setSettings((current) => ({
+                    ...DEFAULT_SETTINGS,
+                    ...restored,
+                    ...(currentEpubRef.current
+                      ? { writingMode: current.writingMode, progressionDirection: current.progressionDirection }
+                      : {}),
+                  }));
+                  settingsLoaded = true;
+                } catch (error) {
+                  if (navigator.onLine) {
+                    setSyncError(t('sync.restoreSettingsError', settingsRef.current.language, { message: error instanceof Error ? error.message : String(error) }));
+                  }
+                }
+              }
+            }
+            // Undecided, nothing is loaded and nothing is saved: the next attempt asks again.
+            if (!settingsLoaded) return;
+            try {
+              await claimGoogleDriveWriter(session.accessToken, thisDevice());
+            } catch {
+              // Saving still works; the next check simply finds no claim of this device.
+            }
+            lastWriterCheckRef.current = Date.now();
+            if (choice === 'load') {
+              await reopenCurrentBook();
+              // What the closed reader left queued is older than what was just loaded.
+              clearPendingGoogleDriveReaderDataQueue();
+            }
+            driveDecidedRef.current = true;
+            setDriveSettingsReady(true);
+            // Saves the settings now in use, so that Drive holds this device's after "keep".
+            settingsRevisionRef.current += 1;
+            setSettingsRevision(settingsRevisionRef.current);
+            if (choice === 'keep') {
+              void syncPendingGoogleDriveReaderData(session.accessToken).catch(() => undefined);
+            }
+          })();
+          driveDecisionRef.current = decision;
           try {
-            const restored = await restoreGoogleDriveSettings(session.accessToken);
-            if (settingsRevisionAtStart === settingsRevisionRef.current) {
-              setSettings({ ...DEFAULT_SETTINGS, ...restored });
-            }
-            settingsLoaded = true;
-          } catch (error) {
-            if (navigator.onLine) {
-              setSyncError(t('sync.restoreSettingsError', settings.language, { message: error instanceof Error ? error.message : String(error) }));
-            }
+            await decision;
+          } finally {
+            driveDecisionRef.current = null;
           }
         }
       }
 
-      if (settingsLoaded) {
-        setDriveSettingsReady(true);
-        settingsRevisionRef.current += 1;
-        setSettingsRevision(settingsRevisionRef.current);
-      }
-
       if (navigator.onLine) {
-        const failures = [settingsDateResult, booksResult].filter((result) => result.status === 'rejected');
+        const failures = [settingsDateResult, booksResult, writerResult].filter((result) => result.status === 'rejected');
         if (failures.length) {
           const reason = failures[0].status === 'rejected' ? failures[0].reason : null;
-          setSyncError(t('sync.driveUnavailable', settings.language, { message: reason instanceof Error ? reason.message : String(reason) }));
+          setSyncError(t('sync.driveUnavailable', settingsRef.current.language, { message: reason instanceof Error ? reason.message : String(reason) }));
         } else {
           setSyncError(null);
         }
@@ -234,6 +386,25 @@ export const App: React.FC = () => {
     } finally {
       setIsDriveBusy(false);
     }
+  };
+
+  /**
+   * Before saving: whether this device is still the one whose data Drive keeps. Checked at most every
+   * few minutes; when another device has written meanwhile, the question comes up and nothing is saved.
+   */
+  const checkDriveWriter = async (session: GoogleDriveSession): Promise<boolean> => {
+    if (!driveDecidedRef.current) return false;
+    if (Date.now() - lastWriterCheckRef.current < WRITER_CHECK_INTERVAL_MS) return true;
+    lastWriterCheckRef.current = Date.now();
+    try {
+      const writer = await getGoogleDriveLastWriter(session.accessToken);
+      if (!writer || writer.deviceId === getDeviceId()) return true;
+    } catch {
+      return true;
+    }
+    driveDecidedRef.current = false;
+    void loadDriveData(session, true);
+    return false;
   };
 
   const handleRetrySync = () => {
@@ -305,7 +476,7 @@ export const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!googleDriveSession || !isOnline) return;
+    if (!googleDriveSession || !isOnline || !driveDecidedRef.current) return;
     setIsDriveBusy(true);
     void syncPendingGoogleDriveReaderData(googleDriveSession.accessToken)
       .then(() => setSyncError(null))
@@ -321,7 +492,7 @@ export const App: React.FC = () => {
 
   // When Google Drive session becomes active while a book is open, check if reader data can be synced
   useEffect(() => {
-    if (!googleDriveSession || !currentEpub || !currentBookId || !navigator.onLine) return;
+    if (!googleDriveSession || !currentEpub || !currentBookId || !navigator.onLine || !driveDecidedRef.current) return;
     const title = currentEpub.metadata.title;
     const creator = currentEpub.metadata.creator;
     const bookKey = `yomisuba_book_${encodeURIComponent(`${title}|${creator}`)}`;
@@ -462,7 +633,7 @@ export const App: React.FC = () => {
     setSettingsRevision(settingsRevisionRef.current);
   };
 
-  const openBook = async (fileOrBlob: File | Blob, preferredId?: string, preferredName?: string) => {
+  const openBook = async (fileOrBlob: File | Blob, preferredId?: string, preferredName?: string, forceDriveRestore = false) => {
     const requestId = ++openBookRequestIdRef.current;
     setIsLoading(true);
     setErrorMessage(null);
@@ -490,7 +661,8 @@ export const App: React.FC = () => {
       }
       if (requestId !== openBookRequestIdRef.current) return;
 
-      if (driveSession && navigator.onLine) {
+      // Drive's reading data is only taken once it is settled that Drive's data is wanted.
+      if (driveSession && navigator.onLine && (driveDecidedRef.current || forceDriveRestore)) {
         try {
           const readerData = await restoreGoogleDriveReaderData(driveSession.accessToken, {
             bookKey: `yomisuba_book_${encodeURIComponent(`${parsed.metadata.title}|${parsed.metadata.creator}`)}`,
@@ -565,6 +737,9 @@ export const App: React.FC = () => {
       }
     }
   };
+
+  const openBookRef = React.useRef(openBook);
+  openBookRef.current = openBook;
 
   const handleFileLoaded = (fileOrBlob: File | Blob) => {
     void openBook(fileOrBlob);
@@ -734,6 +909,7 @@ export const App: React.FC = () => {
   const handleGoogleDriveSignOut = () => {
     void runDriveAction(async () => {
       await signOutGoogleDrive();
+      driveDecidedRef.current = false;
       googleDriveSessionRef.current = null;
       setGoogleDriveSession(null);
       setDriveSettingsReady(false);
@@ -747,6 +923,9 @@ export const App: React.FC = () => {
     void runDriveAction(async () => {
       const restored = await restoreGoogleDriveSettings(googleDriveSession.accessToken);
       setSettings({ ...DEFAULT_SETTINGS, ...restored });
+      await claimGoogleDriveWriter(googleDriveSession.accessToken, thisDevice()).catch(() => undefined);
+      lastWriterCheckRef.current = Date.now();
+      driveDecidedRef.current = true;
       setDriveSettingsReady(true);
       settingsRevisionRef.current += 1;
       setSettingsRevision(settingsRevisionRef.current);
@@ -784,8 +963,11 @@ export const App: React.FC = () => {
 
   const handleBookDataChange = (data: ReaderBookBackup) => {
     queueGoogleDriveReaderData(data);
-    if (!googleDriveSession || !navigator.onLine) return;
-    void saveGoogleDriveReaderData(googleDriveSession.accessToken, data).catch((error: unknown) => {
+    if (!googleDriveSession || !navigator.onLine || !driveDecidedRef.current) return;
+    void checkDriveWriter(googleDriveSession).then((stillWriter) => {
+      if (stillWriter) return saveGoogleDriveReaderData(googleDriveSession.accessToken, data);
+      return undefined;
+    }).catch((error: unknown) => {
       if (navigator.onLine) {
         setSyncError(t('sync.saveProgressError', settings.language, { message: error instanceof Error ? error.message : String(error) }));
       }
@@ -876,6 +1058,11 @@ export const App: React.FC = () => {
           />
         )}
       </div>
+      <DriveConflictModal
+        conflict={driveConflict}
+        onLoad={() => answerDriveConflict('load')}
+        onKeep={() => answerDriveConflict('keep')}
+      />
     </LanguageProvider>
   );
 };
