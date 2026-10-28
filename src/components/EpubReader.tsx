@@ -216,6 +216,10 @@ const PAGINATION_CACHE_VERSION = 1;
 // Keep a handful of entries so rotating the device, or resizing the window,
 // does not throw away the measurement for the previous geometry.
 const PAGINATION_CACHE_ENTRIES = 6;
+// While a book is measured, what is measured so far is saved every this many chapters.
+const PAGINATION_PARTIAL_SAVE_EVERY = 8;
+// How long the layout must stay still before the book is measured again.
+const MEASURE_SETTLE_MS = 300;
 
 // Pages a laid-out chapter spans. Vertical-rl stacks its pages as columns
 // along the inline axis, which is the vertical one, so they are counted by
@@ -402,6 +406,9 @@ export const EpubReader: React.FC<Props> = ({
     locator: ReturnType<typeof createSearchLocator>;
   } | null>(null);
   const measurementVersionRef = useRef(0);
+  // The layout whose page counts are applied, and the one being measured: asking again for either is a no-op.
+  const measuredLayoutRef = useRef<string | null>(null);
+  const measuringLayoutRef = useRef<string | null>(null);
   const shownPageRef = useRef<{ spine: number; page: number } | null>(null);
   const imageDragRef = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null);
   const selectedTextRef = useRef('');
@@ -1170,25 +1177,35 @@ export const EpubReader: React.FC<Props> = ({
   const measureBookPages = useCallback(async () => {
     const host = iframeRef.current;
     if (!host || !epub.spine.length) return;
-    const measurementVersion = measurementVersionRef.current + 1;
-    measurementVersionRef.current = measurementVersion;
     const vw = host.clientWidth || window.innerWidth;
     const vh = host.clientHeight || window.innerHeight;
     const cacheKey = paginationCacheKey(vw, vh);
+    // The same layout already being measured: that measurement goes on.
+    if (cacheKey === measuringLayoutRef.current) return;
+    // Any other measurement under way is for a layout no longer shown, and stops at its next chapter.
+    const measurementVersion = measurementVersionRef.current + 1;
+    measurementVersionRef.current = measurementVersion;
+    measuringLayoutRef.current = null;
+    if (cacheKey === measuredLayoutRef.current) return;
     const cached = readPaginationCache(cacheKey);
     if (cached && cached.length === epub.spine.length) {
       applyChapterCounts(cached);
+      measuredLayoutRef.current = cacheKey;
       return;
     }
+    measuringLayoutRef.current = cacheKey;
     const frame = document.createElement('iframe');
     frame.style.cssText = `position:fixed;left:-10000px;top:0;width:${vw}px;height:${vh}px;visibility:hidden;pointer-events:none;border:0;`;
     document.body.appendChild(frame);
-    const counts: number[] = [];
+    // A measurement left halfway (the app was closed) goes on from where it stopped.
+    const counts: number[] = cached && cached.length < epub.spine.length ? [...cached] : [];
+    const stale = () => measurementVersion !== measurementVersionRef.current;
     try {
-      for (let index = 0; index < epub.spine.length; index += 1) {
+      for (let index = counts.length; index < epub.spine.length; index += 1) {
+        if (stale()) return;
         const rawHtml = await epub.getChapterContent(epub.spine[index].href);
         const doc = frame.contentDocument;
-        if (!doc) break;
+        if (!doc || stale()) return;
         positionLocatorRef.current = null;
         doc.open();
         doc.write(buildChapterDocument(rawHtml).html);
@@ -1205,18 +1222,24 @@ export const EpubReader: React.FC<Props> = ({
           new Promise<void>((resolve) => window.setTimeout(resolve, 1200)),
         ]);
         await new Promise<void>((resolve) => window.setTimeout(resolve, 40));
+        if (stale()) return;
         const scroller = doc.getElementById('reader-scroller');
         if (scroller) {
           counts[index] = countScrollerPages(doc, scroller, isVertical, vw, vh);
         } else {
           counts[index] = 1;
         }
+        if ((index + 1) % PAGINATION_PARTIAL_SAVE_EVERY === 0) writePaginationCache(cacheKey, counts.slice());
       }
-      if (measurementVersion !== measurementVersionRef.current) return;
+      if (stale()) return;
       applyChapterCounts(counts);
-      if (counts.length === epub.spine.length) writePaginationCache(cacheKey, counts);
+      if (counts.length === epub.spine.length) {
+        writePaginationCache(cacheKey, counts);
+        measuredLayoutRef.current = cacheKey;
+      }
     } finally {
       frame.remove();
+      if (!stale()) measuringLayoutRef.current = null;
     }
   }, [
     applyChapterCounts,
@@ -1230,6 +1253,18 @@ export const EpubReader: React.FC<Props> = ({
 
   const measureBookPagesRef = useRef(measureBookPages);
   useEffect(() => { measureBookPagesRef.current = measureBookPages; }, [measureBookPages]);
+
+  // Resizes come in bursts (system bars hiding, a rotation) and settings change together: measure once
+  // things have settled, instead of once per event.
+  const measureTimerRef = useRef<number | undefined>(undefined);
+  const scheduleMeasureBookPages = () => {
+    window.clearTimeout(measureTimerRef.current);
+    measureTimerRef.current = window.setTimeout(() => {
+      measureTimerRef.current = undefined;
+      void measureBookPagesRef.current();
+    }, MEASURE_SETTLE_MS);
+  };
+  useEffect(() => () => window.clearTimeout(measureTimerRef.current), []);
 
   // ─── SELECTION ────────────────────────────────────────────────────────────────
   const handleSelection = useCallback(() => {
@@ -3475,7 +3510,8 @@ export const EpubReader: React.FC<Props> = ({
   // reading position; the chapter reload is handled by its own effect above.
   useEffect(() => {
     if (!hasLoadedInitialRef.current) return;
-    void measureBookPagesRef.current();
+    scheduleMeasureBookPages();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     settings.writingMode,
     settings.fontFamily,
@@ -3491,11 +3527,12 @@ export const EpubReader: React.FC<Props> = ({
   useEffect(() => {
     const onResize = () => {
       updatePagination();
-      void measureBookPages();
+      scheduleMeasureBookPages();
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
-  }, [measureBookPages, updatePagination]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [updatePagination]);
 
   const handleNextChapter = () => {
     if (currentSpineRef.current < epub.spine.length - 1) {
