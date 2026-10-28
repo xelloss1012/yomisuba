@@ -29,6 +29,18 @@ export interface StoredBook {
   bookKey: string;
   title: string;
   creator: string;
+  /** Its data comes from Drive: the book was read on another device, or removed from this one. */
+  fromDrive?: boolean;
+}
+
+/** This device's storage with more entries after its own, read only: what Drive has of other books. */
+export function withEntries(base: StorageLike, extra: Record<string, string>): StorageLike {
+  const extraKeys = Object.keys(extra);
+  return {
+    get length() { return base.length + extraKeys.length; },
+    key: (index) => (index < base.length ? base.key(index) : extraKeys[index - base.length] ?? null),
+    getItem: (key) => base.getItem(key) ?? (Object.prototype.hasOwnProperty.call(extra, key) ? extra[key] : null),
+  };
 }
 
 export const bookKeyOf = (title: string, creator: string): string =>
@@ -95,7 +107,8 @@ const readFavorites = (storage: StorageLike, bookKey: string): TranslationFavori
       && typeof favorite.query === 'string'
       && FAVORITE_KINDS.includes(favorite.kind)
       && typeof favorite.response === 'string'
-      && (favorite.data === undefined || isDictionaryData(favorite.data)));
+      && (favorite.data === undefined || isDictionaryData(favorite.data))
+      && (favorite.context === undefined || typeof favorite.context === 'string'));
   });
 
 const readHistory = (storage: StorageLike, bookKey: string): TranslationHistoryEntry[] =>
@@ -168,6 +181,7 @@ export interface BookRef {
 export interface BookSummary extends StoredBook {
   /** On this device's shelf; otherwise only its data is left. */
   onShelf: boolean;
+  fromDrive: boolean;
   favorites: number;
   notes: number;
   underlines: number;
@@ -186,6 +200,8 @@ export interface VocabularyItem {
   favorite: TranslationFavorite;
   kinds: TranslationFavorite['kind'][];
   books: BookRef[];
+  /** The sentences it was saved from, newest first, each once. */
+  contexts: { text: string; book: BookRef }[];
   firstSavedAt: number;
   lastSavedAt: number;
   /** How many times it was looked up, in every book. */
@@ -273,6 +289,7 @@ export function collectStudyData(
           favorite,
           kinds: [favorite.kind],
           books: [ref],
+          contexts: favorite.context ? [{ text: favorite.context, book: ref }] : [],
           firstSavedAt: favorite.savedAt,
           lastSavedAt: favorite.savedAt,
           lookups: 0,
@@ -281,6 +298,9 @@ export function collectStudyData(
       }
       if (!existing.kinds.includes(favorite.kind)) existing.kinds.push(favorite.kind);
       addBook(existing.books, ref);
+      if (favorite.context && !existing.contexts.some((item) => item.text === favorite.context)) {
+        existing.contexts[favorite.savedAt > existing.lastSavedAt ? 'unshift' : 'push']({ text: favorite.context, book: ref });
+      }
       existing.firstSavedAt = Math.min(existing.firstSavedAt, favorite.savedAt);
       if (favorite.savedAt > existing.lastSavedAt) {
         existing.lastSavedAt = favorite.savedAt;
@@ -317,6 +337,7 @@ export function collectStudyData(
     summaries.push({
       ...book,
       onShelf: shelfKeys.has(book.bookKey),
+      fromDrive: Boolean(book.fromDrive),
       favorites: favorites.length,
       notes: annotations.filter((annotation) => annotation.note).length,
       underlines: annotations.length,

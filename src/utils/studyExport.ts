@@ -17,18 +17,20 @@ export interface VocabularyExportLabels {
   books: string;
   lookups: string;
   firstSaved: string;
+  context: string;
   kind: (favorite: Pick<TranslationFavorite, 'kind' | 'provider'>) => string;
 }
 
 /** The vocabulary as a CSV file, one word per row, with the books it was saved in. */
 export function vocabularyToCsv(items: VocabularyItem[], labels: VocabularyExportLabels): string {
-  const header = [labels.word, labels.reading, labels.meaning, labels.type, labels.books, labels.lookups, labels.firstSaved];
+  const header = [labels.word, labels.reading, labels.meaning, labels.context, labels.type, labels.books, labels.lookups, labels.firstSaved];
   const rows = items.map((item) => {
     const { meaning } = favoriteFields(item.favorite);
     return [
       item.word,
       item.reading,
       meaning,
+      item.contexts[0]?.text ?? '',
       item.kinds.map((kind) => labels.kind({ kind, provider: item.favorite.provider })).join(' · '),
       bookTitles(item),
       String(item.lookups),
@@ -44,7 +46,7 @@ const ankiField = (html: string): string => html.replace(/[\t\r\n]+/g, ' ');
 
 /**
  * The vocabulary as a text file Anki imports as it is (File › Import): one card per word, the word in
- * front and, behind, its reading, meaning and books. The header lines tell Anki the separator and that
+ * front and, behind, its reading, meaning, the sentences it was saved from and its books. The header lines tell Anki the separator and that
  * the fields are HTML.
  */
 export function vocabularyToAnki(items: VocabularyItem[]): string {
@@ -54,6 +56,7 @@ export function vocabularyToAnki(items: VocabularyItem[]): string {
     const back = [
       item.reading && item.reading !== item.word ? `<b>${escapeHtml(item.reading)}</b>` : '',
       escapeHtml(meaning),
+      ...item.contexts.slice(0, 2).map((context) => `<i>${escapeHtml(context.text)}</i>`),
       item.books.length ? `<small>${escapeHtml(bookTitles(item))}</small>` : '',
     ].filter(Boolean).join('<br>');
     lines.push(`${ankiField(escapeHtml(item.word))}\t${ankiField(back)}`);
@@ -80,6 +83,7 @@ export function vocabularyToMarkdown(
     ].filter(Boolean).join(' · ');
     lines.push('', `## ${oneLine(heading)}`, `*${meta}*`);
     if (item.books.length) lines.push(`*${labels.books}: ${bookTitles(item)}*`);
+    for (const context of item.contexts) lines.push('', `> ${oneLine(context.text)}`, `> — ${oneLine(context.book.title)}`);
     if (body.trim()) lines.push('', body.trim());
   }
   return `${lines.join('\n')}\n`;

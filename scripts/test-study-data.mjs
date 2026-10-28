@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
+import { parseHTML } from 'linkedom';
 import { createServer } from 'vite';
 
 const root = resolve(import.meta.dirname, '..');
@@ -33,7 +34,8 @@ const favorite = (id, savedAt, query, data) => ({ id, savedAt, query, kind: 'dic
 try {
   const studyData = await server.ssrLoadModule('/src/utils/studyData.ts');
   const studyExport = await server.ssrLoadModule('/src/utils/studyExport.ts');
-  const { bookKeyOf, bookDataKeys, collectStudyData, listStoredBooks, sortVocabulary, wordsPerMonth } = studyData;
+  const { bookKeyOf, bookDataKeys, collectStudyData, listStoredBooks, sortVocabulary, withEntries, wordsPerMonth } = studyData;
+  const context = await server.ssrLoadModule('/src/utils/contextSentence.ts');
 
   const neko = bookKeyOf('吾輩は猫である', '夏目漱石');
   const kokoro = bookKeyOf('こころ', '夏目漱石');
@@ -47,7 +49,7 @@ try {
       { id: '3', savedAt: 13 * day, query: 'こんにちは世界', kind: 'translation', response: 'Hola mundo' },
     ],
     [`${kokoro}_translation_favorites`]: [
-      favorite('4', 30 * day, '先生', word('先生', 'せんせい', 'profesor')),
+      { ...favorite('4', 30 * day, '先生', word('先生', 'せんせい', 'profesor')), context: '私はその人を常に先生と呼んでいた。' },
       { broken: true },
     ],
     [`${neko}_frequent_queries`]: [
@@ -130,13 +132,13 @@ try {
   // --- Exports ---------------------------------------------------------------------------
   const kind = ({ kind: name }) => (name === 'dictionary' ? 'Diccionario' : 'Traducción');
   const csv = studyExport.vocabularyToCsv(sortVocabulary(data.vocabulary, 'word'), {
-    word: 'Palabra', reading: 'Lectura', meaning: 'Significado', type: 'Tipo', books: 'Libros', lookups: 'Consultas', firstSaved: 'Guardada', kind,
+    word: 'Palabra', reading: 'Lectura', meaning: 'Significado', type: 'Tipo', books: 'Libros', lookups: 'Consultas', firstSaved: 'Guardada', context: 'Contexto', kind,
   });
-  assert.ok(csv.startsWith('﻿Palabra,Lectura,Significado,Tipo,Libros,Consultas,Guardada\r\n'));
-  assert.ok(csv.includes('先生,せんせい,profesor,Diccionario,吾輩は猫である · こころ,7,1970-01-13'));
+  assert.ok(csv.startsWith('﻿Palabra,Lectura,Significado,Contexto,Tipo,Libros,Consultas,Guardada\r\n'));
+  assert.ok(csv.includes('先生,せんせい,profesor,私はその人を常に先生と呼んでいた。,Diccionario,吾輩は猫である · こころ,7,1970-01-13'));
 
   const anki = studyExport.vocabularyToAnki([sensei]);
-  assert.equal(anki, '#separator:tab\n#html:true\n#columns:Front\tBack\n先生\t<b>せんせい</b><br>profesor<br><small>吾輩は猫である · こころ</small>\n');
+  assert.equal(anki, '#separator:tab\n#html:true\n#columns:Front\tBack\n先生\t<b>せんせい</b><br>profesor<br><i>私はその人を常に先生と呼んでいた。</i><br><small>吾輩は猫である · こころ</small>\n');
   assert.ok(!studyExport.vocabularyToAnki([{ ...sensei, word: 'a\tb' }]).includes('a\tb'), 'a tab cannot split a card');
 
   const markdown = studyExport.vocabularyToMarkdown('Vocabulario', [sensei], { kind, books: 'Libros', lookups: 'Consultas' }, 'es');
@@ -149,7 +151,46 @@ try {
   assert.ok(history.startsWith('﻿Fecha,Consulta,Tipo,Respuesta,Libro\r\n1970-01-13 00:00,先生,Diccionario,'));
   assert.ok(history.trimEnd().endsWith(',吾輩は猫である'));
 
-  console.log('PASS: the data of every book is found, joined by word and exported.');
+  // --- The sentence a word was saved from ------------------------------------------------
+  assert.deepEqual(sensei.contexts, [{ text: '私はその人を常に先生と呼んでいた。', book: { bookKey: kokoro, title: 'こころ' } }]);
+  assert.ok(studyExport.vocabularyToMarkdown('V', [sensei], { kind, books: 'Libros', lookups: 'Consultas' }, 'es')
+    .includes('\n> 私はその人を常に先生と呼んでいた。\n> — こころ\n'));
+
+  const { sentenceAround, sentenceForWord } = context;
+  const text = '吾輩は猫である。名前はまだ無い。「どこで生れたか、とんと見当がつかぬ。」何でも薄暗い所で泣いていた。';
+  const span = (word) => [text.indexOf(word), text.indexOf(word) + word.length];
+  assert.equal(sentenceAround(text, ...span('名前')), '名前はまだ無い。');
+  assert.equal(sentenceAround(text, ...span('見当')), '「どこで生れたか、とんと見当がつかぬ。」', 'the closing quote stays with its sentence');
+  assert.equal(sentenceAround(text, ...span('薄暗い')), '何でも薄暗い所で泣いていた。', 'and does not start the next one');
+  assert.equal(sentenceAround('ひとつの文\nつぎの文', 0, 2), 'ひとつの文', 'a line break ends a sentence');
+  const long = `${'あ'.repeat(300)}猫${'い'.repeat(300)}。`;
+  const cut = sentenceAround(long, 300, 301, 40);
+  assert.ok(cut.startsWith('…') && cut.endsWith('…') && cut.includes('猫') && cut.length === 42, 'a long sentence is cut around the word');
+  assert.equal(sentenceForWord(text, ['無かった', '無い']), '名前はまだ無い。', 'the first form found');
+  assert.equal(sentenceForWord(text, ['犬']), null);
+
+  // In the page: the sentence of a selection, read without the readings of the ruby.
+  const { document } = parseHTML('<html><body><div id="r"><p>前の文。</p><p>吾輩は<ruby>猫<rt>ねこ</rt></ruby>である。名前はまだ<b>無い</b>。</p></div></body></html>');
+  const page = document.getElementById('r');
+  const point = (node, start, end) => ({ startContainer: node, startOffset: start, endContainer: node, endOffset: end });
+  const nekoNode = page.querySelector('ruby').firstChild;
+  assert.equal(context.readableText(page).text, '前の文。吾輩は猫である。名前はまだ無い。');
+  assert.equal(context.sentenceForRange(point(nekoNode, 0, 1), page), '吾輩は猫である。');
+  assert.equal(context.sentenceForRange(point(page.querySelector('b').firstChild, 0, 2), page), '名前はまだ無い。');
+  assert.equal(context.sentenceForRange(point(page.querySelectorAll('p')[1], 1, 2), page), '吾輩は猫である。', 'a range between elements');
+  assert.equal(context.sentenceForRange(point(document.body, 0, 0), page), null, 'a selection outside the page');
+
+  // --- What Drive has of other books, read along with this device's ----------------------
+  const driveBook = bookKeyOf('坊っちゃん', '夏目漱石');
+  const both = withEntries(storage, {
+    [`${driveBook}_translation_favorites`]: JSON.stringify([favorite('d1', 40 * day, '先生', word('先生', 'せんせい', 'profesor'))]),
+  });
+  assert.equal(both.getItem(`${neko}_bookmark`), storage.getItem(`${neko}_bookmark`));
+  const withDrive = collectStudyData(both, listStoredBooks(both, [{ bookKey: driveBook, title: '坊っちゃん', creator: '夏目漱石', fromDrive: true }]));
+  assert.equal(withDrive.books.find((book) => book.bookKey === driveBook).fromDrive, true);
+  assert.equal(withDrive.vocabulary.find((item) => item.word === '先生').books.length, 3, 'a word of a book only in Drive joins the rest');
+
+  console.log('PASS: the data of every book (also those only in Drive) is found, joined by word with its sentences, and exported.');
 } finally {
   await server.close();
 }

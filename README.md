@@ -44,6 +44,10 @@ Lector EPUB con soporte de japonés vertical (縦書き). Una aplicación web mo
 
 Todas las pestañas se filtran por texto y por libro, y lo exportado es lo que se muestra.
 
+**Libros que solo están en Drive**: con la sesión de Google iniciada, «Incluir Drive» (en el Resumen) añade al panel los libros leídos en otros dispositivos o quitados de este. Una consulta lista los ficheros de datos de todas las carpetas de libros de `.yomisuba` (por bloques de carpetas, no una por carpeta); se descargan solo los de las carpetas que no corresponden a libros de este dispositivo, cada fichero se valida con su `bookKey` (que da el título y el autor) y se pasan al mismo formato que el almacenamiento local. Solo se leen: se guardan en memoria mientras dura la sesión y no se escribe nada en el dispositivo ni en Drive.
+
+**Frase de contexto**: al guardar un favorito mientras se lee, se guarda también la frase del libro de la que viene (`context`, hasta 200 caracteres; `src/utils/contextSentence.ts`): la de la selección si contiene la palabra o, si no (por ejemplo desde el glosario de página), la primera del capítulo que la contiene. El texto se lee sin las lecturas de los `<ruby>` (`<rt>`, `<rp>`), y la frase va de un `。！？…` o salto de línea al siguiente, con las comillas de cierre incluidas; una frase larga se recorta alrededor de la palabra. El panel la muestra bajo el significado, con la palabra en negrita, y se exporta: columna «Contexto» en el CSV (también en el de favoritos de cada libro), en cursiva en el reverso de las tarjetas de Anki y como cita en Markdown. Los favoritos guardados antes no tienen frase.
+
 **Quitar un libro**: por defecto se quita solo el libro y se conservan su progreso, marcadores, notas, favoritos e historial: siguen en el panel y vuelven si se añade de nuevo el mismo libro (se identifica por título y autor). Si tiene copia en Drive, se puede borrar también; con los datos conservados solo se borra el EPUB y su carpeta de datos se queda en Drive. Desmarcando «Conservar…» se borran también sus datos, de este dispositivo y, si se elige, de Drive.
 
 4. **Personalización y Temas**:

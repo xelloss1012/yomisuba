@@ -1436,7 +1436,8 @@ function isFavorite(value: unknown): boolean {
     && (favorite.kind === 'dictionary' || favorite.kind === 'translation' || favorite.kind === 'ai' || favorite.kind === 'glossary')
     && (favorite.provider === undefined || ['gemini', 'openai', 'deepseek', 'openrouter'].includes(String(favorite.provider)))
     && typeof favorite.response === 'string'
-    && (favorite.data === undefined || isDictionaryHistoryData(favorite.data));
+    && (favorite.data === undefined || isDictionaryHistoryData(favorite.data))
+    && (favorite.context === undefined || typeof favorite.context === 'string');
 }
 
 function isFrequentQuery(value: unknown): boolean {
@@ -1525,4 +1526,157 @@ function isFavoritesFile(value: unknown, bookKey: string): boolean {
   const data = readSegmentedEnvelope(value, bookKey);
   if (!data) return false;
   return Array.isArray(data.items) && data.items.every(isFavorite);
+}
+
+/** The reading data of a book that is in Drive, as the keys and values it has in this device's storage. */
+export interface DriveStudyBook {
+  bookKey: string;
+  title: string;
+  creator: string;
+  entries: Record<string, string>;
+}
+
+const STUDY_GROUPS: ReaderDataGroup[] = ['reading', 'bookmarks', 'annotations', 'history', 'favorites'];
+const DRIVE_LIST_CHUNK = 25;
+const DRIVE_DOWNLOAD_CONCURRENCY = 6;
+
+/** Every page of a listing of Drive files. */
+async function listAllDriveFiles(accessToken: string, q: string, fields: string): Promise<Array<DriveFile & { parents?: string[] }>> {
+  const files: Array<DriveFile & { parents?: string[] }> = [];
+  let pageToken: string | undefined;
+  do {
+    const query = new URLSearchParams({
+      q,
+      spaces: 'drive',
+      pageSize: '1000',
+      fields: `nextPageToken, files(${fields})`,
+      ...(pageToken ? { pageToken } : {}),
+    });
+    const response = await driveRequest(accessToken, `https://www.googleapis.com/drive/v3/files?${query}`);
+    const result = await response.json() as { files?: Array<DriveFile & { parents?: string[] }>; nextPageToken?: string };
+    files.push(...(result.files ?? []));
+    pageToken = result.nextPageToken;
+  } while (pageToken);
+  return files;
+}
+
+/** Runs the tasks with at most `limit` of them at a time. */
+async function inPool<T>(tasks: Array<() => Promise<T>>, limit: number): Promise<T[]> {
+  const results: T[] = new Array(tasks.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < tasks.length) {
+      const index = next;
+      next += 1;
+      results[index] = await tasks[index]();
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
+  return results;
+}
+
+/** The entries of this device's storage that a data file of Drive stands for. */
+function groupEntries(group: ReaderDataGroup, prefix: string, data: Record<string, unknown>): Record<string, string> {
+  const entries: Record<string, string> = {};
+  switch (group) {
+    case 'reading':
+      if (data.position) entries[`${prefix}_position`] = JSON.stringify(data.position);
+      if (data.printedPages) entries[`${prefix}_printed_pages`] = String(data.printedPages);
+      if (Array.isArray(data.chapterPageCounts) && data.chapterPageCounts.length) {
+        entries[`${prefix}_pagination`] = JSON.stringify({ drive: { counts: data.chapterPageCounts, savedAt: 0 } });
+      }
+      break;
+    case 'bookmarks':
+      if (Array.isArray(data.items) && data.items.length) entries[`${prefix}_bookmark`] = JSON.stringify(data.items);
+      break;
+    case 'annotations':
+      if (Array.isArray(data.items) && data.items.length) entries[`${prefix}_annotations`] = JSON.stringify(data.items);
+      break;
+    case 'history':
+      if (Array.isArray(data.translationHistory) && data.translationHistory.length) {
+        entries[`${prefix}_translation_history`] = JSON.stringify(data.translationHistory);
+      }
+      if (Array.isArray(data.frequentQueries) && data.frequentQueries.length) {
+        entries[`${prefix}_frequent_queries`] = JSON.stringify(data.frequentQueries);
+        if (data.frequentQueriesVersion) entries[`${prefix}_frequent_queries_version`] = String(data.frequentQueriesVersion);
+      }
+      break;
+    case 'favorites':
+      if (Array.isArray(data.items) && data.items.length) entries[`${prefix}_translation_favorites`] = JSON.stringify(data.items);
+      break;
+  }
+  return entries;
+}
+
+/**
+ * The reading data in Drive of the books this device does not have: those read only on other devices,
+ * or removed here. Only reads: nothing is written to this device or to Drive. Folders named in
+ * `skipFolders` (the books this device has) are not downloaded.
+ */
+export async function listGoogleDriveStudyBooks(
+  accessToken: string,
+  skipFolders: ReadonlySet<string>,
+): Promise<DriveStudyBook[]> {
+  const rootId = await getDriveFolderId(accessToken);
+  const folders = (await listAllDriveFiles(
+    accessToken,
+    `'${rootId}' in parents and mimeType = '${DRIVE_FOLDER_MIME_TYPE}' and trashed = false`,
+    'id,name',
+  )).filter((folder) => !skipFolders.has(folder.name));
+  if (!folders.length) return [];
+
+  // One listing for many folders at a time, instead of one per folder.
+  const filesByFolder = new Map<string, Map<ReaderDataGroup, DriveFile>>();
+  for (let index = 0; index < folders.length; index += DRIVE_LIST_CHUNK) {
+    const chunk = folders.slice(index, index + DRIVE_LIST_CHUNK);
+    const files = await listAllDriveFiles(
+      accessToken,
+      `(${chunk.map((folder) => `'${folder.id}' in parents`).join(' or ')}) and mimeType != '${DRIVE_FOLDER_MIME_TYPE}' and trashed = false`,
+      'id,name,parents,modifiedTime',
+    );
+    for (const file of files) {
+      const folderId = file.parents?.find((parent) => chunk.some((folder) => folder.id === parent));
+      const group = STUDY_GROUPS.find((candidate) => groupFileName(candidate) === file.name);
+      if (!folderId || !group) continue;
+      const groups = filesByFolder.get(folderId) ?? new Map<ReaderDataGroup, DriveFile>();
+      const known = groups.get(group);
+      if (!known || (file.modifiedTime ?? '') > (known.modifiedTime ?? '')) groups.set(group, file);
+      filesByFolder.set(folderId, groups);
+    }
+  }
+
+  const downloads = [...filesByFolder.entries()].flatMap(([folderId, groups]) =>
+    [...groups.entries()].map(([group, file]) => async () => {
+      try {
+        const value: unknown = JSON.parse(await (await downloadFile(accessToken, file)).text());
+        const bookKey = value && typeof value === 'object' ? (value as { bookKey?: unknown }).bookKey : undefined;
+        if (typeof bookKey !== 'string' || !validateGroup(group, value, bookKey)) return null;
+        return { folderId, group, bookKey, data: value as Record<string, unknown> };
+      } catch {
+        return null;
+      }
+    }));
+  const results = await inPool(downloads, DRIVE_DOWNLOAD_CONCURRENCY);
+
+  const books = new Map<string, DriveStudyBook>();
+  for (const result of results) {
+    if (!result) continue;
+    let identity: string;
+    try {
+      identity = decodeURIComponent(result.bookKey.replace(/^yomisuba_book_/, ''));
+    } catch {
+      continue;
+    }
+    const separator = identity.indexOf('|');
+    if (separator < 0) continue;
+    const book = books.get(result.bookKey) ?? {
+      bookKey: result.bookKey,
+      title: identity.slice(0, separator),
+      creator: identity.slice(separator + 1),
+      entries: {},
+    };
+    Object.assign(book.entries, groupEntries(result.group, result.bookKey, result.data));
+    books.set(result.bookKey, book);
+  }
+  return [...books.values()].filter((book) => Object.keys(book.entries).length > 0);
 }

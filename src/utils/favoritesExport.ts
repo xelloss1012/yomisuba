@@ -9,6 +9,8 @@ export interface FavoritesExportLabels {
   type: string;
   date: string;
   source: string;
+  /** The column of the sentence a word was saved from. */
+  context: string;
   /** The name of a favorite's kind ("Diccionario", "Traducción"…). */
   kind: (favorite: TranslationFavorite) => string;
 }
@@ -42,10 +44,10 @@ export function favoriteFields(favorite: TranslationFavorite): { word: string; r
  * word per row, which Anki and any spreadsheet import.
  */
 export function favoritesToCsv(favorites: TranslationFavorite[], labels: FavoritesExportLabels): string {
-  const header = [labels.word, labels.reading, labels.meaning, labels.type, labels.date, labels.source];
+  const header = [labels.word, labels.reading, labels.meaning, labels.type, labels.date, labels.source, labels.context];
   const rows = favorites.map((favorite) => {
     const { word, reading, meaning } = favoriteFields(favorite);
-    return [word, reading, meaning, labels.kind(favorite), isoDate(favorite.savedAt), favorite.provider ?? ''];
+    return [word, reading, meaning, labels.kind(favorite), isoDate(favorite.savedAt), favorite.provider ?? '', favorite.context ?? ''];
   });
   return `﻿${[header, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n')}\r\n`;
 }
@@ -61,6 +63,7 @@ export function favoritesToMarkdown(
   for (const favorite of favorites) {
     const body = favorite.data ? formatDictionaryHistoryResponse(favorite.data, language) : favorite.response;
     lines.push('', `## ${favorite.query.replace(/\s+/g, ' ').trim()}`, `*${labels.kind(favorite)} · ${isoDate(favorite.savedAt)}${favorite.provider ? ` · ${favorite.provider}` : ''}*`);
+    if (favorite.context) lines.push('', `> ${oneLine(favorite.context)}`);
     if (body.trim()) lines.push('', body.trim());
   }
   return `${lines.join('\n')}\n`;

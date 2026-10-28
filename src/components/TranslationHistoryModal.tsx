@@ -106,6 +106,7 @@ export const TranslationHistoryModal: React.FC<Props> = ({
             type: t('export.colType'),
             date: t('export.colDate'),
             source: t('export.colSource'),
+            context: t('study.colContext'),
             kind,
           }),
           'text/csv',

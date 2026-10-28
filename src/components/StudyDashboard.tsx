@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { BarChart3, BookOpen, Clock, Download, GraduationCap, NotebookPen, Search, Star, Trash2, X } from 'lucide-react';
+import { BarChart3, BookOpen, Clock, CloudDownload, Download, GraduationCap, Loader2, NotebookPen, RefreshCw, Search, Star, Trash2, X } from 'lucide-react';
 import { Translate, useLanguage, useT } from '../i18n/LanguageContext';
 import { RecentBook } from '../utils/recentBooks';
 import {
@@ -10,8 +10,10 @@ import {
   sortVocabulary,
   StudyData,
   VocabularySort,
+  withEntries,
   wordsPerMonth,
 } from '../utils/studyData';
+import type { DriveStudyBook } from '../utils/googleDriveBackup';
 import { historyToCsv, notesToMarkdown, vocabularyToAnki, vocabularyToCsv, vocabularyToMarkdown } from '../utils/studyExport';
 import { exportFileName, saveTextFile } from '../utils/exportFile';
 import { favoriteFields } from '../utils/favoritesExport';
@@ -23,6 +25,13 @@ import { getKindLabel } from './TranslationHistoryModal';
 
 type Tab = 'summary' | 'vocabulary' | 'notes' | 'history' | 'searches';
 
+export interface DriveStudyState {
+  status: 'idle' | 'loading' | 'done' | 'error';
+  /** Books of Drive this device does not have, with their data. */
+  books: DriveStudyBook[];
+  error?: string;
+}
+
 interface Props {
   isOpen: boolean;
   recentBooks: RecentBook[];
@@ -30,6 +39,9 @@ interface Props {
   onOpenBook: (book: RecentBook) => void;
   /** Removes from this device the data of a book that is no longer on the shelf. */
   onDeleteBookData: (bookKey: string) => void;
+  driveStudy: DriveStudyState;
+  /** Reads from Drive the data of the books this device does not have; absent without a Google session. */
+  onLoadDriveStudyBooks?: () => void;
 }
 
 const PAGE_SIZE = 100;
@@ -39,13 +51,32 @@ const matches = (query: string, ...texts: (string | undefined)[]): boolean => {
   return !normalized || texts.some((text) => text && normalizeSearchQuery(text).includes(normalized));
 };
 
+/** A text with the first appearance of a word in bold. */
+const highlight = (text: string, words: string[]): React.ReactNode => {
+  for (const word of words) {
+    const at = word ? text.indexOf(word) : -1;
+    if (at >= 0) {
+      return <>{text.slice(0, at)}<mark className="bg-transparent font-bold text-inherit">{word}</mark>{text.slice(at + word.length)}</>;
+    }
+  }
+  return text;
+};
+
 const kindOf = (t: Translate) => (entry: { kind: Parameters<typeof getKindLabel>[0]['kind']; provider?: string }) => getKindLabel(entry, t);
 
 /**
  * The vocabulary, notes, history and lookups of every book read on this device, put together: what was
  * learnt over many books, to review and export without opening each one.
  */
-export const StudyDashboard: React.FC<Props> = ({ isOpen, recentBooks, onClose, onOpenBook, onDeleteBookData }) => {
+export const StudyDashboard: React.FC<Props> = ({
+  isOpen,
+  recentBooks,
+  onClose,
+  onOpenBook,
+  onDeleteBookData,
+  driveStudy,
+  onLoadDriveStudyBooks,
+}) => {
   const t = useT();
   const language = useLanguage();
   const wordLevels = useWordLevels();
@@ -65,11 +96,16 @@ export const StudyDashboard: React.FC<Props> = ({ isOpen, recentBooks, onClose, 
   // Read again every time the dashboard opens: the books may have changed since.
   const data: StudyData | null = useMemo(() => {
     if (!isOpen) return null;
-    const known = recentBooks.map((book) => ({ bookKey: bookKeyOf(book.title, book.creator), title: book.title, creator: book.creator }));
-    return collectStudyData(localStorage, listStoredBooks(localStorage, known), new Set(shelf.keys()));
+    const known = [
+      ...recentBooks.map((book) => ({ bookKey: bookKeyOf(book.title, book.creator), title: book.title, creator: book.creator })),
+      ...driveStudy.books.map(({ bookKey, title, creator }) => ({ bookKey, title, creator, fromDrive: true })),
+    ];
+    // What Drive has of other books is only read, never written to this device.
+    const storage = withEntries(localStorage, Object.assign({}, ...driveStudy.books.map((book) => book.entries)));
+    return collectStudyData(storage, listStoredBooks(storage, known), new Set(shelf.keys()));
     // `revision` reads the data again after deleting a book's data.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, recentBooks, shelf, revision]);
+  }, [isOpen, recentBooks, shelf, revision, driveStudy.books]);
 
   useEffect(() => {
     setShown(PAGE_SIZE);
@@ -88,7 +124,8 @@ export const StudyDashboard: React.FC<Props> = ({ isOpen, recentBooks, onClose, 
 
   const vocabulary = useMemo(() => (data
     ? sortVocabulary(data.vocabulary, sort).filter((item) => inBook(item.books)
-      && matches(query, item.word, item.reading, item.favorite.query, getHistoryEntryResponse(item.favorite, language)))
+      && matches(query, item.word, item.reading, item.favorite.query, getHistoryEntryResponse(item.favorite, language),
+        ...item.contexts.map((context) => context.text)))
     : []),
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [data, sort, query, bookFilter, language]);
@@ -137,6 +174,7 @@ export const StudyDashboard: React.FC<Props> = ({ isOpen, recentBooks, onClose, 
     books: t('study.colBooks'),
     lookups: t('study.colLookups'),
     firstSaved: t('study.colFirstSaved'),
+    context: t('study.colContext'),
     kind: kindOf(t),
   };
 
@@ -190,6 +228,37 @@ export const StudyDashboard: React.FC<Props> = ({ isOpen, recentBooks, onClose, 
     </span>
   );
 
+  const renderDrive = () => {
+    if (!onLoadDriveStudyBooks) {
+      return <p className="text-[11px] text-zinc-500 dark:text-zinc-400">{t('study.driveSignIn')}</p>;
+    }
+    const busy = driveStudy.status === 'loading';
+    return (
+      <div className="rounded-xl border border-sky-200 bg-sky-50/70 p-3 dark:border-sky-900/60 dark:bg-sky-950/30">
+        <div className="flex items-center justify-between gap-3">
+          <p className="min-w-0 text-xs text-sky-900 dark:text-sky-200">
+            {driveStudy.status === 'done'
+              ? t('study.driveIncluded', { count: driveStudy.books.length })
+              : busy ? t('study.driveLoading') : t('study.driveHint')}
+          </p>
+          <button
+            type="button"
+            onClick={onLoadDriveStudyBooks}
+            disabled={busy}
+            className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg bg-sky-600 px-3 text-xs font-semibold text-white hover:bg-sky-700 disabled:opacity-60"
+          >
+            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              : driveStudy.status === 'done' ? <RefreshCw className="h-3.5 w-3.5" /> : <CloudDownload className="h-3.5 w-3.5" />}
+            {t(driveStudy.status === 'done' ? 'study.driveRefresh' : 'study.driveLoad')}
+          </button>
+        </div>
+        {driveStudy.status === 'error' && (
+          <p role="alert" className="mt-2 text-xs text-rose-600 dark:text-rose-400">{t('study.driveError', { message: driveStudy.error ?? '' })}</p>
+        )}
+      </div>
+    );
+  };
+
   const renderSummary = () => {
     const months = wordsPerMonth(data.vocabulary, 12);
     const peak = Math.max(1, ...months.map((month) => month.count));
@@ -201,6 +270,7 @@ export const StudyDashboard: React.FC<Props> = ({ isOpen, recentBooks, onClose, 
     ];
     return (
       <div className="space-y-5">
+        {renderDrive()}
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {tiles.map((tile) => (
             <div key={tile.label} className="rounded-xl border border-zinc-200 bg-zinc-50/60 px-3 py-2.5 dark:border-zinc-800 dark:bg-zinc-800/30">
@@ -234,14 +304,14 @@ export const StudyDashboard: React.FC<Props> = ({ isOpen, recentBooks, onClose, 
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-zinc-900 dark:text-zinc-100">{book.title}</p>
                       <p className="truncate text-[11px] text-zinc-500 dark:text-zinc-400">
-                        {[book.creator, !book.onShelf ? t('study.notOnShelf') : ''].filter(Boolean).join(' · ')}
+                        {[book.creator, book.fromDrive ? t('study.onlyInDrive') : !book.onShelf ? t('study.notOnShelf') : ''].filter(Boolean).join(' · ')}
                       </p>
                     </div>
                     {recent ? (
                       <button type="button" onClick={() => onOpenBook(recent)} className="tap-area inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold text-indigo-600 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-950/40">
                         <BookOpen className="h-3.5 w-3.5" /> {t('study.open')}
                       </button>
-                    ) : (
+                    ) : !book.fromDrive && (
                       <button
                         type="button"
                         onClick={() => {
@@ -302,6 +372,12 @@ export const StudyDashboard: React.FC<Props> = ({ isOpen, recentBooks, onClose, 
                 <span className={`mt-1 block whitespace-pre-line text-xs text-zinc-600 dark:text-zinc-300 ${isExpanded ? '' : 'line-clamp-2'}`}>
                   {isExpanded ? getHistoryEntryResponse(item.favorite, language) : favoriteFields(item.favorite).meaning}
                 </span>
+                {item.contexts.slice(0, isExpanded ? undefined : 1).map((context) => (
+                  <span key={context.text} lang="ja" className="mt-1.5 block border-l-2 border-amber-300 pl-2 text-xs text-zinc-700 dark:border-amber-600 dark:text-zinc-300">
+                    {highlight(context.text, [item.word, item.favorite.query])}
+                    {isExpanded && item.books.length > 1 && <span className="ml-1 text-[10px] text-zinc-500 dark:text-zinc-400">— {context.book.title}</span>}
+                  </span>
+                ))}
                 {bookChips(item.books)}
               </button>
             </li>
@@ -507,7 +583,10 @@ export const StudyDashboard: React.FC<Props> = ({ isOpen, recentBooks, onClose, 
 
         <div role="tabpanel" className="min-h-0 flex-1 overflow-y-auto p-3">
           {isEmpty ? (
-            <p className="px-4 py-12 text-center text-sm text-zinc-500 dark:text-zinc-400">{t('study.empty')}</p>
+            <div className="space-y-4">
+              {renderDrive()}
+              <p className="px-4 py-12 text-center text-sm text-zinc-500 dark:text-zinc-400">{t('study.empty')}</p>
+            </div>
           ) : tab === 'summary' ? renderSummary()
             : listEmpty ? <p className="py-12 text-center text-sm text-zinc-500 dark:text-zinc-400">{t('study.noResults')}</p>
               : tab === 'vocabulary' ? renderVocabulary()

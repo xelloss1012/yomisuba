@@ -9,7 +9,7 @@ import { BookShelf } from './BookShelf';
 import { BookLibraryModal } from './BookLibraryModal';
 import { PasteTextModal } from './PasteTextModal';
 import { ImportUrlModal } from './ImportUrlModal';
-import { StudyDashboard } from './StudyDashboard';
+import { DriveStudyState, StudyDashboard } from './StudyDashboard';
 import { importUrlAsEpub, UrlImportError } from '../utils/urlImport';
 import { textToEpub } from '../utils/textToEpub';
 import { importFileAsEpub, isImportable } from '../utils/importFile';
@@ -49,6 +49,9 @@ interface Props {
   onRefreshDriveBooks: () => void;
   /** Removes from this device the data of a book no longer on the shelf. */
   onDeleteBookData: (bookKey: string) => void;
+  driveStudy: DriveStudyState;
+  /** Reads from Drive the data of the books this device does not have; absent without a Google session. */
+  onLoadDriveStudyBooks?: () => void;
   onUpdateSettings: (newSettings: Partial<ReaderSettingsState>) => void;
 }
 
@@ -74,6 +77,8 @@ export const FileDropZone: React.FC<Props> = ({
   onDeleteDriveBook,
   onRefreshDriveBooks,
   onDeleteBookData,
+  driveStudy,
+  onLoadDriveStudyBooks,
   onUpdateSettings,
 }) => {
   const t = useT();
@@ -314,6 +319,8 @@ export const FileDropZone: React.FC<Props> = ({
           onClose={() => setIsStudyOpen(false)}
           onOpenBook={(book) => { setIsStudyOpen(false); onOpenRecent(book); }}
           onDeleteBookData={onDeleteBookData}
+          driveStudy={driveStudy}
+          onLoadDriveStudyBooks={onLoadDriveStudyBooks}
         />
 
         <BookLibraryModal

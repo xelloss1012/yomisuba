@@ -1,3 +1,4 @@
+import { MAX_CONTEXT_LENGTH } from './contextSentence';
 import { DictionaryHistoryData, TranslationHistoryKind } from './translationHistory';
 
 export type TranslationFavoriteKind = TranslationHistoryKind | 'glossary';
@@ -10,6 +11,8 @@ export interface TranslationFavorite {
   provider?: string;
   response: string;
   data?: DictionaryHistoryData;
+  /** The sentence of the book the word was saved from, when it was saved while reading. */
+  context?: string;
 }
 
 const isDictionaryHistoryData = (value: unknown): value is DictionaryHistoryData => {
@@ -43,7 +46,8 @@ export const readTranslationFavorites = (storageKey: string): TranslationFavorit
         (item.kind === 'dictionary' || item.kind === 'translation' || item.kind === 'ai' || item.kind === 'glossary') &&
         (item.provider === undefined || typeof item.provider === 'string') &&
         typeof item.response === 'string' &&
-        (item.data === undefined || isDictionaryHistoryData(item.data))
+        (item.data === undefined || isDictionaryHistoryData(item.data)) &&
+        (item.context === undefined || typeof item.context === 'string')
       )
     ).slice(0, MAX_TRANSLATION_FAVORITES);
   } catch {
@@ -123,8 +127,11 @@ export const toggleTranslationFavorite = (
     return writeTranslationFavorites(storageKey, next);
   }
 
+  const { context, ...rest } = candidate;
+  const cleanContext = context?.replace(/\s+/g, ' ').trim().slice(0, MAX_CONTEXT_LENGTH);
   const nextFavorite: TranslationFavorite = {
-    ...candidate,
+    ...rest,
+    ...(cleanContext ? { context: cleanContext } : {}),
     response: normalizedResponse(candidate.response),
     id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
     savedAt: Date.now(),

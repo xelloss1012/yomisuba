@@ -49,12 +49,14 @@ import {
   TranslationHistoryKind,
 } from '../utils/translationHistory';
 import {
+  isTranslationFavorite,
   readTranslationFavorites,
   toggleTranslationFavorite,
   TranslationFavorite,
   TranslationFavoriteCandidate,
   writeTranslationFavorites,
 } from '../utils/translationFavorites';
+import { readableText, sentenceForRange, sentenceForWord } from '../utils/contextSentence';
 import {
   readFrequentQueries,
   recordFrequentQuery,
@@ -668,13 +670,35 @@ export const EpubReader: React.FC<Props> = ({
     markReaderDataChanged();
   }, [markReaderDataChanged, translationHistoryStorageKey]);
 
+  /**
+   * The sentence a favorite is saved from: the one of the selection when it holds the word, or else the
+   * first one of the chapter that does (a word picked from the page glossary). None outside the book.
+   */
+  const contextSentenceFor = (candidate: TranslationFavoriteCandidate): string | undefined => {
+    try {
+      const scroller = iframeRef.current?.contentDocument?.getElementById('reader-scroller');
+      if (!scroller) return undefined;
+      const forms = [candidate.query, candidate.data?.baseForm ?? '', ...(candidate.data?.searchTerms ?? [])]
+        .map((form) => form.trim())
+        .filter(Boolean);
+      const range = selectionRangeRef.current;
+      const selected = range ? sentenceForRange(range, scroller) : null;
+      if (selected && forms.some((form) => selected.includes(form))) return selected;
+      return sentenceForWord(readableText(scroller).text, forms) ?? undefined;
+    } catch {
+      return undefined;
+    }
+  };
+
   const handleToggleTranslationFavorite = useCallback((
     candidate: TranslationFavoriteCandidate,
   ) => {
     const next = toggleTranslationFavorite(
       translationFavoritesStorageKey,
       translationFavoritesRef.current,
-      candidate,
+      isTranslationFavorite(translationFavoritesRef.current, candidate)
+        ? candidate
+        : { ...candidate, context: candidate.context ?? contextSentenceFor(candidate) },
     );
     translationFavoritesRef.current = next;
     setTranslationFavorites(next);

@@ -66,24 +66,25 @@ try {
     id: '1', savedAt: Date.UTC(2026, 9, 22, 10), query: '猫が', kind: 'dictionary',
     response: '',
     data: { baseForm: '猫', searchTerms: ['猫'], entries: [entry('es', ['ねこ'], [['gato', 'felino'], ['persona sigilosa']]), entry('en', ['ねこ'], [['cat']])] },
+    context: '吾輩は猫である。',
   };
   const translation = { id: '2', savedAt: Date.UTC(2026, 9, 23), query: '吾輩は猫である', kind: 'translation', provider: 'google', response: 'I am a cat.\n\nA famous line, "really".' };
   assert.deepEqual(favoriteFields(dictionary), { word: '猫', reading: 'ねこ', meaning: 'gato; felino · persona sigilosa | cat' });
   assert.deepEqual(favoriteFields(translation), { word: '吾輩は猫である', reading: '', meaning: 'I am a cat. A famous line, "really".' });
 
-  const labels = { word: 'Palabra', reading: 'Lectura', meaning: 'Significado', type: 'Tipo', date: 'Fecha', source: 'Fuente', kind: (favorite) => (favorite.kind === 'dictionary' ? 'Diccionario' : 'Traducción') };
+  const labels = { word: 'Palabra', reading: 'Lectura', meaning: 'Significado', type: 'Tipo', date: 'Fecha', source: 'Fuente', context: 'Contexto', kind: (favorite) => (favorite.kind === 'dictionary' ? 'Diccionario' : 'Traducción') };
   const csv = favoritesToCsv([dictionary, translation], labels);
   assert.ok(csv.startsWith('﻿'), 'a byte-order mark, so that Excel reads the Japanese');
   assert.deepEqual(csv.slice(1).split('\r\n'), [
-    'Palabra,Lectura,Significado,Tipo,Fecha,Fuente',
-    '猫,ねこ,gato; felino · persona sigilosa | cat,Diccionario,2026-10-22,',
-    '吾輩は猫である,,"I am a cat. A famous line, ""really"".",Traducción,2026-10-23,google',
+    'Palabra,Lectura,Significado,Tipo,Fecha,Fuente,Contexto',
+    '猫,ねこ,gato; felino · persona sigilosa | cat,Diccionario,2026-10-22,,吾輩は猫である。',
+    '吾輩は猫である,,"I am a cat. A famous line, ""really"".",Traducción,2026-10-23,google,',
     '',
   ]);
 
   const markdown = favoritesToMarkdown('吾輩は猫である · Favoritos', [dictionary, translation], labels, 'es');
   assert.ok(markdown.startsWith('# 吾輩は猫である · Favoritos\n'));
-  assert.ok(markdown.includes('## 猫が\n*Diccionario · 2026-10-22*'));
+  assert.ok(markdown.includes('## 猫が\n*Diccionario · 2026-10-22*\n\n> 吾輩は猫である。\n'), 'with the sentence it was saved from');
   assert.ok(markdown.includes('gato'), 'the dictionary data is written out');
   assert.ok(markdown.includes('## 吾輩は猫である\n*Traducción · 2026-10-23 · google*\n\nI am a cat.'));
 

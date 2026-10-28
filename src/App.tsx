@@ -29,6 +29,9 @@ import {
   getGoogleDriveLastWriter,
   getGoogleDriveReadingPosition,
   removePendingGoogleDriveReaderData,
+  bookFolderName,
+  DriveStudyBook,
+  listGoogleDriveStudyBooks,
   restoreGoogleDriveReaderData,
   restoreGoogleDriveSession,
   restoreGoogleDriveSettings,
@@ -46,7 +49,8 @@ import { writeClipboardText } from './utils/readerClipboard';
 import { BookPosition, comparePositions, describeDevice, getDeviceId, latestPaginationCounts } from './utils/driveDevice';
 import { DriveConflict, DriveConflictModal } from './components/DriveConflictModal';
 import { DeleteBookChoice, DeleteBookModal, DeleteBookRequest } from './components/DeleteBookModal';
-import { bookDataKeys, bookKeyOf } from './utils/studyData';
+import { bookDataKeys, bookKeyOf, listStoredBooks } from './utils/studyData';
+import type { DriveStudyState } from './components/StudyDashboard';
 
 const SETTINGS_STORAGE_KEY = 'yomisuba_settings_v1';
 
@@ -102,6 +106,8 @@ export const App: React.FC = () => {
   const driveConflictAnswerRef = React.useRef<((choice: 'load' | 'keep') => void) | null>(null);
   const [deleteRequest, setDeleteRequest] = useState<DeleteBookRequest | null>(null);
   const deleteAnswerRef = React.useRef<((choice: DeleteBookChoice | null) => void) | null>(null);
+  // The reading data in Drive of books this device does not have, for the vocabulary panel; read on request.
+  const [driveStudy, setDriveStudy] = useState<DriveStudyState>({ status: 'idle', books: [] });
   const currentEpubRef = React.useRef<ParsedEpub | null>(null);
   const currentBookIdRef = React.useRef<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -959,7 +965,28 @@ export const App: React.FC = () => {
       setDriveSettingsReady(false);
       setGoogleDriveSettingsDate(null);
       setGoogleDriveBooks([]);
+      setDriveStudy({ status: 'idle', books: [] });
     });
+  };
+
+  const handleLoadDriveStudyBooks = async () => {
+    if (!googleDriveSession) return;
+    setDriveStudy((state) => ({ ...state, status: 'loading', error: undefined }));
+    try {
+      const local = listStoredBooks(localStorage, recentBooks.map((book) => ({
+        bookKey: bookKeyOf(book.title, book.creator),
+        title: book.title,
+        creator: book.creator,
+      })));
+      const localKeys = new Set(local.map((book) => book.bookKey));
+      const books: DriveStudyBook[] = await listGoogleDriveStudyBooks(
+        googleDriveSession.accessToken,
+        new Set(local.map((book) => bookFolderName(book))),
+      );
+      setDriveStudy({ status: 'done', books: books.filter((book) => !localKeys.has(book.bookKey)) });
+    } catch (error) {
+      setDriveStudy({ status: 'error', books: [], error: error instanceof Error ? error.message : String(error) });
+    }
   };
 
   const handleRestoreDriveSettings = () => {
@@ -1098,6 +1125,8 @@ export const App: React.FC = () => {
             onDownloadDriveBook={handleDownloadDriveBook}
             onDeleteDriveBook={(book) => { void handleDeleteDriveBook(book); }}
             onDeleteBookData={handleDeleteBookData}
+            driveStudy={driveStudy}
+            onLoadDriveStudyBooks={googleDriveSession ? () => { void handleLoadDriveStudyBooks(); } : undefined}
             onRefreshDriveBooks={handleRefreshDriveBooks}
             onUpdateSettings={handleUpdateSettings}
           />
