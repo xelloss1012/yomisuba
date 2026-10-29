@@ -226,7 +226,7 @@ export const StudyDashboard: React.FC<Props> = ({
   [data, onlyWithNote, onlyInReview, query, bookFilter]);
 
   const history = useMemo(() => (data
-    ? data.history.filter((item) => inBook([item.book]) && matches(query, item.entry.query, getHistoryEntryResponse(item.entry, language)))
+    ? data.history.filter((item) => inBook([item.book]) && matches(query, item.entry.query, getHistoryEntryResponse(item.entry, language), item.entry.context))
     : []),
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [data, query, bookFilter, language]);
@@ -334,6 +334,7 @@ export const StudyDashboard: React.FC<Props> = ({
     ...(entry.provider ? { provider: entry.provider } : {}),
     response: getHistoryEntryResponse(entry, language),
     ...(entry.data ? { data: entry.data } : {}),
+    ...(entry.context ? { context: entry.context } : {}),
   });
 
   /** The first book of a list that is on the shelf, to open it. */
@@ -660,6 +661,11 @@ export const StudyDashboard: React.FC<Props> = ({
                     ? getHistoryEntryResponse(entry, language)
                     : favoriteFields({ ...entry, savedAt: entry.queriedAt, response: entry.response ?? '' }).meaning}
                 </span>
+                {entry.context && (
+                  <span lang="ja" className={`mt-1.5 block border-l-2 border-amber-300 pl-2 text-xs text-zinc-700 dark:border-amber-600 dark:text-zinc-300 ${isExpanded ? '' : 'line-clamp-1'}`}>
+                    {highlight(entry.context, [entry.query, entry.data?.baseForm ?? ''])}
+                  </span>
+                )}
                 <span className="mt-1 block truncate text-[10px] text-zinc-500 dark:text-zinc-400">
                   {new Date(entry.queriedAt).toLocaleString(language)} · {book.title}
                 </span>

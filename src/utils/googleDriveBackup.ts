@@ -1467,7 +1467,8 @@ function isHistoryEntry(value: unknown): boolean {
     && (entry.kind === 'dictionary' || entry.kind === 'translation' || entry.kind === 'ai')
     && (entry.provider === undefined || ['gemini', 'openai', 'deepseek', 'openrouter'].includes(String(entry.provider)))
     && (entry.response === undefined || typeof entry.response === 'string')
-    && (entry.data === undefined || isDictionaryHistoryData(entry.data));
+    && (entry.data === undefined || isDictionaryHistoryData(entry.data))
+    && (entry.context === undefined || typeof entry.context === 'string');
 }
 
 function isFavorite(value: unknown): boolean {
@@ -1493,7 +1494,8 @@ function isFrequentQuery(value: unknown): boolean {
     && Number.isInteger(query.count)
     && query.count > 0
     && typeof query.updatedAt === 'number'
-    && Number.isFinite(query.updatedAt);
+    && Number.isFinite(query.updatedAt)
+    && (query.contexts === undefined || (Array.isArray(query.contexts) && query.contexts.every((print) => typeof print === 'string')));
 }
 
 function isReaderBookBackup(value: unknown): value is ReaderBookBackup {

@@ -136,6 +136,21 @@ try {
   const grown = saveTranslationHistoryEntry(dkey, stale, { kind: 'dictionary', query: '古い', response: 'r', data });
   assert.equal(grown.length, 2, 'same word outside the window is a new entry');
 
+  // D) Looked up from the text: the sentence decides, not the time.
+  const s1 = '吾輩は猫である。';
+  const s2 = '名前はまだ無い猫。';
+  const old = [{ id: 'o', queriedAt: Date.now() - 3 * 86_400_000, query: '猫', kind: 'dictionary', data, context: s1 }];
+  let c = saveTranslationHistoryEntry(dkey, old, { kind: 'dictionary', query: '猫', response: 'r', data, context: `  ${s1}
+` });
+  assert.equal(c.length, 1, 'the same sentence days later is the same appearance');
+  assert.equal(c[0].context, s1, 'the sentence is kept on one line');
+  c = saveTranslationHistoryEntry(dkey, c, { kind: 'dictionary', query: '猫', response: 'r', data, context: s2 });
+  assert.equal(c.length, 2, 'another sentence right away is a new appearance');
+  c = saveTranslationHistoryEntry(dkey, c, { kind: 'dictionary', query: '猫', response: 'r', data, context: s1 });
+  assert.equal(c.length, 2, 'going back to the first sentence refreshes its entry');
+  assert.equal(c[0].context, s1);
+  assert.equal(HISTORY_DEDUP_WINDOW_MS, 10 * 60_000, 'with no sentence, the same lookup within 10 minutes');
+
   console.log('PASS: history de-duplicates dictionary text, previews long translations, and de-dupes by kind+query over time.');
 } finally {
   await server.close();

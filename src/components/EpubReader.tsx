@@ -607,6 +607,22 @@ export const EpubReader: React.FC<Props> = ({
     }
   }, [bookStorageKey]);
 
+  /**
+   * The sentence of the selection, when what is looked up is the selection (not a word typed in the
+   * dictionary): a word looked up again in the same sentence is the same appearance of it.
+   */
+  const selectionSentenceFor = useCallback((query: string): string | undefined => {
+    const same = (text: string) => text.replace(/\s+/g, ' ').trim();
+    const range = selectionRangeRef.current;
+    if (!range || same(selectedTextRef.current) !== same(query)) return undefined;
+    try {
+      const scroller = iframeRef.current?.contentDocument?.getElementById('reader-scroller');
+      return (scroller && sentenceForRange(range, scroller)) || undefined;
+    } catch {
+      return undefined;
+    }
+  }, []);
+
   const handleRecordFrequentQuery = useCallback((query: string, searchToken: string | number) => {
     const token = String(searchToken);
     if (recordedFrequentSearchTokensRef.current.has(token)) return;
@@ -619,12 +635,13 @@ export const EpubReader: React.FC<Props> = ({
       frequentQueriesStorageKey,
       frequentQueriesRef.current,
       query,
+      selectionSentenceFor(query),
     );
     if (next === frequentQueriesRef.current) return;
     frequentQueriesRef.current = next;
     setFrequentQueries(next);
     markReaderDataChanged();
-  }, [frequentQueriesStorageKey, markReaderDataChanged]);
+  }, [frequentQueriesStorageKey, markReaderDataChanged, selectionSentenceFor]);
 
   const handleClearFrequentQueries = useCallback(() => {
     frequentQueriesRef.current = [];
@@ -642,6 +659,7 @@ export const EpubReader: React.FC<Props> = ({
     hasFullMatch?: boolean,
   ) => {
     const previousId = translationHistoryRef.current[0]?.id;
+    const context = selectionSentenceFor(query);
     const next = saveTranslationHistoryEntry(
       translationHistoryStorageKey,
       translationHistoryRef.current,
@@ -651,13 +669,14 @@ export const EpubReader: React.FC<Props> = ({
         response,
         ...(kind === 'ai' && provider ? { provider } : {}),
         ...(data ? { data } : {}),
+        ...(context ? { context } : {}),
       },
       hasFullMatch,
     );
     translationHistoryRef.current = next;
     setTranslationHistory(next);
     if (next[0]?.id && next[0].id !== previousId) markReaderDataChanged();
-  }, [markReaderDataChanged, translationHistoryStorageKey]);
+  }, [markReaderDataChanged, selectionSentenceFor, translationHistoryStorageKey]);
 
   const handleRemoveTranslationHistoryEntry = useCallback((id: string) => {
     const next = translationHistoryRef.current.filter((entry) => entry.id !== id);

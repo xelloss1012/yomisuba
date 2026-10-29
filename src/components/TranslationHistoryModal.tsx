@@ -161,6 +161,7 @@ export const TranslationHistoryModal: React.FC<Props> = ({
           ...(entry.provider ? { provider: entry.provider } : {}),
           response: getHistoryEntryResponse(entry, language),
           ...(entry.data ? { data: entry.data } : {}),
+          ...(entry.context ? { context: entry.context } : {}),
         },
       }));
     }
@@ -191,6 +192,7 @@ export const TranslationHistoryModal: React.FC<Props> = ({
           ...(entry.provider ? { provider: entry.provider } : {}),
           response: getHistoryEntryResponse(entry, language),
           ...(entry.data ? { data: entry.data } : {}),
+          ...(entry.context ? { context: entry.context } : {}),
         } : undefined,
       };
     });

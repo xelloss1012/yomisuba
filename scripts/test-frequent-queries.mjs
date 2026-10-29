@@ -20,7 +20,7 @@ const server = await createServer({
 });
 
 try {
-  const { readFrequentQueries, recordFrequentQuery, FREQUENT_QUERIES_DEDUP_WINDOW_MS } =
+  const { readFrequentQueries, recordFrequentQuery, FREQUENT_QUERIES_DEDUP_WINDOW_MS, MAX_QUERY_CONTEXTS } =
     await server.ssrLoadModule('/src/utils/frequentQueries.ts');
   const { HISTORY_DEDUP_WINDOW_MS } = await server.ssrLoadModule('/src/utils/translationHistory.ts');
   assert.equal(
@@ -62,6 +62,24 @@ try {
   ];
   const grown = recordFrequentQuery(windowKey, stale, '猫');
   assert.equal(grown[0].count, 4, 'outside the window the query counts again');
+
+  // Looked up from the text: once per sentence, however long ago; another sentence counts at once.
+  const textKey = 'test-frequent-queries-text';
+  let q = recordFrequentQuery(textKey, [], '激怒', 'メロスは激怒した。');
+  q = recordFrequentQuery(textKey, q, '激怒', 'メロスは激怒した。');
+  assert.equal(q[0].count, 1, 'the same sentence is the same appearance');
+  q = recordFrequentQuery(textKey, q, '激怒', '王は激怒した。');
+  assert.equal(q[0].count, 2, 'another sentence is a new appearance, even right away');
+  q = [{ ...q[0], updatedAt: Date.now() - 86_400_000 }];
+  q = recordFrequentQuery(textKey, q, '激怒', 'メロスは激怒した。');
+  assert.equal(q[0].count, 2, 'rereading the first sentence a day later does not count');
+  for (let index = 0; index < 6; index += 1) q = recordFrequentQuery(textKey, q, '激怒', `文${index}。`);
+  assert.equal(q[0].count, 8);
+  assert.equal(q[0].contexts.length, MAX_QUERY_CONTEXTS, 'only the last sentences are remembered');
+  assert.ok(!JSON.stringify(q).includes('文0'), 'the sentences are kept as fingerprints, not as text');
+  // A count from before sentences were remembered falls back to the window.
+  const legacy = [{ key: '王', query: '王', count: 2, updatedAt: Date.now() }];
+  assert.equal(recordFrequentQuery(textKey, legacy, '王', '王は激怒した。')[0].count, 2);
 
   console.log('PASS: frequent queries normalize, de-dup within the window, count, sort, and persist.');
 } finally {
