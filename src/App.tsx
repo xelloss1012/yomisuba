@@ -8,6 +8,7 @@ import { LanguageProvider } from './i18n/LanguageContext';
 import { AVAILABLE_LANGUAGES, setActiveLanguage, t } from './utils/i18n';
 import { SharedPayload, sharedToBook, watchSharedContent, checkPendingShared } from './utils/sharedContent';
 import { setReaderAutoRotate } from './utils/readerOrientation';
+import { getUpdateInstallState } from './utils/appUpdater';
 import { createBookId, deleteRecentBook, getLastBookId, getRecentBook, listRecentBooks, loadRecentBook, MAX_SHELF_BOOKS, migrateBooksToNativeStorage, RecentBook, requestPersistentStorage, saveRecentBook, setLastBookId } from './utils/recentBooks';
 import {
   deleteGoogleDriveBook,
@@ -900,11 +901,14 @@ export const App: React.FC = () => {
         const pendingShared = await checkPendingShared();
         if (pendingShared || isOpeningSharedRef.current || cancelled) return;
 
+        // The reader started updating the app from the home screen meanwhile: the book would open on top.
+        if (getUpdateInstallState().kind !== 'idle') return;
+
         const lastBookId = getLastBookId();
         if (lastBookId) {
           const listed = books.find((book) => book.id === lastBookId);
           const lastBook = listed && listed.blobLoaded !== false ? listed : await getRecentBook(lastBookId);
-          if (lastBook && !cancelled && !isOpeningSharedRef.current) {
+          if (lastBook && !cancelled && !isOpeningSharedRef.current && getUpdateInstallState().kind === 'idle') {
             await openBook(lastBook.blob, lastBook.id, lastBook.name);
           }
         }

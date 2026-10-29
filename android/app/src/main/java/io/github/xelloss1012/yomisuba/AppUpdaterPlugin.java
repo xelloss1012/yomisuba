@@ -22,6 +22,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Downloads a release of the app from GitHub and hands it to Android's installer, which asks the reader
@@ -34,6 +36,8 @@ public class AppUpdaterPlugin extends Plugin {
     private static final String RELEASES_PREFIX = "https://github.com/xelloss1012/yomisuba/releases/";
     private static final String APK_TYPE = "application/vnd.android.package-archive";
     private static final int TIMEOUT_MS = 30_000;
+    /** One download at a time: two writing the same file left it broken. */
+    private static final AtomicBoolean downloading = new AtomicBoolean(false);
 
     private boolean installAllowed() {
         return Build.VERSION.SDK_INT < Build.VERSION_CODES.O
@@ -85,24 +89,31 @@ public class AppUpdaterPlugin extends Plugin {
             call.reject("Yomisuba no tiene permiso para instalar aplicaciones.", "NOT_ALLOWED");
             return;
         }
+        if (!downloading.compareAndSet(false, true)) {
+            call.reject("Ya se está descargando la actualización.", "BUSY");
+            return;
+        }
+        String id = call.getString("id", "");
         new Thread(() -> {
             try {
-                File apk = download(url);
+                File apk = download(url, id);
                 checkPackage(apk);
                 install(apk);
                 call.resolve();
             } catch (Exception error) {
                 call.reject(error.getMessage() == null ? error.toString() : error.getMessage());
+            } finally {
+                downloading.set(false);
             }
         }, "yomisuba-update").start();
     }
 
-    private File download(String url) throws Exception {
+    private File download(String url, String id) throws Exception {
         File folder = new File(getContext().getCacheDir(), "updates");
         if (!folder.isDirectory() && !folder.mkdirs()) throw new Exception("No se pudo preparar la descarga.");
         File[] old = folder.listFiles();
         if (old != null) for (File file : old) file.delete();
-        File apk = new File(folder, "yomisuba.apk");
+        File apk = new File(folder, "yomisuba-" + System.currentTimeMillis() + ".apk");
 
         HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
         connection.setInstanceFollowRedirects(true);
@@ -123,11 +134,11 @@ public class AppUpdaterPlugin extends Plugin {
                     long now = System.currentTimeMillis();
                     if (now - lastReport > 200) {
                         lastReport = now;
-                        progress(received, total);
+                        progress(id, received, total);
                     }
                 }
             }
-            progress(received, total);
+            progress(id, received, total);
             if (total > 0 && received != total) throw new Exception("La descarga se interrumpió.");
         } finally {
             connection.disconnect();
@@ -135,8 +146,9 @@ public class AppUpdaterPlugin extends Plugin {
         return apk;
     }
 
-    private void progress(long received, long total) {
+    private void progress(String id, long received, long total) {
         JSObject event = new JSObject();
+        event.put("id", id);
         event.put("received", received);
         event.put("total", total);
         notifyListeners("downloadProgress", event);
@@ -146,9 +158,23 @@ public class AppUpdaterPlugin extends Plugin {
     private void checkPackage(File apk) throws Exception {
         PackageInfo info = getContext().getPackageManager().getPackageArchiveInfo(apk.getAbsolutePath(), 0);
         if (info == null || !getContext().getPackageName().equals(info.packageName)) {
+            String found = info == null ? describe(apk) : info.packageName;
             apk.delete();
-            throw new Exception("El archivo descargado no es una versión de Yomisuba.");
+            throw new Exception("El archivo descargado no es una versión de Yomisuba (" + found + ").");
         }
+    }
+
+    /** What a file that is not an APK holds, to tell what went wrong: its size and how it starts. */
+    private String describe(File file) {
+        byte[] head = new byte[24];
+        int read = 0;
+        try (InputStream input = new java.io.FileInputStream(file)) {
+            read = Math.max(0, input.read(head));
+        } catch (Exception ignored) {
+            // The size alone still says something.
+        }
+        String start = new String(head, 0, read, StandardCharsets.ISO_8859_1).replaceAll("[^\\x20-\\x7e]", ".");
+        return file.length() + " bytes, «" + start + "»";
     }
 
     private void install(File apk) {

@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useSyncExternalStore } from 'react';
 import { Download, Loader2, Settings } from 'lucide-react';
 import { useT } from '../i18n/LanguageContext';
 import {
-  allowInstallingPackages,
+  allowAndInstallUpdate,
   canInstallInApp,
-  canInstallPackages,
-  downloadAndInstallUpdate,
+  getUpdateInstallState,
+  installUpdate,
+  subscribeUpdateInstall,
 } from '../utils/appUpdater';
 import type { AvailableUpdate } from '../utils/updateCheck';
 
@@ -18,13 +19,6 @@ interface Props {
   className: string;
 }
 
-type Status =
-  | { kind: 'idle' }
-  | { kind: 'permission' }
-  | { kind: 'downloading'; fraction: number | null }
-  | { kind: 'installing' }
-  | { kind: 'failed'; message: string };
-
 /**
  * In the Android app, downloads the update and opens Android's installer with it; the first time, it
  * asks the reader to allow Yomisuba to install apps. Elsewhere, or if anything fails, it is a link to
@@ -32,7 +26,8 @@ type Status =
  */
 export const UpdateInstallButton: React.FC<Props> = ({ update, label, installLabel, className }) => {
   const t = useT();
-  const [status, setStatus] = useState<Status>({ kind: 'idle' });
+  // Shared by every button: there is only one update going on.
+  const status = useSyncExternalStore(subscribeUpdateInstall, getUpdateInstallState);
   const link = update.apkUrl ?? update.releaseUrl;
 
   const downloadLink = (text: string, linkClass = className) => (
@@ -44,29 +39,9 @@ export const UpdateInstallButton: React.FC<Props> = ({ update, label, installLab
 
   if (!canInstallInApp() || !update.apkUrl) return downloadLink(label);
 
-  const install = async () => {
-    const url = update.apkUrl;
-    if (!url) return;
-    try {
-      if (!(await canInstallPackages())) {
-        setStatus({ kind: 'permission' });
-        return;
-      }
-      setStatus({ kind: 'downloading', fraction: 0 });
-      await downloadAndInstallUpdate(url, (fraction) => setStatus({ kind: 'downloading', fraction }));
-      setStatus({ kind: 'installing' });
-    } catch (error) {
-      setStatus({ kind: 'failed', message: error instanceof Error ? error.message : String(error) });
-    }
-  };
-
-  const allow = async () => {
-    try {
-      if (await allowInstallingPackages()) await install();
-    } catch (error) {
-      setStatus({ kind: 'failed', message: error instanceof Error ? error.message : String(error) });
-    }
-  };
+  const apkUrl = update.apkUrl;
+  const install = () => { void installUpdate(apkUrl); };
+  const allow = () => { void allowAndInstallUpdate(apkUrl); };
 
   const plainLink = 'inline-flex items-center gap-1 font-semibold text-indigo-700 hover:underline dark:text-indigo-300';
 
@@ -83,7 +58,7 @@ export const UpdateInstallButton: React.FC<Props> = ({ update, label, installLab
     return (
       <span role="status" className="flex max-w-xs flex-col items-center gap-1.5 text-center">
         <span className="text-zinc-700 dark:text-zinc-300">{t('update.permission')}</span>
-        <button type="button" onClick={() => { void allow(); }} className={className}>
+        <button type="button" onClick={allow} className={className}>
           <Settings className="h-3.5 w-3.5" />
           {t('update.openSettings')}
         </button>
@@ -102,7 +77,7 @@ export const UpdateInstallButton: React.FC<Props> = ({ update, label, installLab
 
   return (
     <span className="inline-flex flex-col items-center gap-1">
-      <button type="button" onClick={() => { void install(); }} className={className}>
+      <button type="button" onClick={install} className={className}>
         <Download className="h-3.5 w-3.5" />
         {status.kind === 'installing' ? t('update.installAgain') : installLabel}
       </button>
