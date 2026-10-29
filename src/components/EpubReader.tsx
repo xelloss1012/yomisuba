@@ -1465,12 +1465,12 @@ export const EpubReader: React.FC<Props> = ({
     setNoteEditorId(target.id);
   }, [findSelectedAnnotation, markReaderDataChanged]);
 
-  const handleSaveAnnotationNote = useCallback((id: string, note: string) => {
+  const handleSaveAnnotationNote = useCallback((id: string, note: string, review: boolean) => {
     const clean = normalizeNote(note);
     const next = textAnnotationsRef.current.map((annotation) => {
       if (annotation.id !== id) return annotation;
-      const { note: _previous, ...rest } = annotation;
-      return clean ? { ...rest, note: clean } : rest;
+      const { note: _previous, review: _wasReviewed, ...rest } = annotation;
+      return { ...rest, ...(clean ? { note: clean } : {}), ...(review ? { review } : {}) };
     });
     markReaderDataChanged();
     textAnnotationsRef.current = next;
@@ -4469,7 +4469,8 @@ export const EpubReader: React.FC<Props> = ({
         isOpen={noteEditorAnnotation !== undefined}
         quote={noteEditorAnnotation?.quote ?? ''}
         note={noteEditorAnnotation?.note ?? ''}
-        onSave={(note) => { if (noteEditorAnnotation) handleSaveAnnotationNote(noteEditorAnnotation.id, note); }}
+        review={Boolean(noteEditorAnnotation?.review)}
+        onSave={(note, review) => { if (noteEditorAnnotation) handleSaveAnnotationNote(noteEditorAnnotation.id, note, review); }}
         onClose={() => setNoteEditorId(null)}
       />
 

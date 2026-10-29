@@ -3,21 +3,31 @@ import { BookOpen, Check, EyeOff, Play, Volume2 } from 'lucide-react';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { favoriteFields } from '../utils/favoritesExport';
 import { speakJapanese } from '../utils/japaneseSpeech';
-import type { VocabularyItem } from '../utils/studyData';
+import { BookRef, GlobalNote, passageKey, underlinedAt, VocabularyItem } from '../utils/studyData';
 import { DAY_MS, Grade, GRADES, nextIntervals, reviewQueue, startOfDay, StudyProgress } from '../utils/studyProgress';
 import { getHistoryEntryResponse } from '../utils/translationHistory';
 
 interface Props {
-  /** The vocabulary that can be studied, in the order new words are taken. */
+  /** The vocabulary that can be studied. */
   items: VocabularyItem[];
+  /** The underlined passages chosen to be studied. */
+  passages: GlobalNote[];
   progress: StudyProgress;
   onAnswer: (key: string, grade: Grade) => void;
   onChangeNewPerDay: (count: number) => void;
-  /** "I know it" or "ignore": the word leaves the session. */
+  /** "I know it" or "ignore": the card leaves the session. */
   onMark: (key: string, how: 'known' | 'ignored') => void;
-  onSeeInBook: (item: VocabularyItem) => void;
-  canSeeInBook: (item: VocabularyItem) => boolean;
+  onSeeInBook: (books: BookRef[], text: string) => void;
+  canSeeInBook: (books: BookRef[]) => boolean;
+  chapterLabel: (spineIndex: number) => string;
 }
+
+type ReviewScope = 'all' | 'words' | 'passages';
+
+/** A card of the review: a word of the vocabulary or an underlined passage. */
+type ReviewCard =
+  | { kind: 'word'; key: string; item: VocabularyItem; since: number }
+  | { kind: 'passage'; key: string; note: GlobalNote; since: number };
 
 const NEW_PER_DAY_OPTIONS = [5, 10, 20, 30, 50, 0];
 
@@ -76,20 +86,28 @@ const withWord = (text: string, words: string[]): React.ReactNode => {
  * Reviews the vocabulary one word at a time: the word (with the sentence it was saved from), then its
  * reading and meaning, and how well it was remembered decides when it comes back.
  */
-export const StudyReview: React.FC<Props> = ({ items, progress, onAnswer, onChangeNewPerDay, onMark, onSeeInBook, canSeeInBook }) => {
+export const StudyReview: React.FC<Props> = ({ items, passages, progress, onAnswer, onChangeNewPerDay, onMark, onSeeInBook, canSeeInBook, chapterLabel }) => {
   const t = useT();
   const language = useLanguage();
-  const byKey = useMemo(() => new Map(items.map((item) => [item.key, item])), [items]);
+  const [scope, setScope] = useState<ReviewScope>('all');
+  // Words and passages together, new ones taken in the order they were met while reading.
+  const cards = useMemo(() => [
+    ...(scope !== 'passages' ? items.map((item): ReviewCard => ({ kind: 'word', key: item.key, item, since: item.firstSavedAt })) : []),
+    ...(scope !== 'words'
+      ? passages.map((note): ReviewCard => ({ kind: 'passage', key: passageKey(note.annotation.id), note, since: underlinedAt(note.annotation.id) }))
+      : []),
+  ].sort((a, b) => a.since - b.since), [items, passages, scope]);
+  const byKey = useMemo(() => new Map(cards.map((card) => [card.key, card])), [cards]);
   const [queue, setQueue] = useState<string[] | null>(null);
   const [shown, setShown] = useState(false);
   const [reviewed, setReviewed] = useState(0);
   const [expanded, setExpanded] = useState(false);
 
   const now = Date.now();
-  const available = useMemo(() => reviewQueue(items.map((item) => item.key), progress, now),
-    // `now` changes on every render; the queue only needs to follow the words and their progress.
+  const available = useMemo(() => reviewQueue(cards.map((card) => card.key), progress, now),
+    // `now` changes on every render; the queue only needs to follow the cards and their progress.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [items, progress]);
+    [cards, progress]);
 
   const current = queue && queue.length ? byKey.get(queue[0]) : undefined;
 
@@ -130,6 +148,22 @@ export const StudyReview: React.FC<Props> = ({ items, progress, onAnswer, onChan
           </p>
         )}
         <div className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
+          {passages.length > 0 && (
+            <div role="radiogroup" aria-label={t('review.scope')} className="mb-3 flex gap-1 rounded-xl bg-zinc-100 p-1 dark:bg-zinc-800">
+              {(['all', 'words', 'passages'] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={scope === value}
+                  onClick={() => setScope(value)}
+                  className={`min-h-8 flex-1 rounded-lg px-2 text-xs font-semibold ${scope === value ? 'bg-white text-indigo-700 shadow-sm dark:bg-zinc-900 dark:text-indigo-300' : 'text-zinc-600 dark:text-zinc-300'}`}
+                >
+                  {t(`review.scope_${value}`)}
+                </button>
+              ))}
+            </div>
+          )}
           <p className="text-sm text-zinc-800 dark:text-zinc-200">
             {total
               ? t('review.summary', { due: available.due.length, fresh: available.fresh.length })
@@ -161,13 +195,116 @@ export const StudyReview: React.FC<Props> = ({ items, progress, onAnswer, onChan
           </select>
         </label>
         <p className="text-[11px] text-zinc-500 dark:text-zinc-400">{t('review.explain')}</p>
+        {!passages.length && <p className="text-[11px] text-zinc-500 dark:text-zinc-400">{t('review.passagesHint')}</p>}
       </div>
     );
   }
 
-  const { meaning } = favoriteFields(current.favorite);
   const intervals = nextIntervals(progress.cards[current.key], Date.now());
-  const words = [current.word, current.favorite.query];
+  const books = current.kind === 'word' ? current.item.books : [current.note.book];
+  const markButtons = (
+    <div className="mt-3 flex flex-wrap justify-center gap-1.5">
+      {([['known', <Check key="i" className="h-3.5 w-3.5" />, t('study.markKnown')], ['ignored', <EyeOff key="i" className="h-3.5 w-3.5" />, t('study.ignore')]] as const).map(([how, icon, label]) => (
+        <button
+          key={how}
+          type="button"
+          onClick={() => {
+            onMark(current.key, how);
+            setShown(false);
+            setExpanded(false);
+            setQueue(queue.filter((key) => key !== current.key));
+          }}
+          className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-zinc-200 px-2 text-[11px] font-semibold text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+        >
+          {icon} {label}
+        </button>
+      ))}
+      {canSeeInBook(books) && (
+        <button
+          type="button"
+          onClick={() => onSeeInBook(books, current.kind === 'word' ? current.item.favorite.query : current.note.annotation.quote)}
+          className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-zinc-200 px-2 text-[11px] font-semibold text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+        >
+          <BookOpen className="h-3.5 w-3.5" /> {t('study.seeInBook')}
+        </button>
+      )}
+    </div>
+  );
+
+  function renderWord(item: VocabularyItem) {
+    const { meaning } = favoriteFields(item.favorite);
+    const words = [item.word, item.favorite.query];
+    return (
+      <>
+        <div className="flex items-center gap-2">
+          <p lang="ja" className="font-mincho text-4xl font-bold text-zinc-900 dark:text-zinc-100">{item.word}</p>
+          <button
+            type="button"
+            onClick={() => { void speakJapanese(item.word).catch(() => undefined); }}
+            className="tap-area rounded-full p-2 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+            aria-label={t('common.listen')}
+            title={t('common.listen')}
+          >
+            <Volume2 className="h-5 w-5" />
+          </button>
+        </div>
+        {item.contexts[0] && (
+          <p lang="ja" className="mt-4 max-w-md text-sm leading-relaxed text-zinc-700 dark:text-zinc-300">
+            {withWord(item.contexts[0].text, words)}
+          </p>
+        )}
+
+        {shown && (
+          <div className="mt-5 w-full max-w-md border-t border-zinc-200 pt-4 dark:border-zinc-700">
+            {item.reading && item.reading !== item.word && (
+              <p lang="ja" className="text-lg font-semibold text-indigo-700 dark:text-indigo-300">{item.reading}</p>
+            )}
+            <button type="button" onClick={() => setExpanded((value) => !value)} className="mt-1 w-full text-left">
+              <span className={`block whitespace-pre-line text-center text-sm text-zinc-800 dark:text-zinc-200 ${expanded ? 'text-left' : ''}`}>
+                {expanded ? getHistoryEntryResponse(item.favorite, language) : meaning}
+              </span>
+            </button>
+            <p className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">{item.books.map((book) => book.title).join(' · ')}</p>
+            {markButtons}
+          </div>
+        )}
+      </>
+    );
+  }
+
+  /**
+   * A passage with a note asks for the note, shown the passage in its sentence; one without a note asks
+   * for the passage itself, hidden in the sentence around it.
+   */
+  function renderPassage({ book, annotation }: GlobalNote) {
+    // Hidden with nothing around it, the passage could not be told; it is then shown, to be recognized.
+    const hideable = !annotation.note && Boolean(annotation.prefix || annotation.suffix);
+    const hidden = hideable && !shown;
+    return (
+      <>
+        {(annotation.note || hideable) && (
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+            {t(annotation.note ? 'review.recallNote' : 'review.recallPassage')}
+          </p>
+        )}
+        <p lang="ja" className="mt-3 max-w-md text-base leading-relaxed text-zinc-700 dark:text-zinc-300">
+          {annotation.prefix && <>…{annotation.prefix}</>}
+          {hidden
+            ? <span className="mx-0.5 inline-block min-w-[3em] rounded bg-indigo-100 px-1 text-indigo-400 dark:bg-indigo-950 dark:text-indigo-500" aria-label={t('review.hiddenPassage')}>{'＿'.repeat(Math.min(8, Math.max(2, annotation.quote.length)))}</span>
+            : <b className="font-bold text-indigo-700 dark:text-indigo-300">{annotation.quote}</b>}
+          {annotation.suffix && <>{annotation.suffix}…</>}
+        </p>
+
+        {shown && (
+          <div className="mt-5 w-full max-w-md border-t border-zinc-200 pt-4 dark:border-zinc-700">
+            {annotation.note && <p className="whitespace-pre-line text-left text-sm text-zinc-800 dark:text-zinc-200">{annotation.note}</p>}
+            <p className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">{book.title} · {chapterLabel(annotation.spineIndex)}</p>
+            {markButtons}
+          </div>
+        )}
+      </>
+    );
+  }
 
   return (
     <div className="flex min-h-full flex-col">
@@ -179,63 +316,9 @@ export const StudyReview: React.FC<Props> = ({ items, progress, onAnswer, onChan
       </div>
 
       <div className="mt-3 flex flex-1 flex-col items-center justify-center rounded-2xl border border-zinc-200 bg-zinc-50/60 px-4 py-6 text-center dark:border-zinc-800 dark:bg-zinc-800/30">
-        <div className="flex items-center gap-2">
-          <p lang="ja" className="font-mincho text-4xl font-bold text-zinc-900 dark:text-zinc-100">{current.word}</p>
-          <button
-            type="button"
-            onClick={() => { void speakJapanese(current.word).catch(() => undefined); }}
-            className="tap-area rounded-full p-2 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-700"
-            aria-label={t('common.listen')}
-            title={t('common.listen')}
-          >
-            <Volume2 className="h-5 w-5" />
-          </button>
-        </div>
-        {current.contexts[0] && (
-          <p lang="ja" className="mt-4 max-w-md text-sm leading-relaxed text-zinc-700 dark:text-zinc-300">
-            {withWord(current.contexts[0].text, words)}
-          </p>
-        )}
-
-        {shown && (
-          <div className="mt-5 w-full max-w-md border-t border-zinc-200 pt-4 dark:border-zinc-700">
-            {current.reading && current.reading !== current.word && (
-              <p lang="ja" className="text-lg font-semibold text-indigo-700 dark:text-indigo-300">{current.reading}</p>
-            )}
-            <button type="button" onClick={() => setExpanded((value) => !value)} className="mt-1 w-full text-left">
-              <span className={`block whitespace-pre-line text-center text-sm text-zinc-800 dark:text-zinc-200 ${expanded ? 'text-left' : ''}`}>
-                {expanded ? getHistoryEntryResponse(current.favorite, language) : meaning}
-              </span>
-            </button>
-            <p className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">{current.books.map((book) => book.title).join(' · ')}</p>
-            <div className="mt-3 flex flex-wrap justify-center gap-1.5">
-              {([['known', <Check key="i" className="h-3.5 w-3.5" />, t('study.markKnown')], ['ignored', <EyeOff key="i" className="h-3.5 w-3.5" />, t('study.ignore')]] as const).map(([how, icon, label]) => (
-                <button
-                  key={how}
-                  type="button"
-                  onClick={() => {
-                    onMark(current.key, how);
-                    setShown(false);
-                    setExpanded(false);
-                    setQueue(queue.filter((key) => key !== current.key));
-                  }}
-                  className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-zinc-200 px-2 text-[11px] font-semibold text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
-                >
-                  {icon} {label}
-                </button>
-              ))}
-              {canSeeInBook(current) && (
-                <button
-                  type="button"
-                  onClick={() => onSeeInBook(current)}
-                  className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-zinc-200 px-2 text-[11px] font-semibold text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
-                >
-                  <BookOpen className="h-3.5 w-3.5" /> {t('study.seeInBook')}
-                </button>
-              )}
-            </div>
-          </div>
-        )}
+        {current.kind === 'word'
+          ? renderWord(current.item)
+          : renderPassage(current.note)}
       </div>
 
       <div className="mt-3">

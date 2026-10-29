@@ -1453,7 +1453,8 @@ function isAnnotation(value: unknown): boolean {
     && typeof annotation.quote === 'string'
     && typeof annotation.prefix === 'string'
     && typeof annotation.suffix === 'string'
-    && (annotation.note === undefined || typeof annotation.note === 'string');
+    && (annotation.note === undefined || typeof annotation.note === 'string')
+    && (annotation.review === undefined || typeof annotation.review === 'boolean');
 }
 
 function isHistoryEntry(value: unknown): boolean {

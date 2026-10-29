@@ -6,6 +6,8 @@ export interface TextAnnotation {
   suffix: string;
   /** What the reader wrote about the passage, if anything. */
   note?: string;
+  /** Chosen to be studied in the reviews of the study panel. */
+  review?: boolean;
 }
 
 export const MAX_NOTE_LENGTH = 2000;
@@ -36,9 +38,9 @@ export const readTextAnnotations = (storageKey: string): TextAnnotation[] => {
       )
     ).map((item) => {
       // A note that is not text (a damaged or foreign file) is dropped; the underline stays.
-      const { note, ...rest } = item;
+      const { note, review, ...rest } = item;
       const clean = normalizeNote(note);
-      return clean ? { ...rest, note: clean } : rest;
+      return { ...rest, ...(clean ? { note: clean } : {}), ...(review === true ? { review } : {}) };
     });
   } catch {
     return [];

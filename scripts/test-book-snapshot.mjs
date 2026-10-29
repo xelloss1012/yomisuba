@@ -19,7 +19,7 @@ try {
     setItem: (key, value) => storage.set(key, String(value)),
     removeItem: (key) => storage.delete(key),
   };
-  const { bookSnapshot, removeBookFavorites, toggleBookFavorite } = await server.ssrLoadModule('/src/utils/bookSnapshot.ts');
+  const { bookSnapshot, removeBookFavorites, setBookAnnotationReview, toggleBookFavorite } = await server.ssrLoadModule('/src/utils/bookSnapshot.ts');
   const { notesToAnki } = await server.ssrLoadModule('/src/utils/studyExport.ts');
 
   const book = { bookKey: 'yomisuba_book_k', title: 'こころ', creator: '夏目漱石' };
@@ -56,6 +56,21 @@ try {
   toggleBookFavorite(book, { ...candidate, query: '猫' });
   assert.deepEqual(removeBookFavorites(book, (favorite) => favorite.query === '先生').favorites.map((favorite) => favorite.query), ['猫']);
 
+  // --- A passage put in the reviews with the book closed ---------------------------------------
+  const id = `${(1_700_000_000_000).toString(36)}-x`;
+  set('annotations', [{ id, spineIndex: 2, quote: '先生', prefix: '私はその人を常に', suffix: 'と呼んでいた', note: 'n' }]);
+  const reviewed = setBookAnnotationReview(book, id, true);
+  assert.deepEqual(reviewed.dirtyGroups, ['annotations']);
+  assert.equal(reviewed.annotations[0].review, true);
+  assert.equal(reviewed.annotations[0].note, 'n', 'the note stays');
+  const { collectStudyData, passageKey, underlinedAt } = await server.ssrLoadModule('/src/utils/studyData.ts');
+  const [passage] = collectStudyData(localStorage, [{ ...book, fromDrive: false }]).notes;
+  assert.equal(passage.annotation.review, true);
+  assert.equal(passage.annotation.prefix, '私はその人を常に', 'the reviews show the passage in its sentence');
+  assert.equal(passageKey(id), `note:${id}`);
+  assert.equal(underlinedAt(id), 1_700_000_000_000);
+  assert.equal(setBookAnnotationReview(book, id, false).annotations[0].review, undefined);
+
   // --- Notes as Anki cards ---------------------------------------------------------------------
   const anki = notesToAnki([
     { book: { bookKey: 'k', title: 'こころ' }, annotation: { id: 'a', spineIndex: 1, quote: '私はその人を<常に>先生と呼んでいた。', prefix: '', suffix: '', note: 'Primera\nfrase' } },
@@ -65,7 +80,7 @@ try {
     + '私はその人を&lt;常に&gt;先生と呼んでいた。\tPrimera<br>frase<br><small>こころ · Capítulo 2</small>\n'
     + '鎌倉\t<small>こころ · Capítulo 5</small>\n');
 
-  console.log('PASS: a book changed with the reader closed goes to Drive whole, favorites are saved and removed, and notes export to Anki.');
+  console.log('PASS: a book changed with the reader closed goes to Drive whole, favorites are saved and removed, passages go into the reviews, and notes export to Anki.');
 } finally {
   await server.close();
 }

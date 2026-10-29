@@ -1,5 +1,6 @@
 import { latestPaginationCounts } from './driveDevice';
 import type { ReaderBookBackup, ReaderDataGroup } from './googleDriveBackup';
+import { readTextAnnotations } from './textAnnotations';
 import {
   readTranslationFavorites,
   toggleTranslationFavorite,
@@ -68,6 +69,18 @@ export function toggleBookFavorite(book: BookIdentity, candidate: TranslationFav
   const storageKey = `${book.bookKey}_translation_favorites`;
   toggleTranslationFavorite(storageKey, readTranslationFavorites(storageKey), candidate);
   return bookSnapshot(localStorage, book, ['favorites']);
+}
+
+/** Puts an underlined passage of a book in the reviews or takes it out, and returns the book's data to send to Drive. */
+export function setBookAnnotationReview(book: BookIdentity, annotationId: string, review: boolean): ReaderBookBackup {
+  const storageKey = `${book.bookKey}_annotations`;
+  const annotations = readTextAnnotations(storageKey).map((annotation) => {
+    if (annotation.id !== annotationId) return annotation;
+    const { review: _previous, ...rest } = annotation;
+    return review ? { ...rest, review } : rest;
+  });
+  localStorage.setItem(storageKey, JSON.stringify(annotations));
+  return bookSnapshot(localStorage, book, ['annotations']);
 }
 
 /** Removes the favorites of a book that match, and returns the book's data to send to Drive. */

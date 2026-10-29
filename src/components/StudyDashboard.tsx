@@ -7,6 +7,7 @@ import {
   bookKeyOf,
   collectStudyData,
   listStoredBooks,
+  passageKey,
   sortVocabulary,
   BookRef,
   StudyData,
@@ -17,7 +18,7 @@ import {
 } from '../utils/studyData';
 import type { DriveStudyBook, ReaderBookBackup } from '../utils/googleDriveBackup';
 import { historyToCsv, notesToAnki, notesToMarkdown, vocabularyToAnki, vocabularyToCsv, vocabularyToMarkdown } from '../utils/studyExport';
-import { removeBookFavorites, toggleBookFavorite } from '../utils/bookSnapshot';
+import { removeBookFavorites, setBookAnnotationReview, toggleBookFavorite } from '../utils/bookSnapshot';
 import { isTranslationFavorite, readTranslationFavorites, TranslationFavorite, TranslationFavoriteCandidate } from '../utils/translationFavorites';
 import { DictionaryLookup, getDictionarySearchTerms } from '../utils/dictionary';
 import { buildDictionaryHistoryResponse, TranslationHistoryEntry } from '../utils/translationHistory';
@@ -126,6 +127,7 @@ export const StudyDashboard: React.FC<Props> = ({
   const [bookFilter, setBookFilter] = useState('');
   const [sort, setSort] = useState<VocabularySort>('recent');
   const [onlyWithNote, setOnlyWithNote] = useState(false);
+  const [onlyInReview, setOnlyInReview] = useState(false);
   const [shown, setShown] = useState(PAGE_SIZE);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
@@ -164,7 +166,7 @@ export const StudyDashboard: React.FC<Props> = ({
     setShown(PAGE_SIZE);
     setExpanded(null);
     setExportMenuOpen(false);
-  }, [tab, query, bookFilter, sort, onlyWithNote, statusFilter]);
+  }, [tab, query, bookFilter, sort, onlyWithNote, onlyInReview, statusFilter]);
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -206,20 +208,22 @@ export const StudyDashboard: React.FC<Props> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [data, sort, query, bookFilter, language, statusFilter, progress]);
 
-  // New words are taken oldest first: in the order they were met while reading.
-  const reviewItems = useMemo(() => (data ? [...data.vocabulary].sort((a, b) => a.firstSavedAt - b.firstSavedAt) : []), [data]);
+  // The underlined passages chosen to be studied, beside the vocabulary.
+  const reviewPassages = useMemo(() => (data ? data.notes.filter((note) => note.annotation.review) : []), [data]);
   const reviewCounts = useMemo(() => {
-    const queue = reviewQueue(reviewItems.map((item) => item.key), progress, Date.now());
-    return { ...countStatuses(reviewItems.map((item) => item.key), progress, Date.now()), toReview: queue.due.length + queue.fresh.length };
-  }, [reviewItems, progress]);
+    const keys = [...(data?.vocabulary ?? []).map((item) => item.key), ...reviewPassages.map((note) => passageKey(note.annotation.id))];
+    const queue = reviewQueue(keys, progress, Date.now());
+    return { ...countStatuses(keys, progress, Date.now()), toReview: queue.due.length + queue.fresh.length };
+  }, [data, reviewPassages, progress]);
 
   const chapterLabel = (spineIndex: number) => `${t('common.chapter')} ${spineIndex + 1}`;
   const notes = useMemo(() => (data
     ? data.notes.filter((note) => inBook([note.book]) && (!onlyWithNote || note.annotation.note)
+      && (!onlyInReview || note.annotation.review)
       && matches(query, note.annotation.quote, note.annotation.note, note.book.title))
     : []),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [data, onlyWithNote, query, bookFilter]);
+  [data, onlyWithNote, onlyInReview, query, bookFilter]);
 
   const history = useMemo(() => (data
     ? data.history.filter((item) => inBook([item.book]) && matches(query, item.entry.query, getHistoryEntryResponse(item.entry, language)))
@@ -307,6 +311,14 @@ export const StudyDashboard: React.FC<Props> = ({
 
   const isFavorite = (bookKey: string, candidate: TranslationFavoriteCandidate) =>
     isTranslationFavorite(favoritesByBook.get(bookKey) ?? [], candidate);
+
+  /** Puts an underlined passage in the reviews or takes it out, and sends the book to Drive. */
+  const toggleReview = (note: (typeof data.notes)[number]) => {
+    const book = localBook(note.book.bookKey);
+    if (!book) return;
+    onBookDataChange(setBookAnnotationReview(book, note.annotation.id, !note.annotation.review));
+    setRevision((value) => value + 1);
+  };
 
   /** A word of the vocabulary out of the favorites of every book it was saved in. */
   const unfavoriteWord = (item: (typeof data.vocabulary)[number]) => {
@@ -595,8 +607,32 @@ export const StudyDashboard: React.FC<Props> = ({
           <li key={`${note.book.bookKey}:${note.annotation.id}`} className="rounded-xl border border-zinc-200 p-3 dark:border-zinc-800">
             <blockquote lang="ja" className="border-l-2 border-amber-400 pl-2 text-sm text-zinc-800 dark:text-zinc-200">{note.annotation.quote}</blockquote>
             {note.annotation.note && <p className="mt-1.5 whitespace-pre-line text-xs text-zinc-700 dark:text-zinc-300">{note.annotation.note}</p>}
-            <p className="mt-1.5 truncate text-[10px] text-zinc-500 dark:text-zinc-400">{note.book.title} · {chapterLabel(note.annotation.spineIndex)}</p>
-            <div className="mt-1.5">{openInBookButton([note.book], note.annotation.quote)}</div>
+            <p className="mt-1.5 flex flex-wrap items-center gap-2 text-[10px] text-zinc-500 dark:text-zinc-400">
+              <span className="min-w-0 truncate">{note.book.title} · {chapterLabel(note.annotation.spineIndex)}</span>
+              {note.annotation.review && (
+                <span className={`rounded px-1.5 py-0.5 font-medium ${STATUS_STYLES[statusOf(progress.cards[passageKey(note.annotation.id)])]}`}>
+                  {statusLabel(passageKey(note.annotation.id))}
+                </span>
+              )}
+            </p>
+            {(() => {
+              const reviewButton = localBook(note.book.bookKey) && (
+                <button
+                  type="button"
+                  onClick={() => toggleReview(note)}
+                  aria-pressed={Boolean(note.annotation.review)}
+                  className={`inline-flex min-h-8 items-center gap-1 rounded-lg border px-2 text-[11px] font-semibold ${note.annotation.review
+                    ? 'border-indigo-300 bg-indigo-50 text-indigo-700 dark:border-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300'
+                    : 'border-zinc-200 text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800'}`}
+                >
+                  <Repeat className="h-3.5 w-3.5" /> {t(note.annotation.review ? 'study.inReview' : 'study.addToReview')}
+                </button>
+              );
+              const extra = <>{reviewButton}{openInBookButton([note.book], note.annotation.quote)}</>;
+              return note.annotation.review
+                ? renderCardActions(passageKey(note.annotation.id), extra)
+                : <div className="mt-2 flex flex-wrap gap-1.5">{extra}</div>;
+            })()}
           </li>
         ))}
       </ul>
@@ -814,6 +850,12 @@ export const StudyDashboard: React.FC<Props> = ({
                 {t('study.onlyWithNote')}
               </label>
             )}
+            {tab === 'notes' && (
+              <label className="flex min-h-9 items-center gap-1.5 text-xs text-zinc-700 dark:text-zinc-300">
+                <input type="checkbox" checked={onlyInReview} onChange={(event) => setOnlyInReview(event.target.checked)} />
+                {t('study.onlyInReview')}
+              </label>
+            )}
             {exportOptions.length > 0 && (
               <div className="relative ml-auto">
                 <button
@@ -854,16 +896,18 @@ export const StudyDashboard: React.FC<Props> = ({
           ) : tab === 'summary' ? renderSummary()
             : tab === 'review' ? (
               <StudyReview
-                items={reviewItems}
+                items={data.vocabulary}
+                passages={reviewPassages}
                 progress={progress}
+                chapterLabel={chapterLabel}
                 onAnswer={(key: string, grade: Grade) => updateProgress((current) => answer(current, key, grade, Date.now()))}
                 onChangeNewPerDay={(count) => updateProgress((current) => ({ ...current, newPerDay: count, settingsUpdatedAt: Date.now() }))}
                 onMark={(key, how) => updateProgress((current) => setCard(current, key, how === 'known' ? markKnown(current.cards[key], Date.now()) : markIgnored(current.cards[key], Date.now())))}
-                onSeeInBook={(item) => {
-                  const book = shelfBookOf(item.books);
-                  if (book) onOpenBook(book, item.favorite.query);
+                onSeeInBook={(books, text) => {
+                  const book = shelfBookOf(books);
+                  if (book) onOpenBook(book, text);
                 }}
-                canSeeInBook={(item) => Boolean(shelfBookOf(item.books))}
+                canSeeInBook={(books) => Boolean(shelfBookOf(books))}
               />
             )
             : listEmpty ? <p className="py-12 text-center text-sm text-zinc-500 dark:text-zinc-400">{t('study.noResults')}</p>

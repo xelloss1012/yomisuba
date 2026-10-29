@@ -141,7 +141,16 @@ const readAnnotations = (storage: StorageLike, bookKey: string): TextAnnotation[
     if (!annotation || typeof annotation !== 'object' || typeof annotation.id !== 'string'
       || !Number.isInteger(annotation.spineIndex) || typeof annotation.quote !== 'string' || !annotation.quote) return [];
     const note = normalizeNote(annotation.note);
-    return [{ id: annotation.id, spineIndex: annotation.spineIndex, quote: annotation.quote, prefix: '', suffix: '', ...(note ? { note } : {}) }];
+    return [{
+      id: annotation.id,
+      spineIndex: annotation.spineIndex,
+      quote: annotation.quote,
+      // The text around the passage, to show it in context in the reviews.
+      prefix: typeof annotation.prefix === 'string' ? annotation.prefix : '',
+      suffix: typeof annotation.suffix === 'string' ? annotation.suffix : '',
+      ...(note ? { note } : {}),
+      ...(annotation.review === true ? { review: true } : {}),
+    }];
   });
 
 const readStrings = (storage: StorageLike, key: string): string[] =>
@@ -212,6 +221,15 @@ export interface GlobalNote {
   book: BookRef;
   annotation: TextAnnotation;
 }
+
+/** The name of an underlined passage in the progress of study, beside the words of the vocabulary. */
+export const passageKey = (annotationId: string): string => `note:${annotationId}`;
+
+/** When a passage was underlined: its id starts with the time, in base 36. */
+export const underlinedAt = (annotationId: string): number => {
+  const time = parseInt(annotationId.split('-')[0], 36);
+  return Number.isFinite(time) ? time : 0;
+};
 
 export interface GlobalHistoryEntry {
   book: BookRef;

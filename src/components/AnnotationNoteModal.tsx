@@ -10,14 +10,17 @@ interface Props {
   quote: string;
   /** The note as it is now; empty when there is none yet. */
   note: string;
-  onSave: (note: string) => void;
+  /** Whether the passage is in the reviews of the study panel. */
+  review: boolean;
+  onSave: (note: string, review: boolean) => void;
   onClose: () => void;
 }
 
 /** Writes, edits or removes the note of an underlined passage. */
-export const AnnotationNoteModal: React.FC<Props> = ({ isOpen, quote, note, onSave, onClose }) => {
+export const AnnotationNoteModal: React.FC<Props> = ({ isOpen, quote, note, review, onSave, onClose }) => {
   const t = useT();
   const [text, setText] = useState(note);
+  const [toReview, setToReview] = useState(review);
   const area = useRef<HTMLTextAreaElement>(null);
 
   // The parent hands over fresh callbacks on every render; the effect must not
@@ -26,10 +29,13 @@ export const AnnotationNoteModal: React.FC<Props> = ({ isOpen, quote, note, onSa
   onCloseRef.current = onClose;
   const noteRef = useRef(note);
   noteRef.current = note;
+  const reviewRef = useRef(review);
+  reviewRef.current = review;
 
   useEffect(() => {
     if (!isOpen) return undefined;
     setText(noteRef.current);
+    setToReview(reviewRef.current);
     const focus = window.setTimeout(() => {
       const field = area.current;
       if (!field) return;
@@ -84,13 +90,20 @@ export const AnnotationNoteModal: React.FC<Props> = ({ isOpen, quote, note, onSa
             className="h-40 w-full resize-y rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800 outline-none focus:border-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 sm:h-48"
           />
           <p className="mt-1 text-right text-[10px] text-zinc-400">{text.length}/{MAX_NOTE_LENGTH}</p>
+          <label className="mt-1 flex items-start gap-2 text-xs text-zinc-700 dark:text-zinc-300">
+            <input type="checkbox" checked={toReview} onChange={(event) => setToReview(event.target.checked)} className="mt-0.5" />
+            <span>
+              <span className="font-semibold">{t('notes.reviewToggle')}</span>
+              <span className="block text-[11px] text-zinc-500 dark:text-zinc-400">{t('notes.reviewHint')}</span>
+            </span>
+          </label>
         </div>
 
         <footer className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-zinc-200 px-4 py-3 dark:border-zinc-800">
           {note ? (
             <button
               type="button"
-              onClick={() => onSave('')}
+              onClick={() => onSave('', toReview)}
               className="inline-flex min-h-10 items-center rounded-xl px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
             >
               {t('notes.remove')}
@@ -106,7 +119,7 @@ export const AnnotationNoteModal: React.FC<Props> = ({ isOpen, quote, note, onSa
             </button>
             <button
               type="button"
-              onClick={() => onSave(text)}
+              onClick={() => onSave(text, toReview)}
               className="inline-flex min-h-10 min-w-20 items-center justify-center rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-md hover:bg-indigo-700 active:scale-95"
             >
               {t('notes.save')}
