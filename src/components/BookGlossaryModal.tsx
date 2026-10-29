@@ -1,15 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BookOpen, Check, EyeOff, Loader2, ListPlus, Search, Star, X } from 'lucide-react';
+import { BookOpen, Check, EyeOff, Loader2, ListPlus, Repeat, Search, Star, X } from 'lucide-react';
 import type { ParsedEpub } from '../types/epub';
 import { DictionaryLookup, getDictionarySearchTerms, tokenizeJapanese } from '../utils/dictionary';
-import { analyzeChapter, ChapterAnalysis, chapterText, collectGlossary, GlossaryWord, toHiragana } from '../utils/bookGlossary';
+import { analyzeChapter, ChapterAnalysis, chapterText, collectGlossary, collectGlossaryKanji, GlossaryKanji, GlossaryWord, toHiragana } from '../utils/bookGlossary';
 import { buildDictionaryHistoryResponse } from '../utils/translationHistory';
 import { isTranslationFavorite, TranslationFavorite, TranslationFavoriteCandidate } from '../utils/translationFavorites';
 import { collectStudyData, listStoredBooks, vocabularyKey } from '../utils/studyData';
-import { markIgnored, markKnown, readStudyProgress, setCard, statusOf, writeStudyProgress } from '../utils/studyProgress';
-import { useDictionaryOptions, useT, useTranslationLanguage } from '../i18n/LanguageContext';
-import { classifyForms, classifyWord, difficultyOf, isWithinLevel, JlptLevel, WordLevel } from '../utils/wordLevels';
+import { kanjiKey, markIgnored, markKnown, readStudyProgress, resetCard, setCard, statusOf, writeStudyProgress } from '../utils/studyProgress';
+import { useDictionaryOptions, useLanguage, useT, useTranslationLanguage } from '../i18n/LanguageContext';
+import { classifyForms, classifyWord, difficultyOf, isWithinLevel, JlptLevel, kanjiJlpt, WordLevel } from '../utils/wordLevels';
+import { kanjiInfo } from '../utils/kanjiInfo';
 import { useWordLevels, WordLevelBadge } from './WordLevelBadge';
+import { KanjiModal, useKanjiData } from './KanjiModal';
 
 export type GlossaryScope = 'page' | 'chapter' | 'book';
 type SortMode = 'frequency' | 'difficulty' | 'appearance';
@@ -35,7 +37,11 @@ const BULK_ADD = 20;
 const PREFS_KEY = 'yomisuba_book_glossary_v1';
 const MIN_COUNTS = [1, 2, 3, 5, 10];
 
+type GlossaryMode = 'words' | 'kanji';
+
 interface Prefs {
+  /** Words, or the kanji they are written with. */
+  mode: GlossaryMode;
   aboveLevel: boolean;
   hideStudied: boolean;
   minCount: Record<'chapter' | 'book', number>;
@@ -43,6 +49,7 @@ interface Prefs {
 }
 
 const DEFAULT_PREFS: Prefs = {
+  mode: 'words',
   aboveLevel: true,
   hideStudied: true,
   minCount: { chapter: 1, book: 2 },
@@ -155,6 +162,11 @@ export const BookGlossaryModal: React.FC<Props> = ({
   const [lookups, setLookups] = useState<Record<string, DictionaryLookup | string>>({});
   const [adding, setAdding] = useState(false);
   const [vocabulary, setVocabulary] = useState(readVocabulary);
+  const language = useLanguage();
+  const kanjiData = useKanjiData();
+  // The kanji in the reviews (read again after each change: the progress is not this component's state).
+  const [studyProgress, setStudyProgress] = useState(readStudyProgress);
+  const [openKanji, setOpenKanji] = useState<string | null>(null);
 
   const spineIndexes = useMemo(
     () => (scope === 'chapter' ? [currentSpineIndex] : epub.spine.map((_, index) => index)),
@@ -170,6 +182,7 @@ export const BookGlossaryModal: React.FC<Props> = ({
     setShown(PAGE_SIZE);
     setExpanded(null);
     setVocabulary(readVocabulary());
+    setStudyProgress(readStudyProgress());
     setProgress({ done: 0, total: spineIndexes.length });
     void (async () => {
       const done: ChapterAnalysis[] = [];
@@ -238,7 +251,57 @@ export const BookGlossaryModal: React.FC<Props> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [words, search, minCount, sort, prefs.aboveLevel, prefs.hideStudied, studyLevel, levels, vocabulary, scope, currentSpineIndex]);
 
-  const page = visible.slice(0, shown);
+  const mode = prefs.mode;
+  const glossaryKanji = useMemo(() => (mode === 'kanji' ? collectGlossaryKanji(chapters, words) : []), [mode, chapters, words]);
+  const kanjiCountIn = (item: GlossaryKanji) => (scope === 'chapter' ? item.perChapter.get(currentSpineIndex) ?? 0 : item.count);
+  const kanjiDifficulty = (kanji: string) => {
+    const jlpt = wordLevels ? kanjiJlpt(wordLevels, kanji) : undefined;
+    if (jlpt) return 6 - jlpt;
+    const grade = kanjiData?.[kanji]?.g;
+    return grade ? (grade <= 6 ? 2 : grade === 8 ? 4 : 6) : 7;
+  };
+  const hasKanjiCard = (kanji: string) => Boolean(studyProgress.cards[kanjiKey(kanji)]);
+  const visibleKanji = useMemo(() => {
+    const term = search.trim();
+    const list = glossaryKanji.filter((item) => {
+      if (kanjiCountIn(item) < minCount) return false;
+      // At the reader's level or easier: a JLPT kanji of that level or below. Kanji without a level stay.
+      const jlpt = wordLevels ? kanjiJlpt(wordLevels, item.kanji) : undefined;
+      if (prefs.aboveLevel && studyLevel && jlpt && jlpt >= studyLevel) return false;
+      if (prefs.hideStudied && hasKanjiCard(item.kanji)) return false;
+      if (!term) return true;
+      const info = kanjiData ? kanjiInfo(kanjiData, item.kanji, language) : null;
+      return item.kanji.includes(term) || item.words.some((word) => word.includes(term))
+        || Boolean(info?.meanings.some((meaning) => meaning.toLowerCase().includes(term.toLowerCase())));
+    });
+    if (sort === 'frequency') list.sort((a, b) => kanjiCountIn(b) - kanjiCountIn(a) || kanjiDifficulty(a.kanji) - kanjiDifficulty(b.kanji));
+    else if (sort === 'difficulty') list.sort((a, b) => kanjiDifficulty(b.kanji) - kanjiDifficulty(a.kanji) || kanjiCountIn(b) - kanjiCountIn(a));
+    else if (scope === 'chapter') list.sort((a, b) => (a.firstInChapter.get(currentSpineIndex) ?? 0) - (b.firstInChapter.get(currentSpineIndex) ?? 0));
+    else list.sort((a, b) => a.firstChapter - b.firstChapter || (a.firstInChapter.get(a.firstChapter) ?? 0) - (b.firstInChapter.get(b.firstChapter) ?? 0));
+    return list;
+    // The helpers follow the scope, the levels and the progress listed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [glossaryKanji, search, minCount, sort, prefs.aboveLevel, prefs.hideStudied, studyLevel, wordLevels, kanjiData, studyProgress, scope, currentSpineIndex, language]);
+
+  /** Puts a kanji in the reviews or takes it out, in the saved progress (the app copies it to Drive). */
+  const toggleKanjiReview = (kanji: string) => {
+    const current = readStudyProgress();
+    const key = kanjiKey(kanji);
+    const card = current.cards[key];
+    const now = Date.now();
+    writeStudyProgress(setCard(current, key, card && card.status !== 'ignored' ? markIgnored(card, now) : resetCard(now)));
+    setStudyProgress(readStudyProgress());
+  };
+  /** The first kanji listed that have no card yet, into the reviews, in the order shown. */
+  const addFirstKanji = () => {
+    const now = Date.now();
+    const toAdd = visibleKanji.filter((item) => !hasKanjiCard(item.kanji)).slice(0, BULK_ADD);
+    writeStudyProgress(toAdd.reduce((next, item, index) => setCard(next, kanjiKey(item.kanji), resetCard(now + index)), readStudyProgress()));
+    setStudyProgress(readStudyProgress());
+  };
+
+  // Only the words shown are looked up, and none while the kanji are shown.
+  const page = mode === 'words' ? visible.slice(0, shown) : [];
 
   // The meaning of the words shown, and only of those: a book has thousands of words.
   useEffect(() => {
@@ -323,6 +386,8 @@ export const BookGlossaryModal: React.FC<Props> = ({
   if (!isOpen) return null;
 
   const analyzing = !error && chapters.length < spineIndexes.length;
+  const listed = mode === 'kanji' ? visibleKanji.length : visible.length;
+  const kanjiToAdd = mode === 'kanji' ? Math.min(BULK_ADD, visibleKanji.filter((item) => !hasKanjiCard(item.kanji)).length) : 0;
   const selectClass = 'rounded-lg border border-zinc-200 bg-zinc-50 px-2 py-1 text-zinc-700 outline-none focus:border-indigo-400 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200';
 
   return (
@@ -344,7 +409,7 @@ export const BookGlossaryModal: React.FC<Props> = ({
             </h2>
             {!analyzing && (
               <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
-                {visible.length}
+                {listed}
               </span>
             )}
           </div>
@@ -354,6 +419,20 @@ export const BookGlossaryModal: React.FC<Props> = ({
         </header>
 
         <ScopeSwitch scope={scope} onChange={onChangeScope} />
+        <div role="radiogroup" aria-label={t('glossary.modeLabel')} className="mx-3 mt-2 flex gap-1 rounded-xl bg-zinc-100 p-1 dark:bg-zinc-800">
+          {(['words', 'kanji'] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              role="radio"
+              aria-checked={mode === value}
+              onClick={() => { updatePrefs((current) => ({ ...current, mode: value })); setExpanded(null); }}
+              className={`min-h-8 flex-1 rounded-lg px-2 text-xs font-semibold ${mode === value ? 'bg-white text-indigo-700 shadow-sm dark:bg-zinc-900 dark:text-indigo-300' : 'text-zinc-600 dark:text-zinc-300'}`}
+            >
+              {t(`glossary.mode_${value}`)}
+            </button>
+          ))}
+        </div>
 
         <label className="relative mx-3 mt-2 block">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
@@ -396,7 +475,7 @@ export const BookGlossaryModal: React.FC<Props> = ({
           )}
           <label className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
             <input type="checkbox" checked={prefs.hideStudied} onChange={() => updatePrefs((current) => ({ ...current, hideStudied: !current.hideStudied }))} />
-            {t('glossary.hideStudied')}
+            {t(mode === 'kanji' ? 'glossary.hideKanjiStudied' : 'glossary.hideStudied')}
           </label>
         </div>
 
@@ -407,9 +486,18 @@ export const BookGlossaryModal: React.FC<Props> = ({
               {t('glossary.analyzing', { done: progress.done, total: progress.total })}
             </span>
           ) : (
-            <span>{t(scope === 'chapter' ? 'glossary.chapterHint' : 'glossary.bookHint')}</span>
+            <span>{t(mode === 'kanji' ? 'glossary.kanjiHint' : scope === 'chapter' ? 'glossary.chapterHint' : 'glossary.bookHint')}</span>
           )}
-          {!analyzing && visible.length > 0 && (
+          {!analyzing && mode === 'kanji' && kanjiToAdd > 0 && (
+            <button
+              type="button"
+              onClick={addFirstKanji}
+              className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 font-semibold text-indigo-600 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-950/40"
+            >
+              <Repeat className="h-3.5 w-3.5" /> {t('study.kanjiAddList', { count: kanjiToAdd })}
+            </button>
+          )}
+          {!analyzing && mode === 'words' && visible.length > 0 && (
             <button
               type="button"
               onClick={() => { void addFirst(); }}
@@ -425,7 +513,63 @@ export const BookGlossaryModal: React.FC<Props> = ({
         {error && <p role="alert" className="px-4 pb-2 text-xs text-rose-600 dark:text-rose-400">{t('reader.analysisError').replace('{message}', error)}</p>}
 
         <ul className="min-h-0 space-y-2 overflow-y-auto overscroll-contain px-3 pb-4">
-          {!analyzing && page.map((word) => {
+          {!analyzing && mode === 'kanji' && visibleKanji.slice(0, shown).map((item) => {
+            const info = kanjiData ? kanjiInfo(kanjiData, item.kanji, language) : null;
+            const jlpt = wordLevels ? kanjiJlpt(wordLevels, item.kanji) : undefined;
+            const card = studyProgress.cards[kanjiKey(item.kanji)];
+            const inReview = Boolean(card && card.status !== 'ignored');
+            return (
+              <li key={item.kanji} className="flex items-start gap-1 rounded-xl border border-zinc-200 px-2 dark:border-zinc-800">
+                <button type="button" onClick={() => setOpenKanji(item.kanji)} className="flex min-w-0 flex-1 items-start gap-3 py-2 pl-1 text-left">
+                  <span lang="ja" className="font-mincho text-3xl leading-none text-zinc-900 dark:text-zinc-100">{item.kanji}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-center gap-1">
+                      <span className="truncate text-xs font-semibold text-zinc-800 dark:text-zinc-200">{info?.meanings.slice(0, 3).join(', ') ?? ''}</span>
+                      <span className="ml-auto flex flex-wrap items-center gap-1">
+                        {scope === 'chapter' && item.firstChapter === currentSpineIndex && (
+                          <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-800 dark:bg-sky-950/70 dark:text-sky-200">{t('glossary.newInBook')}</span>
+                        )}
+                        {card && <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">{t(`study.status_${statusOf(card)}`)}</span>}
+                        {info && <WordLevelBadge level={{ ...(jlpt ? { jlpt } : {}), band: info.grade && info.grade <= 6 ? 'basic' : info.grade === 8 ? 'common' : 'uncommon' }} />}
+                        <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] tabular-nums text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300" title={t('glossary.timesTitle')}>
+                          ×{kanjiCountIn(item)}
+                        </span>
+                      </span>
+                    </span>
+                    {info && (
+                      <span lang="ja" className="mt-0.5 block truncate text-[11px] text-zinc-500 dark:text-zinc-400">
+                        {[...info.on.slice(0, 2), ...info.kun.slice(0, 2).map((reading) => reading.replace('.', ''))].join('、')}
+                      </span>
+                    )}
+                    {item.words.length > 0 && (
+                      <span lang="ja" className="mt-0.5 block truncate text-xs text-zinc-700 dark:text-zinc-300">{item.words.slice(0, 5).join('・')}</span>
+                    )}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => toggleKanjiReview(item.kanji)}
+                  className={`tap-area mt-1 shrink-0 rounded-lg p-2 ${inReview ? 'text-indigo-600 dark:text-indigo-400' : 'text-zinc-400 hover:text-indigo-600'}`}
+                  aria-label={t(inReview ? 'study.inReview' : 'study.addToReview')}
+                  title={t(inReview ? 'study.inReview' : 'study.addToReview')}
+                  aria-pressed={inReview}
+                >
+                  <Repeat className="h-4 w-4" />
+                </button>
+              </li>
+            );
+          })}
+          {!analyzing && mode === 'kanji' && visibleKanji.length > shown && (
+            <li>
+              <button type="button" onClick={() => setShown((count) => count + PAGE_SIZE)} className="w-full rounded-xl py-2.5 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-950/40">
+                {t('study.moreResults', { count: visibleKanji.length - shown })}
+              </button>
+            </li>
+          )}
+          {!analyzing && mode === 'kanji' && !error && visibleKanji.length === 0 && (
+            <li className="py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">{t('glossary.emptyFiltered')}</li>
+          )}
+          {!analyzing && mode === 'words' && page.map((word) => {
             const lookup = lookups[word.key];
             const entry = lookup && typeof lookup !== 'string' ? entriesOf(word, lookup)[0] : undefined;
             const candidate = candidateOf(word, lookup);
@@ -507,18 +651,19 @@ export const BookGlossaryModal: React.FC<Props> = ({
               </li>
             );
           })}
-          {!analyzing && visible.length > shown && (
+          {!analyzing && mode === 'words' && visible.length > shown && (
             <li>
               <button type="button" onClick={() => setShown((count) => count + PAGE_SIZE)} className="w-full rounded-xl py-2.5 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-950/40">
                 {t('study.moreResults', { count: visible.length - shown })}
               </button>
             </li>
           )}
-          {!analyzing && !error && visible.length === 0 && (
+          {!analyzing && mode === 'words' && !error && visible.length === 0 && (
             <li className="py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">{t('glossary.emptyFiltered')}</li>
           )}
         </ul>
         <p className="border-t border-zinc-200 px-4 py-2 text-[10px] text-zinc-400 dark:border-zinc-800">{t('level.sources')}</p>
+        <KanjiModal kanji={openKanji} onClose={() => { setOpenKanji(null); setStudyProgress(readStudyProgress()); }} />
       </section>
     </div>
   );

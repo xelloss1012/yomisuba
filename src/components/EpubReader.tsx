@@ -84,6 +84,7 @@ import {
   resolveFuriganaMode,
 } from '../utils/furigana';
 import { loadWordLevels } from '../utils/wordLevels';
+import { knownKanji, readStudyProgress } from '../utils/studyProgress';
 import {
   getPageWordCategory,
   PageGlossaryModal,
@@ -1698,7 +1699,9 @@ export const EpubReader: React.FC<Props> = ({
     const mode = furiganaModeRef.current;
     if (!furiganaModeAnnotates(mode)) return rawHtml;
     const studyLevel = studyLevelRef.current;
-    const key = `${spineIndex}|${mode}|${studyLevel ?? ''}`;
+    // The kanji learnt in the reviews read again for each chapter: a change reaches the next one loaded.
+    const known = knownKanji(readStudyProgress());
+    const key = `${spineIndex}|${mode}|${studyLevel ?? ''}|${[...known].sort().join('')}`;
     const cache = furiganaCacheRef.current;
     const cached = cache.get(key);
     if (cached) return cached;
@@ -1708,6 +1711,7 @@ export const EpubReader: React.FC<Props> = ({
         studyLevel,
         tokenize: tokenizeJapanese,
         levels: await loadWordLevels().catch(() => null),
+        knownKanji: known,
       });
       cache.set(key, annotated);
       if (cache.size > 6) cache.delete(cache.keys().next().value as string);

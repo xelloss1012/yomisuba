@@ -29,6 +29,11 @@ export const kanjiKey = (kanji: string): string => `kanji:${kanji}`;
 export const isKanjiKey = (key: string): boolean => key.startsWith('kanji:');
 export const kanjiOfKey = (key: string): string => key.slice('kanji:'.length);
 
+/** The kanji learnt: those whose card is known (21 days or more, or marked "I know it"). */
+export const knownKanji = (progress: StudyProgress): Set<string> => new Set(Object.entries(progress.cards)
+  .filter(([key, card]) => isKanjiKey(key) && card.status === 'known')
+  .map(([key]) => kanjiOfKey(key)));
+
 /** The kanji in the reviews: those with a card that is not ignored. */
 export const reviewedKanji = (progress: StudyProgress): string[] => Object.entries(progress.cards)
   .filter(([key, card]) => isKanjiKey(key) && card.status !== 'ignored')

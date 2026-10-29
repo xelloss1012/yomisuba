@@ -130,5 +130,41 @@ export function collectGlossary(chapters: ChapterAnalysis[]): GlossaryWord[] {
 }
 
 /** Katakana to hiragana, to classify a word written in kana by its kana form. */
+/** A kanji of a chapter or of the book, with how often it is written and the words that write it. */
+export interface GlossaryKanji {
+  kanji: string;
+  count: number;
+  perChapter: Map<number, number>;
+  /** Where it is first written in each chapter (offset in its text), to list a chapter's kanji as they come. */
+  firstInChapter: Map<number, number>;
+  firstChapter: number;
+  /** The words of the glossary that write it, the most frequent first. */
+  words: string[];
+}
+
+const EACH_KANJI = /[㐀-䶿一-鿿豈-﫿]/gu;
+
+/** The kanji written in the chapters given (in their text, readings left out), and the glossary words with each. */
+export function collectGlossaryKanji(chapters: ChapterAnalysis[], words: GlossaryWord[]): GlossaryKanji[] {
+  const byKanji = new Map<string, GlossaryKanji>();
+  for (const chapter of [...chapters].sort((a, b) => a.spineIndex - b.spineIndex)) {
+    for (const match of chapter.text.matchAll(EACH_KANJI)) {
+      const kanji = match[0];
+      let found = byKanji.get(kanji);
+      if (!found) {
+        found = { kanji, count: 0, perChapter: new Map(), firstInChapter: new Map(), firstChapter: chapter.spineIndex, words: [] };
+        byKanji.set(kanji, found);
+      }
+      found.count += 1;
+      found.perChapter.set(chapter.spineIndex, (found.perChapter.get(chapter.spineIndex) ?? 0) + 1);
+      if (!found.firstInChapter.has(chapter.spineIndex)) found.firstInChapter.set(chapter.spineIndex, match.index ?? 0);
+    }
+  }
+  for (const word of [...words].sort((a, b) => b.count - a.count)) {
+    for (const kanji of new Set(word.key.match(EACH_KANJI) ?? [])) byKanji.get(kanji)?.words.push(word.key);
+  }
+  return [...byKanji.values()];
+}
+
 export const toHiragana = (text: string): string =>
   text.replace(/[ァ-ヶ]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0x60));

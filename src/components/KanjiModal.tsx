@@ -7,6 +7,7 @@ import { KanjiInfo, kanjiInfo, kanjiOfText, kunReading, loadKanjiData } from '..
 import { classifyEntry, difficultyOf, kanjiJlpt, WordLevel } from '../utils/wordLevels';
 import { kanjiKey, markIgnored, readStudyProgress, resetCard, setCard, writeStudyProgress } from '../utils/studyProgress';
 import { useWordLevels, WordLevelBadge } from './WordLevelBadge';
+import { KanjiExtraPanel, KanjiStrokes, useKanjiExtra } from './KanjiStrokes';
 
 export interface OwnWord {
   word: string;
@@ -94,6 +95,9 @@ export const KanjiModal: React.FC<Props> = ({ kanji, siblings = [], ownWords, re
   const [data, setData] = useState<KanjiData | null>(loadedKanji);
   const [failed, setFailed] = useState(false);
   const [examples, setExamples] = useState<DictionaryEntry[] | null>(null);
+  // The optional download adds the stroke order and the rare kanji.
+  const extra = useKanjiExtra();
+  const allKanji = useMemo(() => (data && extra ? { ...extra.kanji, ...data } : data), [data, extra]);
   // Read again after toggling, for the saved progress that is not React state.
   const [, setReviewRevision] = useState(0);
 
@@ -138,9 +142,10 @@ export const KanjiModal: React.FC<Props> = ({ kanji, siblings = [], ownWords, re
   }, [examples, current, wordLevels]);
 
   if (!kanji || !current) return null;
-  const info: KanjiInfo | null = data ? kanjiInfo(data, current, language) : null;
+  const info: KanjiInfo | null = allKanji ? kanjiInfo(allKanji, current, language) : null;
+  const strokes = extra?.strokes[current];
   const jlpt = wordLevels ? kanjiJlpt(wordLevels, current) : undefined;
-  const gradeLabel = info && (info.grade <= 6
+  const gradeLabel = info && (!info.grade ? t('kanji.gradeNone') : info.grade <= 6
     ? t('kanji.gradePrimary', { grade: info.grade })
     : info.grade === 8 ? t('kanji.gradeSecondary') : t('kanji.gradeNames'));
 
@@ -217,7 +222,10 @@ export const KanjiModal: React.FC<Props> = ({ kanji, siblings = [], ownWords, re
               ) : failed ? (
                 <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">{t('err.kanjiLoad')}</p>
               ) : data ? (
-                <p className="text-sm text-zinc-600 dark:text-zinc-400">{t('kanji.unknown')}</p>
+                <div className="space-y-2">
+                  <p className="text-sm text-zinc-600 dark:text-zinc-400">{t(extra ? 'kanji.unknownAnywhere' : 'kanji.unknown')}</p>
+                  {!extra && <KanjiExtraPanel compact />}
+                </div>
               ) : (
                 <Loader2 className="h-5 w-5 animate-spin text-zinc-400" />
               )}
@@ -231,7 +239,7 @@ export const KanjiModal: React.FC<Props> = ({ kanji, siblings = [], ownWords, re
               {info.names.length > 0 && row(t('kanji.names'), <span lang="ja" className="text-xs text-zinc-600 dark:text-zinc-400">{info.names.join('、')}</span>)}
               {info.parts.length > 0 && row(t('kanji.parts'), (
                 <span className="flex flex-wrap gap-1">
-                  {info.parts.map((part) => data && data[part] && part !== current ? (
+                  {info.parts.map((part) => allKanji && allKanji[part] && part !== current ? (
                     <button key={part} type="button" onClick={() => setCurrent(part)} lang="ja" className="min-h-8 min-w-8 rounded-md border border-zinc-200 px-1.5 font-mincho text-base text-indigo-700 hover:bg-indigo-50 dark:border-zinc-700 dark:text-indigo-300 dark:hover:bg-indigo-950/40">
                       {part}
                     </button>
@@ -249,6 +257,15 @@ export const KanjiModal: React.FC<Props> = ({ kanji, siblings = [], ownWords, re
               ))}
             </div>
           )}
+
+          {strokes ? (
+            <>
+              <h3 className="mt-4 text-[11px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">{t('kanji.strokeOrder')}</h3>
+              <div className="mt-1"><KanjiStrokes key={current} strokes={strokes} kanji={current} /></div>
+            </>
+          ) : info && !extra ? (
+            <div className="mt-4"><KanjiExtraPanel compact /></div>
+          ) : null}
 
           {(() => {
             const own = ownWords?.(current) ?? [];
@@ -291,7 +308,9 @@ export const KanjiModal: React.FC<Props> = ({ kanji, siblings = [], ownWords, re
             </ul>
           )}
 
-          <p className="mt-4 text-[10px] text-zinc-500 dark:text-zinc-400">KANJIDIC2 · KRADFILE · JMdict © EDRDG (CC BY-SA 4.0)</p>
+          <p className="mt-4 text-[10px] text-zinc-500 dark:text-zinc-400">
+            KANJIDIC2 · KRADFILE · JMdict © EDRDG (CC BY-SA 4.0){strokes && ' · KanjiVG © Ulrich Apel (CC BY-SA 3.0)'}
+          </p>
         </div>
       </section>
     </div>,

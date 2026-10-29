@@ -7,9 +7,10 @@
 import kanjiDataUrl from '../data/kanji.json.gz?inline';
 import { tr } from './i18n';
 
-interface KanjiRecord {
+export interface KanjiRecord {
   s: number;
-  g: number;
+  /** School grade; absent for the rare kanji of the optional download. */
+  g?: number;
   f?: number;
   on?: string[];
   kun?: string[];
@@ -24,7 +25,7 @@ interface KanjiRecord {
 export interface KanjiInfo {
   literal: string;
   strokes: number;
-  /** School grade: 1-6 primary, 8 secondary (the rest of the jōyō), 9-10 jinmeiyō (names). */
+  /** School grade: 1-6 primary, 8 secondary (the rest of the jōyō), 9-10 jinmeiyō (names), 0 none (a rare kanji). */
   grade: number;
   /** Rank among the 2,500 most frequent in newspapers (1 = most frequent). */
   frequency?: number;
@@ -75,7 +76,7 @@ export const kanjiInfo = (data: Record<string, KanjiRecord>, literal: string, la
   return {
     literal,
     strokes: record.s,
-    grade: record.g,
+    grade: record.g ?? 0,
     ...(record.f ? { frequency: record.f } : {}),
     on: record.on ?? [],
     kun: record.kun ?? [],

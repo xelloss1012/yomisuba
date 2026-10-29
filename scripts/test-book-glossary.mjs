@@ -21,7 +21,7 @@ const server = await createServer({
 });
 
 try {
-  const { analyzeChapter, chapterText, collectGlossary, isStudyWord, toHiragana } = await server.ssrLoadModule('/src/utils/bookGlossary.ts');
+  const { analyzeChapter, chapterText, collectGlossary, collectGlossaryKanji, isStudyWord, toHiragana } = await server.ssrLoadModule('/src/utils/bookGlossary.ts');
   const parse = (html) => parseHTML(`<html><body>${html}</body></html>`).document;
 
   // --- The text of a chapter --------------------------------------------------------------
@@ -66,6 +66,16 @@ try {
   assert.equal(word('牧人').reading, 'ぼくじん', 'the reading the text gives it');
   assert.equal(word('走る').reading, undefined, 'an inflected word has no reading of its base form');
   assert.equal(toHiragana('メロス'), 'めろす');
+
+  // --- Kanji mode: the kanji written in the chapters, and the words with each ---------------------
+  const kanji = collectGlossaryKanji(chapters, words);
+  const of = (literal) => kanji.find((item) => item.kanji === literal);
+  assert.equal(of('王').count, 3, 'every time it is written');
+  assert.deepEqual([...of('王').perChapter], [[1, 2], [2, 1]]);
+  assert.equal(of('牧').firstChapter, 0);
+  assert.ok(of('激').words.includes('激怒'), 'the words that write it');
+  assert.equal(of('激').words[0], '激怒');
+  assert.ok(!kanji.some((item) => /[ぁ-んァ-ン。、]/.test(item.kanji)), 'only kanji');
 
   console.log('PASS: the chapters are read without ruby readings, and their words are counted by base form, per chapter, with their first sentence.');
 } finally {

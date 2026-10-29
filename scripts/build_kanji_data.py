@@ -48,22 +48,17 @@ def read_parts(path):
     return parts
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("kanjidic", type=Path)
-    parser.add_argument("kradfile", type=Path)
-    parser.add_argument("output", type=Path)
-    args = parser.parse_args()
-
-    parts = read_parts(args.kradfile)
+def read_kanji(kanjidic_path, kradfile_path, keep):
+    """The records of the kanji of KANJIDIC2 whose school grade `keep` accepts (0: none)."""
+    parts = read_parts(kradfile_path)
     kanji = {}
-    with gzip.open(args.kanjidic, "rb") as xml:
+    with gzip.open(kanjidic_path, "rb") as xml:
         for _, element in ET.iterparse(xml, events=("end",)):
             if element.tag != "character":
                 continue
             literal = element.findtext("literal")
             grade = int(element.findtext("misc/grade") or 0)
-            if not grade:
+            if not keep(grade):
                 element.clear()
                 continue
             readings = {}
@@ -75,10 +70,9 @@ def main():
                     language = meaning.get("m_lang", "en")
                     if language in meanings:
                         meanings[language].append(meaning.text)
-            entry = {
-                "s": int(element.findtext("misc/stroke_count") or 0),
-                "g": grade,
-            }
+            entry = {"s": int(element.findtext("misc/stroke_count") or 0)}
+            if grade:
+                entry["g"] = grade
             freq = element.findtext("misc/freq")
             if freq:
                 entry["f"] = int(freq)
@@ -93,7 +87,17 @@ def main():
                 entry["c"] = parts[literal]
             kanji[literal] = entry
             element.clear()
+    return kanji
 
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("kanjidic", type=Path)
+    parser.add_argument("kradfile", type=Path)
+    parser.add_argument("output", type=Path)
+    args = parser.parse_args()
+
+    kanji = read_kanji(args.kanjidic, args.kradfile, lambda grade: grade > 0)
     data = json.dumps({"kanji": dict(sorted(kanji.items()))}, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     with gzip.GzipFile(args.output, "wb", compresslevel=9, mtime=0) as compressed:
         compressed.write(data)

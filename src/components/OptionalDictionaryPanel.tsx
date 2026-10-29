@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { BookA, Download, Loader2, Trash2 } from 'lucide-react';
 import { useLanguage, useT, useTranslationLanguage } from '../i18n/LanguageContext';
 import { languageName } from '../utils/i18n';
+import { KanjiExtraPanel } from './KanjiStrokes';
 import {
   deleteOptionalDictionary,
   downloadOptionalDictionary,
@@ -46,7 +47,6 @@ export const DownloadableDictionariesSection: React.FC = () => {
     ...(isOptionalDictionaryId(translationLanguage) ? [translationLanguage] : []),
   ] as OptionalDictionaryId[];
   const shown = [...new Set([...relevant, ...installed])];
-  if (!shown.length) return null;
 
   return (
     <div className="mt-3 space-y-2">
@@ -55,6 +55,8 @@ export const DownloadableDictionariesSection: React.FC = () => {
         <span className="block text-[10px] text-zinc-500 dark:text-zinc-400">{t('dict.sectionHint')}</span>
       </div>
       {shown.map((id) => <OptionalDictionaryPanel key={id} id={id} />)}
+      {/* Stroke order and rare kanji: for every language. */}
+      <KanjiExtraPanel />
     </div>
   );
 };

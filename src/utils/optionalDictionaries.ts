@@ -29,7 +29,7 @@ export interface OptionalDictionaryInfo {
   storageKey: string;
 }
 
-const DICTIONARIES_BASE_URL = 'https://raw.githubusercontent.com/xelloss1012/yomisuba-dictionaries/main/';
+export const DICTIONARIES_BASE_URL = 'https://raw.githubusercontent.com/xelloss1012/yomisuba-dictionaries/main/';
 
 /** Credited by the JMdict line every dictionary panel already shows. */
 export const JMDICT_SOURCE = { label: 'JMdict/EDICT © EDRDG', url: 'https://www.edrdg.org/wiki/JMdict-EDICT_Dictionary_Project.html' };
@@ -77,7 +77,8 @@ const DB_NAME = 'yomisuba_dictionaries';
 const STORE_NAME = 'files';
 const DB_VERSION = 1;
 
-interface StoredDictionary {
+/** A downloaded file as it is kept (the optional dictionaries, and the optional kanji data). */
+export interface StoredDictionary {
   id: string;
   version: string;
   size: number;
@@ -133,8 +134,11 @@ async function withStore<T>(
   }
 }
 
-const readStored = (id: OptionalDictionaryId) =>
-  withStore<StoredDictionary>('readonly', (store) => store.get(OPTIONAL_DICTIONARIES[id].storageKey));
+export const readStoredFile = (key: string) => withStore<StoredDictionary>('readonly', (store) => store.get(key));
+export const writeStoredFile = (record: StoredDictionary) => withStore('readwrite', (store) => store.put(record));
+export const deleteStoredFile = (key: string) => withStore('readwrite', (store) => store.delete(key));
+
+const readStored = (id: OptionalDictionaryId) => readStoredFile(OPTIONAL_DICTIONARIES[id].storageKey);
 
 export async function getOptionalDictionaryStatus(id: OptionalDictionaryId): Promise<OptionalDictionaryStatus> {
   const stored = await readStored(id).catch(() => undefined);
@@ -182,17 +186,18 @@ export interface DownloadProgress {
   total: number;
 }
 
-export async function downloadOptionalDictionary(
-  id: OptionalDictionaryId,
+/** Downloads a file, telling how much has arrived (`approxBytes` while the size is unknown). */
+export async function fetchWithProgress(
+  url: string,
+  approxBytes: number,
   onProgress: (progress: DownloadProgress) => void,
   signal?: AbortSignal,
-): Promise<void> {
-  const info = OPTIONAL_DICTIONARIES[id];
-  const response = await fetch(optionalDictionaryUrl(id), { signal, cache: 'no-store' });
+): Promise<Blob> {
+  const response = await fetch(url, { signal, cache: 'no-store' });
   if (!response.ok || !response.body) {
     throw new Error(`HTTP ${response.status}`);
   }
-  const total = Number(response.headers.get('content-length')) || info.approxBytes;
+  const total = Number(response.headers.get('content-length')) || approxBytes;
   const reader = response.body.getReader();
   const chunks: BlobPart[] = [];
   let loaded = 0;
@@ -204,7 +209,16 @@ export async function downloadOptionalDictionary(
     loaded += value.byteLength;
     onProgress({ loaded, total: Math.max(total, loaded) });
   }
-  const blob = new Blob(chunks, { type: 'application/gzip' });
+  return new Blob(chunks, { type: 'application/gzip' });
+}
+
+export async function downloadOptionalDictionary(
+  id: OptionalDictionaryId,
+  onProgress: (progress: DownloadProgress) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const info = OPTIONAL_DICTIONARIES[id];
+  const blob = await fetchWithProgress(optionalDictionaryUrl(id), info.approxBytes, onProgress, signal);
   // Validate before storing, so a truncated or wrong file never replaces a good one.
   await parseDictionary(blob);
   const record: StoredDictionary = {
@@ -214,7 +228,7 @@ export async function downloadOptionalDictionary(
     downloadedAt: Date.now(),
     blob,
   };
-  await withStore('readwrite', (store) => store.put(record));
+  await writeStoredFile(record);
   // Ask the browser not to evict the origin's storage under pressure, so a
   // downloaded dictionary is not silently lost. It is a request, not a guarantee.
   void navigator.storage?.persist?.().catch(() => undefined);
@@ -222,6 +236,6 @@ export async function downloadOptionalDictionary(
 }
 
 export async function deleteOptionalDictionary(id: OptionalDictionaryId): Promise<void> {
-  await withStore('readwrite', (store) => store.delete(OPTIONAL_DICTIONARIES[id].storageKey));
+  await deleteStoredFile(OPTIONAL_DICTIONARIES[id].storageKey);
   notifyChange(id);
 }

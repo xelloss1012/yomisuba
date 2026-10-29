@@ -92,6 +92,8 @@ export interface FuriganaOptions {
   levels: WordLevelsData | null;
   /** The reader's JLPT level; "difficult" assumes a beginner (N5) without it. */
   studyLevel?: JlptLevel;
+  /** Kanji the reader knows (marked known in the reviews): in "difficult", a word with only these is easy. */
+  knownKanji?: ReadonlySet<string>;
 }
 
 const BLOCK_SELECTOR = 'p, h1, h2, h3, h4, h5, h6, li, dt, dd, td, th, blockquote, figcaption, caption, div';
@@ -99,6 +101,11 @@ const SKIPPED_ANCESTORS = 'rt, rp, script, style, svg, math';
 
 /** A word is "difficult" when it is above the reader's level. Grammar never is. */
 const isDifficult = (token: JapaneseMorphologicalToken, options: FuriganaOptions) => {
+  // Every kanji of it learnt in the reviews: the reader can read it, whatever its level.
+  if (options.knownKanji?.size) {
+    const kanji = [...token.surface_form].filter((char) => KANJI.test(char) && char !== '々' && char !== '〆' && char !== 'ヶ');
+    if (kanji.length && kanji.every((char) => options.knownKanji!.has(char))) return false;
+  }
   if (!options.levels) return true;
   const studyLevel = options.studyLevel ?? 5;
   const form = token.basic_form && token.basic_form !== '*' ? token.basic_form : token.surface_form;
