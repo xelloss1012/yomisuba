@@ -861,6 +861,17 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
+    // The last book opens again only if the reader has not started doing something on the home screen
+    // meanwhile (a review, the shelf, an update): it would open on top of it.
+    // Answering what the app asks on starting (which Drive data to keep) is not doing something else.
+    let acted = false;
+    const onAction = (event: Event) => {
+      if (event.target instanceof Element && event.target.closest('[role="alertdialog"]')) return;
+      acted = true;
+    };
+    window.addEventListener('pointerdown', onAction, { capture: true });
+    window.addEventListener('keydown', onAction, { capture: true });
+    const busyOnHome = () => acted || getUpdateInstallState().kind !== 'idle';
     const restoreLibrary = async () => {
       try {
         const books = await listRecentBooks(MAX_SHELF_BOOKS);
@@ -901,14 +912,13 @@ export const App: React.FC = () => {
         const pendingShared = await checkPendingShared();
         if (pendingShared || isOpeningSharedRef.current || cancelled) return;
 
-        // The reader started updating the app from the home screen meanwhile: the book would open on top.
-        if (getUpdateInstallState().kind !== 'idle') return;
+        if (busyOnHome()) return;
 
         const lastBookId = getLastBookId();
         if (lastBookId) {
           const listed = books.find((book) => book.id === lastBookId);
           const lastBook = listed && listed.blobLoaded !== false ? listed : await getRecentBook(lastBookId);
-          if (lastBook && !cancelled && !isOpeningSharedRef.current && getUpdateInstallState().kind === 'idle') {
+          if (lastBook && !cancelled && !isOpeningSharedRef.current && !busyOnHome()) {
             await openBook(lastBook.blob, lastBook.id, lastBook.name);
           }
         }
@@ -918,8 +928,15 @@ export const App: React.FC = () => {
       }
     };
     void requestPersistentStorage();
-    void restoreLibrary();
-    return () => { cancelled = true; };
+    void restoreLibrary().finally(() => {
+      window.removeEventListener('pointerdown', onAction, { capture: true });
+      window.removeEventListener('keydown', onAction, { capture: true });
+    });
+    return () => {
+      cancelled = true;
+      window.removeEventListener('pointerdown', onAction, { capture: true });
+      window.removeEventListener('keydown', onAction, { capture: true });
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
