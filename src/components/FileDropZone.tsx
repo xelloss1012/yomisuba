@@ -3,7 +3,7 @@ import { Capacitor } from '@capacitor/core';
 import { UploadCloud, Sparkles, FileText, Languages, Smartphone, Github, ShieldCheck, Library, ClipboardPaste, Globe, GraduationCap, ChevronRight } from 'lucide-react';
 import { createSampleJapaneseEpub } from '../utils/sampleBook';
 import { RecentBook } from '../utils/recentBooks';
-import { GoogleDriveBook, GoogleDriveSession } from '../utils/googleDriveBackup';
+import { GoogleDriveBook, GoogleDriveSession, ReaderBookBackup } from '../utils/googleDriveBackup';
 import { GoogleDriveBackupPanel } from './GoogleDriveBackupPanel';
 import { BookShelf } from './BookShelf';
 import { BookLibraryModal } from './BookLibraryModal';
@@ -30,7 +30,7 @@ const PRIVACY_URL = 'https://xelloss1012.github.io/yomisuba/privacy.html';
 
 interface Props {
   onFileLoaded: (file: File | Blob) => void;
-  onOpenRecent: (book: RecentBook) => void;
+  onOpenRecent: (book: RecentBook, search?: string) => void;
   onRemoveRecentBook: (book: RecentBook) => void;
   recentBooks: RecentBook[];
   isLoading: boolean;
@@ -51,6 +51,8 @@ interface Props {
   onRefreshDriveBooks: () => void;
   /** Removes from this device the data of a book no longer on the shelf. */
   onDeleteBookData: (bookKey: string) => void;
+  /** Sends to Drive the data of a book changed from the vocabulary panel. */
+  onBookDataChange: (data: ReaderBookBackup) => void;
   driveStudy: DriveStudyState;
   /** Reads from Drive the data of the books this device does not have; absent without a Google session. */
   onLoadDriveStudyBooks?: () => void;
@@ -79,6 +81,7 @@ export const FileDropZone: React.FC<Props> = ({
   onDeleteDriveBook,
   onRefreshDriveBooks,
   onDeleteBookData,
+  onBookDataChange,
   driveStudy,
   onLoadDriveStudyBooks,
   onUpdateSettings,
@@ -336,7 +339,8 @@ export const FileDropZone: React.FC<Props> = ({
           isOpen={isStudyOpen}
           recentBooks={recentBooks}
           onClose={() => setIsStudyOpen(false)}
-          onOpenBook={(book) => { setIsStudyOpen(false); onOpenRecent(book); }}
+          onOpenBook={(book, search) => { setIsStudyOpen(false); onOpenRecent(book, search); }}
+          onBookDataChange={onBookDataChange}
           onDeleteBookData={onDeleteBookData}
           driveStudy={driveStudy}
           onLoadDriveStudyBooks={onLoadDriveStudyBooks}

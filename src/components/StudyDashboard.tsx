@@ -1,20 +1,27 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { BarChart3, BookOpen, Check, Clock, CloudDownload, Download, EyeOff, GraduationCap, Loader2, NotebookPen, RefreshCw, Repeat, RotateCcw, Search, Star, Trash2, X } from 'lucide-react';
-import { Translate, useLanguage, useT } from '../i18n/LanguageContext';
+import { Translate, useDictionaryOptions, useLanguage, useT, useTranslationLanguage } from '../i18n/LanguageContext';
 import { RecentBook } from '../utils/recentBooks';
 import {
   bookKeyOf,
   collectStudyData,
   listStoredBooks,
   sortVocabulary,
+  BookRef,
   StudyData,
   VocabularySort,
+  vocabularyKey,
   withEntries,
   wordsPerMonth,
 } from '../utils/studyData';
-import type { DriveStudyBook } from '../utils/googleDriveBackup';
-import { historyToCsv, notesToMarkdown, vocabularyToAnki, vocabularyToCsv, vocabularyToMarkdown } from '../utils/studyExport';
+import type { DriveStudyBook, ReaderBookBackup } from '../utils/googleDriveBackup';
+import { historyToCsv, notesToAnki, notesToMarkdown, vocabularyToAnki, vocabularyToCsv, vocabularyToMarkdown } from '../utils/studyExport';
+import { removeBookFavorites, toggleBookFavorite } from '../utils/bookSnapshot';
+import { isTranslationFavorite, readTranslationFavorites, TranslationFavorite, TranslationFavoriteCandidate } from '../utils/translationFavorites';
+import { DictionaryLookup, getDictionarySearchTerms } from '../utils/dictionary';
+import { buildDictionaryHistoryResponse, TranslationHistoryEntry } from '../utils/translationHistory';
+import { normalizeFrequentQuery } from '../utils/frequentQueries';
 import { exportFileName, saveTextFile } from '../utils/exportFile';
 import { favoriteFields } from '../utils/favoritesExport';
 import { normalizeSearchQuery } from '../utils/bookSearch';
@@ -61,7 +68,10 @@ interface Props {
   isOpen: boolean;
   recentBooks: RecentBook[];
   onClose: () => void;
-  onOpenBook: (book: RecentBook) => void;
+  /** Opens a book of the shelf; with `search`, with that search made ("see it in the book"). */
+  onOpenBook: (book: RecentBook, search?: string) => void;
+  /** Sends to Drive the data of a book changed here (a favorite saved or removed). */
+  onBookDataChange: (data: ReaderBookBackup) => void;
   /** Removes from this device the data of a book that is no longer on the shelf. */
   onDeleteBookData: (bookKey: string) => void;
   driveStudy: DriveStudyState;
@@ -98,12 +108,17 @@ export const StudyDashboard: React.FC<Props> = ({
   recentBooks,
   onClose,
   onOpenBook,
+  onBookDataChange,
   onDeleteBookData,
   driveStudy,
   onLoadDriveStudyBooks,
 }) => {
   const t = useT();
   const language = useLanguage();
+  const translationLanguage = useTranslationLanguage();
+  const dictionaryOptions = useDictionaryOptions();
+  // Meanings looked up here for the most consulted words that no history entry explains.
+  const [lookupResults, setLookupResults] = useState<Record<string, DictionaryLookup | string>>({});
   const wordLevels = useWordLevels();
   const [tab, setTab] = useState<Tab>('summary');
   const [revision, setRevision] = useState(0);
@@ -159,6 +174,27 @@ export const StudyDashboard: React.FC<Props> = ({
   }, [isOpen, onClose]);
 
   const inBook = (books: { bookKey: string }[]) => !bookFilter || books.some((book) => book.bookKey === bookFilter);
+
+  // The favorites of each book of this device, to show which entries are saved.
+  const favoritesByBook = useMemo(() => {
+    const result = new Map<string, TranslationFavorite[]>();
+    if (!data) return result;
+    for (const book of data.books) {
+      if (!book.fromDrive) result.set(book.bookKey, readTranslationFavorites(`${book.bookKey}_translation_favorites`));
+    }
+    return result;
+  }, [data]);
+
+  // The latest dictionary answer of each query, to give the most consulted words their meaning.
+  const historyByQuery = useMemo(() => {
+    const result = new Map<string, { book: BookRef; entry: TranslationHistoryEntry }>();
+    for (const item of data?.history ?? []) {
+      const key = normalizeFrequentQuery(item.entry.query);
+      const known = result.get(key);
+      if (!known || (!known.entry.data && item.entry.data)) result.set(key, item);
+    }
+    return result;
+  }, [data]);
 
   const vocabulary = useMemo(() => (data
     ? sortVocabulary(data.vocabulary, sort).filter((item) => inBook(item.books)
@@ -232,7 +268,10 @@ export const StudyDashboard: React.FC<Props> = ({
       { label: t('history.exportMarkdown'), run: () => save(t('study.fileVocabulary'), 'md', vocabularyToMarkdown(`${t('study.tabVocabulary')} · ${bookTitle}`, vocabulary, vocabularyLabels, language), 'text/markdown') },
     ]
     : tab === 'notes' && notes.length
-      ? [{ label: t('study.exportNotes'), run: () => save(t('study.fileNotes'), 'md', notesToMarkdown(`${t('study.tabNotes')} · ${bookTitle}`, notes, chapterLabel), 'text/markdown') }]
+      ? [
+        { label: t('study.exportNotesAnki'), run: () => save(t('study.fileNotes'), 'txt', notesToAnki(notes, chapterLabel), 'text/plain') },
+        { label: t('study.exportNotes'), run: () => save(t('study.fileNotes'), 'md', notesToMarkdown(`${t('study.tabNotes')} · ${bookTitle}`, notes, chapterLabel), 'text/markdown') },
+      ]
       : tab === 'history' && history.length
         ? [{
           label: t('study.exportHistory'),
@@ -255,6 +294,74 @@ export const StudyDashboard: React.FC<Props> = ({
     { id: 'history', label: t('study.tabHistory'), icon: <Clock className="h-3.5 w-3.5" />, count: data.history.length },
     { id: 'searches', label: t('study.tabSearches'), icon: <Search className="h-3.5 w-3.5" />, count: data.lookups.length },
   ];
+
+  const localBook = (bookKey: string) => data.books.find((book) => book.bookKey === bookKey && !book.fromDrive);
+
+  /** Saves or removes a favorite in a book, as the star of the reader does, and sends the book to Drive. */
+  const toggleFavorite = (bookKey: string, candidate: TranslationFavoriteCandidate) => {
+    const book = localBook(bookKey);
+    if (!book) return;
+    onBookDataChange(toggleBookFavorite(book, candidate));
+    setRevision((value) => value + 1);
+  };
+
+  const isFavorite = (bookKey: string, candidate: TranslationFavoriteCandidate) =>
+    isTranslationFavorite(favoritesByBook.get(bookKey) ?? [], candidate);
+
+  /** A word of the vocabulary out of the favorites of every book it was saved in. */
+  const unfavoriteWord = (item: (typeof data.vocabulary)[number]) => {
+    const books = item.books.map((book) => localBook(book.bookKey)).filter((book): book is NonNullable<typeof book> => Boolean(book));
+    if (books.length > 1 && !window.confirm(t('study.confirmUnfavorite', { word: item.word, count: books.length }))) return;
+    for (const book of books) onBookDataChange(removeBookFavorites(book, (favorite) => vocabularyKey(favorite) === item.key));
+    setRevision((value) => value + 1);
+  };
+
+  const historyCandidate = (entry: TranslationHistoryEntry): TranslationFavoriteCandidate => ({
+    query: entry.query,
+    kind: entry.kind,
+    ...(entry.provider ? { provider: entry.provider } : {}),
+    response: getHistoryEntryResponse(entry, language),
+    ...(entry.data ? { data: entry.data } : {}),
+  });
+
+  /** The first book of a list that is on the shelf, to open it. */
+  const shelfBookOf = (books: { bookKey: string }[]) => books.map((book) => shelf.get(book.bookKey)).find(Boolean);
+
+  const starButton = (on: boolean, toggle: () => void) => (
+    <button
+      type="button"
+      onClick={toggle}
+      className={`tap-area shrink-0 rounded-lg p-2 ${on ? 'text-amber-500' : 'text-zinc-400 hover:text-amber-500'}`}
+      aria-label={on ? t('glossary.removeFav') : t('glossary.addFav')}
+      title={on ? t('glossary.removeFav') : t('glossary.addFav')}
+      aria-pressed={on}
+    >
+      <Star className={`h-4 w-4 ${on ? 'fill-current' : ''}`} />
+    </button>
+  );
+
+  const openInBookButton = (books: { bookKey: string }[], text: string) => {
+    const book = shelfBookOf(books);
+    if (!book || !text.trim()) return null;
+    return (
+      <button
+        type="button"
+        onClick={() => onOpenBook(book, text)}
+        className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-zinc-200 px-2 text-[11px] font-semibold text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+      >
+        <BookOpen className="h-3.5 w-3.5" /> {t('study.seeInBook')}
+      </button>
+    );
+  };
+
+  /** Looks up in the dictionary a consulted word no history entry explains. */
+  const lookUp = (key: string, query: string) => {
+    if (key in lookupResults) return;
+    setLookupResults((current) => ({ ...current, [key]: '' }));
+    void getDictionarySearchTerms(query, translationLanguage, dictionaryOptions)
+      .then((result) => setLookupResults((current) => ({ ...current, [key]: result })))
+      .catch((error: unknown) => setLookupResults((current) => ({ ...current, [key]: error instanceof Error ? error.message : String(error) })));
+  };
 
   const isEmpty = data.books.every((book) => !book.favorites && !book.underlines && !book.lookups) && !data.history.length;
   const more = (total: number) => total > shown && (
@@ -407,7 +514,7 @@ export const StudyDashboard: React.FC<Props> = ({
     return t(`study.status_${status}`);
   };
 
-  const renderCardActions = (key: string) => {
+  const renderCardActions = (key: string, extra?: React.ReactNode) => {
     const card = progress.cards[key];
     const status = statusOf(card);
     const action = (label: string, icon: React.ReactNode, run: () => void) => (
@@ -422,6 +529,7 @@ export const StudyDashboard: React.FC<Props> = ({
     const now = Date.now();
     return (
       <div className="mt-2 flex flex-wrap gap-1.5">
+        {extra}
         {status !== 'known' && action(t('study.markKnown'), <Check className="h-3.5 w-3.5" />, () => updateProgress((current) => setCard(current, key, markKnown(current.cards[key], now))))}
         {status === 'ignored'
           ? action(t('study.unignore'), <RotateCcw className="h-3.5 w-3.5" />, () => updateProgress((current) => setCard(current, key, resetCard(now))))
@@ -437,7 +545,8 @@ export const StudyDashboard: React.FC<Props> = ({
         {vocabulary.slice(0, shown).map((item) => {
           const isExpanded = expanded === item.key;
           return (
-            <li key={item.key} className="rounded-xl border border-zinc-200 bg-zinc-50/50 p-3 dark:border-zinc-800 dark:bg-zinc-800/30">
+            <li key={item.key} className="flex items-start gap-1 rounded-xl border border-zinc-200 bg-zinc-50/50 p-3 dark:border-zinc-800 dark:bg-zinc-800/30">
+              <div className="min-w-0 flex-1">
               <button type="button" onClick={() => setExpanded(isExpanded ? null : item.key)} className="w-full text-left">
                 <span className="flex flex-wrap items-center gap-2">
                   <span lang="ja" className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{item.word}</span>
@@ -468,7 +577,9 @@ export const StudyDashboard: React.FC<Props> = ({
                 ))}
                 {bookChips(item.books)}
               </button>
-              {isExpanded && renderCardActions(item.key)}
+              {isExpanded && renderCardActions(item.key, openInBookButton(item.books, item.favorite.query))}
+              </div>
+              {item.books.some((book) => localBook(book.bookKey)) && starButton(true, () => unfavoriteWord(item))}
             </li>
           );
         })}
@@ -485,6 +596,7 @@ export const StudyDashboard: React.FC<Props> = ({
             <blockquote lang="ja" className="border-l-2 border-amber-400 pl-2 text-sm text-zinc-800 dark:text-zinc-200">{note.annotation.quote}</blockquote>
             {note.annotation.note && <p className="mt-1.5 whitespace-pre-line text-xs text-zinc-700 dark:text-zinc-300">{note.annotation.note}</p>}
             <p className="mt-1.5 truncate text-[10px] text-zinc-500 dark:text-zinc-400">{note.book.title} · {chapterLabel(note.annotation.spineIndex)}</p>
+            <div className="mt-1.5">{openInBookButton([note.book], note.annotation.quote)}</div>
           </li>
         ))}
       </ul>
@@ -498,8 +610,10 @@ export const StudyDashboard: React.FC<Props> = ({
         {history.slice(0, shown).map(({ book, entry }) => {
           const id = `${book.bookKey}:${entry.id}`;
           const isExpanded = expanded === id;
+          const candidate = historyCandidate(entry);
           return (
-            <li key={id} className="rounded-xl border border-zinc-200 p-3 dark:border-zinc-800">
+            <li key={id} className="flex items-start gap-1 rounded-xl border border-zinc-200 p-3 dark:border-zinc-800">
+              <div className="min-w-0 flex-1">
               <button type="button" onClick={() => setExpanded(isExpanded ? null : id)} className="w-full text-left">
                 <span className="flex flex-wrap items-center gap-2">
                   <span lang="ja" className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{entry.query}</span>
@@ -514,6 +628,9 @@ export const StudyDashboard: React.FC<Props> = ({
                   {new Date(entry.queriedAt).toLocaleString(language)} · {book.title}
                 </span>
               </button>
+              {isExpanded && <div className="mt-1.5">{openInBookButton([book], entry.query)}</div>}
+              </div>
+              {localBook(book.bookKey) && starButton(isFavorite(book.bookKey, candidate), () => toggleFavorite(book.bookKey, candidate))}
             </li>
           );
         })}
@@ -527,17 +644,55 @@ export const StudyDashboard: React.FC<Props> = ({
       <section>
         <h3 className="mb-2 text-xs font-semibold text-zinc-700 dark:text-zinc-300">{t('study.mostLooked')}</h3>
         <ul className="space-y-1.5">
-          {lookups.slice(0, shown).map((item) => (
-            <li key={item.key} className="rounded-xl border border-zinc-200 px-3 py-2 dark:border-zinc-800">
-              <span className="flex items-center justify-between gap-2">
-                <span lang="ja" className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{item.query}</span>
-                <span className="shrink-0 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-                  {item.count} {t('history.queries')}
-                </span>
-              </span>
-              {bookChips(item.books)}
-            </li>
-          ))}
+          {lookups.slice(0, shown).map((item) => {
+            const id = `lookup:${item.key}`;
+            const isExpanded = expanded === id;
+            const known = historyByQuery.get(item.key);
+            const looked = lookupResults[item.key];
+            // The answer of the history if there is one; else what the dictionary says, looked up on request.
+            const candidate: TranslationFavoriteCandidate | null = known
+              ? historyCandidate(known.entry)
+              : looked && typeof looked !== 'string' && looked.entries.length
+                ? { query: item.query, kind: 'dictionary', ...buildDictionaryHistoryResponse(looked.baseForm, looked.searchTerms, looked.entries.slice(0, 3)) }
+                : null;
+            const target = (known && localBook(known.book.bookKey)) ? known.book : item.books.find((book) => localBook(book.bookKey));
+            const meaning = candidate ? favoriteFields({ ...candidate, id: '', savedAt: 0 }).meaning : '';
+            return (
+              <li key={item.key} className="flex items-start gap-1 rounded-xl border border-zinc-200 px-3 py-2 dark:border-zinc-800">
+                <div className="min-w-0 flex-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setExpanded(isExpanded ? null : id);
+                      if (!known) lookUp(item.key, item.query);
+                    }}
+                    className="w-full text-left"
+                  >
+                    <span className="flex items-center gap-2">
+                      <span lang="ja" className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{item.query}</span>
+                      <span className="shrink-0 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                        {item.count} {t('history.queries')}
+                      </span>
+                    </span>
+                    {meaning ? (
+                      <span className={`mt-1 block whitespace-pre-line text-xs text-zinc-600 dark:text-zinc-300 ${isExpanded ? '' : 'line-clamp-2'}`}>
+                        {isExpanded && candidate ? (candidate.data ? getHistoryEntryResponse(candidate, language) : candidate.response) : meaning}
+                      </span>
+                    ) : looked === '' ? (
+                      <span className="mt-1 flex items-center gap-1 text-[11px] text-zinc-500 dark:text-zinc-400"><Loader2 className="h-3 w-3 animate-spin" /> {t('translate.dictionary')}</span>
+                    ) : looked !== undefined ? (
+                      <span className="mt-1 block text-[11px] text-zinc-400">{typeof looked === 'string' ? looked : t('glossary.noDefinition')}</span>
+                    ) : (
+                      <span className="mt-1 block text-[11px] text-indigo-600 dark:text-indigo-400">{t('study.tapForMeaning')}</span>
+                    )}
+                    {bookChips(item.books)}
+                  </button>
+                  {isExpanded && <div className="mt-1.5">{openInBookButton(item.books, item.query)}</div>}
+                </div>
+                {candidate && target && starButton(isFavorite(target.bookKey, candidate), () => toggleFavorite(target.bookKey, candidate))}
+              </li>
+            );
+          })}
         </ul>
         {more(lookups.length)}
       </section>
@@ -547,8 +702,13 @@ export const StudyDashboard: React.FC<Props> = ({
           <ul className="space-y-1.5">
             {textSearches.map((item) => (
               <li key={item.query} className="rounded-xl border border-zinc-200 px-3 py-2 dark:border-zinc-800">
-                <span lang="ja" className="text-sm text-zinc-900 dark:text-zinc-100">{item.query}</span>
-                {bookChips(item.books)}
+                <span className="flex items-start justify-between gap-2">
+                  <span className="min-w-0">
+                    <span lang="ja" className="text-sm text-zinc-900 dark:text-zinc-100">{item.query}</span>
+                    {bookChips(item.books)}
+                  </span>
+                  <span className="shrink-0">{openInBookButton(item.books, item.query)}</span>
+                </span>
               </li>
             ))}
           </ul>
@@ -698,6 +858,12 @@ export const StudyDashboard: React.FC<Props> = ({
                 progress={progress}
                 onAnswer={(key: string, grade: Grade) => updateProgress((current) => answer(current, key, grade, Date.now()))}
                 onChangeNewPerDay={(count) => updateProgress((current) => ({ ...current, newPerDay: count, settingsUpdatedAt: Date.now() }))}
+                onMark={(key, how) => updateProgress((current) => setCard(current, key, how === 'known' ? markKnown(current.cards[key], Date.now()) : markIgnored(current.cards[key], Date.now())))}
+                onSeeInBook={(item) => {
+                  const book = shelfBookOf(item.books);
+                  if (book) onOpenBook(book, item.favorite.query);
+                }}
+                canSeeInBook={(item) => Boolean(shelfBookOf(item.books))}
               />
             )
             : listEmpty ? <p className="py-12 text-center text-sm text-zinc-500 dark:text-zinc-400">{t('study.noResults')}</p>

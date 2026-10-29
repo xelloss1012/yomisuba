@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Play, Volume2 } from 'lucide-react';
+import { BookOpen, Check, EyeOff, Play, Volume2 } from 'lucide-react';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { favoriteFields } from '../utils/favoritesExport';
 import { speakJapanese } from '../utils/japaneseSpeech';
@@ -13,6 +13,10 @@ interface Props {
   progress: StudyProgress;
   onAnswer: (key: string, grade: Grade) => void;
   onChangeNewPerDay: (count: number) => void;
+  /** "I know it" or "ignore": the word leaves the session. */
+  onMark: (key: string, how: 'known' | 'ignored') => void;
+  onSeeInBook: (item: VocabularyItem) => void;
+  canSeeInBook: (item: VocabularyItem) => boolean;
 }
 
 const NEW_PER_DAY_OPTIONS = [5, 10, 20, 30, 50, 0];
@@ -72,7 +76,7 @@ const withWord = (text: string, words: string[]): React.ReactNode => {
  * Reviews the vocabulary one word at a time: the word (with the sentence it was saved from), then its
  * reading and meaning, and how well it was remembered decides when it comes back.
  */
-export const StudyReview: React.FC<Props> = ({ items, progress, onAnswer, onChangeNewPerDay }) => {
+export const StudyReview: React.FC<Props> = ({ items, progress, onAnswer, onChangeNewPerDay, onMark, onSeeInBook, canSeeInBook }) => {
   const t = useT();
   const language = useLanguage();
   const byKey = useMemo(() => new Map(items.map((item) => [item.key, item])), [items]);
@@ -204,6 +208,32 @@ export const StudyReview: React.FC<Props> = ({ items, progress, onAnswer, onChan
               </span>
             </button>
             <p className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">{current.books.map((book) => book.title).join(' · ')}</p>
+            <div className="mt-3 flex flex-wrap justify-center gap-1.5">
+              {([['known', <Check key="i" className="h-3.5 w-3.5" />, t('study.markKnown')], ['ignored', <EyeOff key="i" className="h-3.5 w-3.5" />, t('study.ignore')]] as const).map(([how, icon, label]) => (
+                <button
+                  key={how}
+                  type="button"
+                  onClick={() => {
+                    onMark(current.key, how);
+                    setShown(false);
+                    setExpanded(false);
+                    setQueue(queue.filter((key) => key !== current.key));
+                  }}
+                  className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-zinc-200 px-2 text-[11px] font-semibold text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                >
+                  {icon} {label}
+                </button>
+              ))}
+              {canSeeInBook(current) && (
+                <button
+                  type="button"
+                  onClick={() => onSeeInBook(current)}
+                  className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-zinc-200 px-2 text-[11px] font-semibold text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                >
+                  <BookOpen className="h-3.5 w-3.5" /> {t('study.seeInBook')}
+                </button>
+              )}
+            </div>
           </div>
         )}
       </div>

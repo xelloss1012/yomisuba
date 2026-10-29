@@ -23,6 +23,7 @@ import {
   updateGoogleDriveBookCover,
   ReaderBookBackup,
   applyGoogleDriveReaderData,
+  getPendingGoogleDriveReaderData,
   claimGoogleDriveWriter,
   clearPendingGoogleDriveReaderDataQueue,
   DriveWriter,
@@ -110,6 +111,8 @@ export const App: React.FC = () => {
   const [driveConflict, setDriveConflict] = useState<DriveConflict | null>(null);
   const driveConflictAnswerRef = React.useRef<((choice: 'load' | 'keep') => void) | null>(null);
   const [deleteRequest, setDeleteRequest] = useState<DeleteBookRequest | null>(null);
+  // A search to make as soon as the book opens: "see it in the book" from the vocabulary panel.
+  const [initialSearch, setInitialSearch] = useState<string | null>(null);
   const deleteAnswerRef = React.useRef<((choice: DeleteBookChoice | null) => void) | null>(null);
   // The reading data in Drive of books this device does not have, for the vocabulary panel; read on request.
   const [driveStudy, setDriveStudy] = useState<DriveStudyState>({ status: 'idle', books: [] });
@@ -752,7 +755,14 @@ export const App: React.FC = () => {
             title: parsed.metadata.title,
             creator: parsed.metadata.creator,
           });
-          if (readerData) applyGoogleDriveReaderData(readerData);
+          // Changes of this book still waiting to go up (made offline, or from the vocabulary panel) are
+          // newer than Drive's copy: they go up instead of being overwritten by it.
+          const bookKey = `yomisuba_book_${encodeURIComponent(`${parsed.metadata.title}|${parsed.metadata.creator}`)}`;
+          if (getPendingGoogleDriveReaderData()[bookKey]) {
+            void syncPendingGoogleDriveReaderData(driveSession.accessToken).catch(() => undefined);
+          } else if (readerData) {
+            applyGoogleDriveReaderData(readerData);
+          }
         } catch (error) {
           if (navigator.onLine) {
             setSyncError(t('sync.readingUpdateError', settings.language, { message: error instanceof Error ? error.message : String(error) }));
@@ -909,10 +919,12 @@ export const App: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleOpenRecent = (book: RecentBook) => {
+  /** Opens a book of the shelf; with `search`, the book opens with that search already made. */
+  const handleOpenRecent = (book: RecentBook, search?: string) => {
     void (async () => {
       try {
         const full = await loadRecentBook(book);
+        setInitialSearch(search?.trim() || null);
         await openBook(full.blob, full.id, full.name);
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : String(error));
@@ -978,6 +990,7 @@ export const App: React.FC = () => {
   };
 
   const handleCloseBook = () => {
+    setInitialSearch(null);
     if (currentEpub) {
       currentEpub.close();
       setCurrentEpub(null);
@@ -1158,6 +1171,7 @@ export const App: React.FC = () => {
             lastSyncedDate={googleDriveSettingsDate}
             isBookUploaded={isCurrentBookUploaded}
             onUploadBook={handleUploadCurrentBook}
+            initialSearch={initialSearch ?? undefined}
           />
         ) : (
           <FileDropZone
@@ -1181,6 +1195,7 @@ export const App: React.FC = () => {
             onDownloadDriveBook={handleDownloadDriveBook}
             onDeleteDriveBook={(book) => { void handleDeleteDriveBook(book); }}
             onDeleteBookData={handleDeleteBookData}
+            onBookDataChange={handleBookDataChange}
             driveStudy={driveStudy}
             onLoadDriveStudyBooks={googleDriveSession ? () => { void handleLoadDriveStudyBooks(); } : undefined}
             onRefreshDriveBooks={handleRefreshDriveBooks}

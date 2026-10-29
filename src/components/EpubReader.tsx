@@ -268,6 +268,8 @@ interface Props {
   lastSyncedDate?: string | null;
   isBookUploaded?: boolean;
   onUploadBook?: () => void;
+  /** A search to open as soon as the book is shown ("see it in the book" from the vocabulary panel). */
+  initialSearch?: string;
 }
 
 export const EpubReader: React.FC<Props> = ({
@@ -284,6 +286,7 @@ export const EpubReader: React.FC<Props> = ({
   lastSyncedDate,
   isBookUploaded = true,
   onUploadBook,
+  initialSearch,
 }) => {
   const t = useT();
   const translationLanguage = useTranslationLanguage();
@@ -3506,6 +3509,7 @@ export const EpubReader: React.FC<Props> = ({
     }
     loadChapter(position.spineIndex, position.page, position.pageCount, position.textOffset);
     void measureBookPagesRef.current();
+    if (initialSearch) openSearch(initialSearch);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

@@ -139,3 +139,19 @@ export function historyToCsv(entries: GlobalHistoryEntry[], labels: HistoryExpor
   ]);
   return toCsv([header, ...rows]);
 }
+
+/**
+ * Notes as cards Anki imports as they are: the passage in front and, behind, the note and where it is.
+ * Underlines without a note are cards too: a passage worth reading again.
+ */
+export function notesToAnki(notes: GlobalNote[], chapterLabel: (spineIndex: number) => string): string {
+  const lines = ['#separator:tab', '#html:true', '#columns:Front\tBack'];
+  for (const { book, annotation } of notes) {
+    const back = [
+      annotation.note?.trim() ? escapeHtml(annotation.note.trim()).replace(/\n/g, '<br>') : '',
+      `<small>${escapeHtml(`${book.title} · ${chapterLabel(annotation.spineIndex)}`)}</small>`,
+    ].filter(Boolean).join('<br>');
+    lines.push(`${ankiField(escapeHtml(annotation.quote.trim()))}\t${ankiField(back)}`);
+  }
+  return `${lines.join('\n')}\n`;
+}
