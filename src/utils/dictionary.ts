@@ -4,6 +4,7 @@ import TokenizerWorker from './tokenizer.worker?worker&inline';
 import spanishDictionaryUrl from '../data/jmdict-es.json.gz?inline';
 import englishDictionaryUrl from '../data/jmdict-en.json.gz?inline';
 import { TranslationLanguage, UiLanguage, tr } from './i18n';
+import { toEverydayKanji } from './kanjiVariants';
 import { joinNounPieces } from './tokenFixes';
 import {
   isOptionalDictionaryId,
@@ -383,7 +384,29 @@ export const warmUpDictionary = () => {
 
 export const tokenizeJapanese = async (text: string): Promise<JapaneseMorphologicalToken[]> => {
   const tokenizer = await getTokenizer(true);
-  return tokenizer.tokenize(text);
+  // 摑む, 啞然: read in their everyday kanji, which kuromoji knows, but standing as the book wrote them.
+  const everyday = toEverydayKanji(text);
+  const tokens = await tokenizer.tokenize(everyday);
+  if (everyday === text) return tokens;
+  let offset = 0;
+  return tokens.map((token) => {
+    const at = token.word_position ? token.word_position - 1 : offset;
+    offset = at + token.surface_form.length;
+    const surface = text.slice(at, offset);
+    return surface === token.surface_form ? token : { ...token, surface_form: surface };
+  });
+};
+
+/** Which of these forms the dictionary lists exactly as they are written (in the bundled JMdict). */
+export const findDictionaryForms = async (forms: string[]): Promise<Set<string>> => {
+  const found = new Set<string>();
+  if (!forms.length) return found;
+  const indexes = (await Promise.allSettled([getEnglishIndex(), getSpanishIndex()]))
+    .flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []));
+  for (const form of forms) {
+    if (indexes.some((index) => index.byForm.has(form))) found.add(form);
+  }
+  return found;
 };
 
 const toEntry = (entry: CompactEntry, language: DictionaryEntry['language']): DictionaryEntry => ({

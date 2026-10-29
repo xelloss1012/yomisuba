@@ -24,6 +24,60 @@ export interface MergedToken {
   end: number;
 }
 
+const EXPRESSION_PARTICLES = new Set(['に', 'を', 'が', 'で', 'と']);
+
+/**
+ * The dictionary form of the set phrase that may start at a word: a noun, a particle and a verb or
+ * adjective (身に着けている → 身に着ける, 気に入った → 気に入る, 目を覚まし → 目を覚ます). Whether it
+ * is one is for the dictionary to say.
+ */
+const expressionAt = (tokens: MergedToken[], index: number): string | null => {
+  const [noun, particle, predicate] = tokens.slice(index, index + 3);
+  if (!noun || !particle || !predicate) return null;
+  if (noun.end !== particle.start || particle.end !== predicate.start) return null;
+  if (noun.token.pos !== '名詞' || noun.token.pos_detail_1 === '数') return null;
+  if (particle.token.pos !== '助詞' || !EXPRESSION_PARTICLES.has(particle.token.surface_form)) return null;
+  if (!['動詞', '形容詞'].includes(predicate.token.pos)) return null;
+  const base = predicate.token.basic_form;
+  if (!base || base === '*') return null;
+  return noun.token.surface_form + particle.token.surface_form + base;
+};
+
+/** The set phrases the words could make, to ask the dictionary which of them it lists. */
+export const expressionCandidates = (tokens: MergedToken[]): string[] =>
+  tokens.flatMap((_, index) => {
+    const form = expressionAt(tokens, index);
+    return form ? [form] : [];
+  });
+
+/** Joins into one word each set phrase that the dictionary lists (`known`). */
+export const joinExpressions = (tokens: MergedToken[], known: ReadonlySet<string>): MergedToken[] => {
+  const joined: MergedToken[] = [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    const form = expressionAt(tokens, index);
+    if (!form || !known.has(form)) {
+      joined.push(tokens[index]);
+      continue;
+    }
+    const parts = tokens.slice(index, index + 3);
+    const predicate = parts[2];
+    joined.push({
+      start: parts[0].start,
+      end: predicate.end,
+      token: {
+        ...predicate.token,
+        surface_form: parts.map((part) => part.token.surface_form).join(''),
+        reading: parts.every((part) => part.token.reading)
+          ? parts.map((part) => part.token.reading).join('')
+          : predicate.token.reading,
+        basic_form: form,
+      },
+    });
+    index += 2;
+  }
+  return joined;
+};
+
 /**
  * kuromoji cuts words finer than a reader would: a verb from its endings, a noun from its
  * suffix, 察 from する. This joins the pieces that belong together, so that one tap selects the

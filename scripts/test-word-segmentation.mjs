@@ -131,6 +131,34 @@ try {
   assert.equal(guess.baseForm, '察する');
   assert((await first('察すれば', 'es')).kanji.includes('察する'));
 
+  // 約 only qualifies the amount: it is a word of its own, and the number goes with its counter.
+  assert.deepEqual(surfaces('約一名だった'), ['約', '一名', 'だった']);
+  assert.deepEqual(surfaces('第三章'), ['第三章'], 'an ordinal stays one word');
+
+  // Traditional kanji (摑む, 啞然) are read in their everyday form but keep the book's text.
+  const { tokenizeJapanese, findDictionaryForms } = await server.ssrLoadModule('/src/utils/dictionary.ts');
+  const { expressionCandidates, joinExpressions } = await server.ssrLoadModule('/src/utils/tokenMerging.ts');
+  const pageWords = async (text) => {
+    const located = [];
+    let from = 0;
+    for (const token of await tokenizeJapanese(text)) {
+      const start = text.indexOf(token.surface_form, from);
+      if (start < 0) continue;
+      from = start + token.surface_form.length;
+      located.push({ token, start, end: from });
+    }
+    const pieces = mergeJapaneseTokens(located);
+    return joinExpressions(pieces, await findDictionaryForms(expressionCandidates(pieces)))
+      .map(({ token, start, end }) => `${text.slice(start, end)}:${token.basic_form}`);
+  };
+  assert.deepEqual(await pageWords('剣を摑んだ。'), ['剣:剣', 'を:を', '摑んだ:掴む']);
+  assert.deepEqual(await pageWords('啞然とした'), ['啞然:唖然', 'と:と', 'した:する']);
+
+  // A set phrase the dictionary lists is one word; a noun, a particle and a verb that are not stay apart.
+  assert.deepEqual(await pageWords('鎧を身に着けている'), ['鎧:鎧', 'を:を', '身に着けている:身に着ける']);
+  assert.deepEqual(await pageWords('それが気に入った'), ['それ:それ', 'が:が', '気に入った:気に入る']);
+  assert.deepEqual(await pageWords('学校に行った'), ['学校:学校', 'に:に', '行った:行く']);
+
   console.log('PASS: kuromoji pieces are joined into the words a reader means (suffixes, する verbs) and looked up main word first.');
 } finally {
   await server.close();

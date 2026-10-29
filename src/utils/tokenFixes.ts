@@ -16,7 +16,18 @@ const isKatakana = (text: string): boolean => /^[゠-ヿ]+$/.test(text);
  * is usually a word written so for effect (今オリ is 今 + オリ), and joined it would be found nowhere.
  */
 export const isPrefixOfNoun = (previous: Token | undefined, token: Token): boolean =>
-  previous?.pos === '接頭詞' && token.pos === '名詞' && !isKatakana(token.surface_form);
+  previous?.pos === '接頭詞' && token.pos === '名詞' && !isKatakana(token.surface_form) &&
+  !isLooseNumberPrefix(previous, token);
+
+/** Prefixes of a number that make a word with it: 第一, 数十. */
+const NUMBER_WORD_PREFIXES = new Set(['第', '数']);
+
+/**
+ * 約一名, 計三人, 満二十歳: a prefix that only qualifies the amount is a word of its own (約, "about"),
+ * and the number goes with its counter (一名), as the dictionary lists them.
+ */
+const isLooseNumberPrefix = (prefix: Token, token: Token): boolean =>
+  prefix.pos_detail_1 === '数接続' && token.pos_detail_1 === '数' && !NUMBER_WORD_PREFIXES.has(prefix.surface_form);
 
 /** The word made of a prefix and the noun after it, which takes the noun's grammar. */
 export const joinPrefix = (prefix: Token, noun: Token): Token => {

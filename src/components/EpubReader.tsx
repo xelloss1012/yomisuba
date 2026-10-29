@@ -68,12 +68,13 @@ import {
 import { ReaderBookBackup, ReaderDataGroup } from '../utils/googleDriveBackup';
 import {
   DictionaryLookup,
+  findDictionaryForms,
   getDictionarySearchTerms,
   JapaneseMorphologicalToken,
   tokenizeJapanese,
   warmUpDictionary,
 } from '../utils/dictionary';
-import { mergeJapaneseTokens } from '../utils/tokenMerging';
+import { expressionCandidates, joinExpressions, mergeJapaneseTokens } from '../utils/tokenMerging';
 import { wrapVerticalText } from '../utils/verticalText';
 import {
   annotateFurigana,
@@ -3808,7 +3809,18 @@ export const EpubReader: React.FC<Props> = ({
         locatedTokens.push({ token, start, end });
       }
 
-      const mergedTokens = mergeJapaneseTokens(locatedTokens);
+      // Set phrases the dictionary lists (身に着ける) are one word, though kuromoji cuts them in three.
+      const pieces = mergeJapaneseTokens(locatedTokens);
+      const candidates = expressionCandidates(pieces);
+      const expressions = candidates.length
+        ? await findDictionaryForms(candidates).catch(() => new Set<string>())
+        : new Set<string>();
+      if (
+        request !== pageAnalysisRequestRef.current ||
+        spineIndex !== currentSpineRef.current ||
+        page !== currentPageRef.current
+      ) return;
+      const mergedTokens = joinExpressions(pieces, expressions);
 
       const visibleWords: PageWordToken[] = [];
       for (const { token, start, end } of mergedTokens) {
