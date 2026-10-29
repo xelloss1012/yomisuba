@@ -25,6 +25,8 @@
     "word-levels:test": "node scripts/test-word-levels.mjs",
     "furigana:test": "node scripts/test-furigana.mjs",
     "word-levels:build": "python scripts/build_word_levels.py",
+    "kanji:build": "python scripts/build_kanji_data.py",
+    "kanji:test": "node scripts/test-kanji-info.mjs",
     "dictionary:build:wiktionary": "node scripts/build-wiktionary-dictionary.mjs",
     "dictionary:build:jmdict": "python scripts/build_jmdict_language.py",
     "drive:test": "node scripts/test-google-drive-layout.mjs",

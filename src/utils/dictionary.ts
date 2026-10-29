@@ -459,6 +459,30 @@ const getEnglishIndex = (): Promise<DictionaryIndex> => {
   return englishIndexPromise;
 };
 
+/**
+ * The words that write a kanji, to show it in use: from the dictionary of the translation language when
+ * there is one (Spanish, or a downloaded one), completed with English when it has few.
+ */
+export const wordsWithKanji = async (kanji: string, language: TranslationLanguage): Promise<DictionaryEntry[]> => {
+  const found = new Map<string, DictionaryEntry>();
+  const collect = (index: DictionaryIndex, dictionaryLanguage: UiLanguage) => {
+    for (const form of index.forms) {
+      if (!form.includes(kanji)) continue;
+      for (const entry of index.byForm.get(form) || []) {
+        // The same word in two dictionaries is shown once, in the first one.
+        const key = entry.k.join('|') || entry.r.join('|');
+        if (!found.has(key) && entry.k.some((spelling) => spelling.includes(kanji))) found.set(key, toEntry(entry, dictionaryLanguage));
+      }
+    }
+  };
+  const own = language === 'es'
+    ? await getSpanishIndex().catch(() => null)
+    : isOptionalDictionaryId(language) ? await getOptionalIndex(language).catch(() => null) : null;
+  if (own) collect(own, language as UiLanguage);
+  if (found.size < 12) collect(await getEnglishIndex(), 'en');
+  return [...found.values()];
+};
+
 /** Index of a downloaded optional dictionary, or null when it is not installed. */
 const getOptionalIndex = (id: OptionalDictionaryId): Promise<DictionaryIndex | null> => {
   let promise = optionalIndexPromises.get(id);

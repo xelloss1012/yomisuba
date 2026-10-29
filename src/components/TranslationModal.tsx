@@ -13,6 +13,7 @@ import { DictionaryEntry, getDictionarySearchTerms } from '../utils/dictionary';
 import { isOptionalDictionaryId, JMDICT_SOURCE, OPTIONAL_DICTIONARIES } from '../utils/optionalDictionaries';
 import { classifyEntry } from '../utils/wordLevels';
 import { useWordLevels, WordLevelBadge } from './WordLevelBadge';
+import { KanjiChips, KanjiModal } from './KanjiModal';
 import { speakJapanese } from '../utils/japaneseSpeech';
 import { MarkdownContent } from './MarkdownContent';
 import {
@@ -67,6 +68,8 @@ export const TranslationModal: React.FC<Props> = ({
   const t = useT();
   const language = useLanguage();
   const translationLanguage = useTranslationLanguage();
+  // The kanji card opened from the kanji of the word looked up, with the word's other kanji beside it.
+  const [openKanji, setOpenKanji] = useState<{ kanji: string; all: string[] } | null>(null);
   const dictionaryOptions = useDictionaryOptions();
   const wordLevels = useWordLevels();
   const [translatedText, setTranslatedText] = useState<string>('');
@@ -465,6 +468,11 @@ export const TranslationModal: React.FC<Props> = ({
             )}
           {dictionaryTerms && (
               <div className="space-y-3">
+              <KanjiChips
+                text={dictionaryTerms.baseForm || dictionaryTerms.query}
+                onOpen={(kanji, all) => setOpenKanji({ kanji, all })}
+                className="text-emerald-900 dark:text-emerald-200"
+              />
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full bg-emerald-200/80 dark:bg-emerald-900/70 px-2 py-1 font-semibold">
                   {t('glossary.baseForm')}: {dictionaryTerms.baseForm}
@@ -597,6 +605,7 @@ export const TranslationModal: React.FC<Props> = ({
           )}
           </div>
         </div>
+        <KanjiModal kanji={openKanji?.kanji ?? null} siblings={openKanji?.all} onClose={() => setOpenKanji(null)} />
       </div>
     </div>
   );

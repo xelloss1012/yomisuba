@@ -68,6 +68,12 @@ export interface ClassifyOptions {
   fallback?: boolean;
 }
 
+/** The JLPT level of a kanji (Jonathan Waller's lists), if it has one. */
+export const kanjiJlpt = (data: WordLevelsData, kanji: string): JlptLevel | undefined => {
+  const level = Math.floor((data.k[kanji] || 0) / 100);
+  return level >= 1 && level <= 5 ? level as JlptLevel : undefined;
+};
+
 export const classifyWord = (
   data: WordLevelsData,
   form: string,
