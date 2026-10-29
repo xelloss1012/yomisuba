@@ -92,6 +92,29 @@ try {
   const reset = mergeProgress({ ...here, cards: { b: { ...resetCard(40) } } }, there);
   assert.equal(reset.cards.b.status, 'new', 'a reset reaches the other devices');
 
+  // --- Kanji: their own cards and their own daily allowance ------------------------------------
+  const { kanjiKey, reviewedKanji, kanjiNewPerDay, DEFAULT_KANJI_NEW_PER_DAY } = study;
+  const today = new Date(2026, 9, 29, 9).getTime();
+  let withKanji = { ...emptyProgress(), newPerDay: 1, kanjiNewPerDay: 2 };
+  for (const [index, kanji] of ['激', '怒', '王'].entries()) withKanji = setCard(withKanji, kanjiKey(kanji), resetCard(today + index));
+  assert.deepEqual(reviewedKanji(withKanji), ['激', '怒', '王'], 'in the order they were added');
+  const mixed = reviewQueue(['w1', 'w2', kanjiKey('激'), kanjiKey('怒'), kanjiKey('王')], withKanji, today);
+  assert.deepEqual(mixed.fresh, ['w1', kanjiKey('激'), kanjiKey('怒')], 'one new word and two new kanji: each its own allowance');
+  withKanji = answer(withKanji, kanjiKey('激'), 'good', today);
+  assert.equal(withKanji.kanjiNewStarted.count, 1, 'a new kanji counts for the kanji');
+  assert.equal(withKanji.newStarted, undefined, 'not for the words');
+  assert.deepEqual(reviewQueue([kanjiKey('怒'), kanjiKey('王')], withKanji, today).fresh, [kanjiKey('怒')], 'one kanji left today');
+  withKanji = setCard(withKanji, kanjiKey('王'), markIgnored(withKanji.cards[kanjiKey('王')], today));
+  assert.deepEqual(reviewedKanji(withKanji).sort(), ['怒', '激'].sort(), 'taken out (ignored), it leaves the reviews');
+  assert.equal(kanjiNewPerDay(emptyProgress()), DEFAULT_KANJI_NEW_PER_DAY);
+  const kanjiMerged = mergeProgress(
+    { ...emptyProgress(), kanjiNewPerDay: 5, settingsUpdatedAt: 9, kanjiNewStarted: { day: '2026-10-29', count: 1 } },
+    { ...emptyProgress(), kanjiNewPerDay: 30, settingsUpdatedAt: 1, kanjiNewStarted: { day: '2026-10-29', count: 4 } },
+  );
+  assert.equal(kanjiMerged.kanjiNewPerDay, 5, 'the setting changed last');
+  assert.deepEqual(kanjiMerged.kanjiNewStarted, { day: '2026-10-29', count: 4 });
+  assert.equal(parseProgress(JSON.parse(JSON.stringify(kanjiMerged))).kanjiNewPerDay, 5, 'kept when read back');
+
   // --- Storage --------------------------------------------------------------------------------
   assert.deepEqual(readStudyProgress(), emptyProgress());
   let notified = 0;

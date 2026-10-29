@@ -18,6 +18,22 @@ export const KNOWN_INTERVAL_DAYS = 21;
 /** "I know it": the next review, to make sure, after this many days. */
 const MARK_KNOWN_DAYS = 60;
 export const DEFAULT_NEW_PER_DAY = 20;
+export const DEFAULT_KANJI_NEW_PER_DAY = 10;
+
+/**
+ * Kanji are studied by their own cards (`kanji:激`), with a daily allowance of new ones of their own so that
+ * they do not take the one of the words. A kanji is in the reviews while it has a card that is not ignored:
+ * adding one makes a new card, taking it out ignores it, and both reach the other devices as any review.
+ */
+export const kanjiKey = (kanji: string): string => `kanji:${kanji}`;
+export const isKanjiKey = (key: string): boolean => key.startsWith('kanji:');
+export const kanjiOfKey = (key: string): string => key.slice('kanji:'.length);
+
+/** The kanji in the reviews: those with a card that is not ignored. */
+export const reviewedKanji = (progress: StudyProgress): string[] => Object.entries(progress.cards)
+  .filter(([key, card]) => isKanjiKey(key) && card.status !== 'ignored')
+  .sort((a, b) => a[1].updatedAt - b[1].updatedAt)
+  .map(([key]) => kanjiOfKey(key));
 
 export type StudyStatus = 'new' | 'learning' | 'known' | 'ignored';
 export type Grade = 'again' | 'hard' | 'good' | 'easy';
@@ -43,6 +59,9 @@ export interface StudyProgress {
   newPerDay: number;
   /** How many new words were started on `day` (local date, YYYY-MM-DD). */
   newStarted?: { day: string; count: number };
+  /** The same for kanji, which have their own allowance (absent: the default). */
+  kanjiNewPerDay?: number;
+  kanjiNewStarted?: { day: string; count: number };
   /** When `newPerDay` was last changed, to merge it with another device's. */
   settingsUpdatedAt?: number;
 }
@@ -66,11 +85,16 @@ export function parseProgress(value: unknown): StudyProgress | null {
   }
   const newPerDay = Number.isInteger(raw.newPerDay) && Number(raw.newPerDay) >= 0 ? Number(raw.newPerDay) : DEFAULT_NEW_PER_DAY;
   const started = raw.newStarted;
+  const kanjiStarted = raw.kanjiNewStarted;
   return {
     formatVersion: 1,
     cards,
     newPerDay,
     ...(started && typeof started.day === 'string' && Number.isInteger(started.count) ? { newStarted: { day: started.day, count: started.count } } : {}),
+    ...(Number.isInteger(raw.kanjiNewPerDay) && Number(raw.kanjiNewPerDay) >= 0 ? { kanjiNewPerDay: Number(raw.kanjiNewPerDay) } : {}),
+    ...(kanjiStarted && typeof kanjiStarted.day === 'string' && Number.isInteger(kanjiStarted.count)
+      ? { kanjiNewStarted: { day: kanjiStarted.day, count: kanjiStarted.count } }
+      : {}),
     ...(typeof raw.settingsUpdatedAt === 'number' ? { settingsUpdatedAt: raw.settingsUpdatedAt } : {}),
   };
 }
@@ -187,11 +211,15 @@ export const markIgnored = (card: StudyCard | undefined, now: number): StudyCard
 
 export const resetCard = (now: number): StudyCard => freshCard(now);
 
-/** New words still allowed today. */
-export function newLeftToday(progress: StudyProgress, now: number): number {
-  if (!progress.newPerDay) return Number.POSITIVE_INFINITY;
-  const started = progress.newStarted?.day === dayKey(now) ? progress.newStarted.count : 0;
-  return Math.max(0, progress.newPerDay - started);
+export const kanjiNewPerDay = (progress: StudyProgress): number => progress.kanjiNewPerDay ?? DEFAULT_KANJI_NEW_PER_DAY;
+
+/** New words (or new kanji) still allowed today. */
+export function newLeftToday(progress: StudyProgress, now: number, kanji = false): number {
+  const perDay = kanji ? kanjiNewPerDay(progress) : progress.newPerDay;
+  if (!perDay) return Number.POSITIVE_INFINITY;
+  const counter = kanji ? progress.kanjiNewStarted : progress.newStarted;
+  const started = counter?.day === dayKey(now) ? counter.count : 0;
+  return Math.max(0, perDay - started);
 }
 
 /**
@@ -202,8 +230,15 @@ export function reviewQueue(keys: string[], progress: StudyProgress, now: number
   const due = keys
     .filter((key) => isDue(progress.cards[key], now))
     .sort((a, b) => progress.cards[a].due - progress.cards[b].due);
-  const allowance = newLeftToday(progress, now);
-  const fresh = keys.filter((key) => statusOf(progress.cards[key]) === 'new').slice(0, Number.isFinite(allowance) ? allowance : undefined);
+  // Kanji and the rest each take from their own allowance, keeping the order given.
+  const left = { kanji: newLeftToday(progress, now, true), other: newLeftToday(progress, now) };
+  const fresh = keys.filter((key) => {
+    if (statusOf(progress.cards[key]) !== 'new') return false;
+    const kind = isKanjiKey(key) ? 'kanji' : 'other';
+    if (left[kind] <= 0) return false;
+    left[kind] -= 1;
+    return true;
+  });
   return { due, fresh };
 }
 
@@ -212,11 +247,12 @@ export function answer(progress: StudyProgress, key: string, grade: Grade, now: 
   const card = progress.cards[key];
   const wasNew = statusOf(card) === 'new';
   const today = dayKey(now);
+  const counter = isKanjiKey(key) ? 'kanjiNewStarted' : 'newStarted';
   return {
     ...progress,
     cards: { ...progress.cards, [key]: schedule(card, grade, now) },
     ...(wasNew
-      ? { newStarted: { day: today, count: (progress.newStarted?.day === today ? progress.newStarted.count : 0) + 1 } }
+      ? { [counter]: { day: today, count: (progress[counter]?.day === today ? progress[counter].count : 0) + 1 } }
       : {}),
   };
 }
@@ -234,18 +270,24 @@ export function mergeProgress(local: StudyProgress, remote: StudyProgress): Stud
     if (!cards[key] || card.updatedAt >= cards[key].updatedAt) cards[key] = card;
   }
   const settingsFromLocal = (local.settingsUpdatedAt ?? 0) >= (remote.settingsUpdatedAt ?? 0);
-  const days = [local.newStarted, remote.newStarted].filter((item): item is { day: string; count: number } => Boolean(item));
-  const latestDay = days.map((item) => item.day).sort().pop();
-  const newStarted = latestDay
-    ? { day: latestDay, count: Math.max(...days.filter((item) => item.day === latestDay).map((item) => item.count)) }
-    : undefined;
+  const latestCount = (pair: Array<{ day: string; count: number } | undefined>) => {
+    const days = pair.filter((item): item is { day: string; count: number } => Boolean(item));
+    const latestDay = days.map((item) => item.day).sort().pop();
+    return latestDay
+      ? { day: latestDay, count: Math.max(...days.filter((item) => item.day === latestDay).map((item) => item.count)) }
+      : undefined;
+  };
+  const newStarted = latestCount([local.newStarted, remote.newStarted]);
+  const kanjiNewStarted = latestCount([local.kanjiNewStarted, remote.kanjiNewStarted]);
   const settings = settingsFromLocal ? local : remote;
   return {
     formatVersion: 1,
     cards,
     newPerDay: settings.newPerDay,
+    ...(settings.kanjiNewPerDay !== undefined ? { kanjiNewPerDay: settings.kanjiNewPerDay } : {}),
     ...(settings.settingsUpdatedAt ? { settingsUpdatedAt: settings.settingsUpdatedAt } : {}),
     ...(newStarted ? { newStarted } : {}),
+    ...(kanjiNewStarted ? { kanjiNewStarted } : {}),
   };
 }
 

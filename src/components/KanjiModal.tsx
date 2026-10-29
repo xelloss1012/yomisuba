@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Loader2, X } from 'lucide-react';
+import { Loader2, Repeat, X } from 'lucide-react';
 import { useLanguage, useT, useTranslationLanguage } from '../i18n/LanguageContext';
 import { DictionaryEntry, wordsWithKanji } from '../utils/dictionary';
 import { KanjiInfo, kanjiInfo, kanjiOfText, kunReading, loadKanjiData } from '../utils/kanjiInfo';
 import { classifyEntry, difficultyOf, kanjiJlpt, WordLevel } from '../utils/wordLevels';
+import { kanjiKey, markIgnored, readStudyProgress, resetCard, setCard, writeStudyProgress } from '../utils/studyProgress';
 import { useWordLevels, WordLevelBadge } from './WordLevelBadge';
 
 export interface OwnWord {
@@ -20,8 +21,33 @@ interface Props {
   siblings?: string[];
   /** The reader's own saved words that write each kanji, shown before the dictionary's. */
   ownWords?: (kanji: string) => OwnWord[];
+  /** Whether each kanji is in the reviews, and how to put it in or take it out; by default, the saved progress. */
+  review?: KanjiReview;
   onClose: () => void;
 }
+
+export interface KanjiReview {
+  isIn: (kanji: string) => boolean;
+  toggle: (kanji: string) => void;
+}
+
+/**
+ * Puts a kanji in the reviews or takes it out straight in the saved progress (which the app copies to
+ * Drive), for a card opened outside the study panel, which keeps the progress of its own.
+ */
+const savedProgressReview: KanjiReview = {
+  isIn: (kanji) => {
+    const card = readStudyProgress().cards[kanjiKey(kanji)];
+    return Boolean(card && card.status !== 'ignored');
+  },
+  toggle: (kanji) => {
+    const progress = readStudyProgress();
+    const key = kanjiKey(kanji);
+    const card = progress.cards[key];
+    const now = Date.now();
+    writeStudyProgress(setCard(progress, key, card && card.status !== 'ignored' ? markIgnored(card, now) : resetCard(now)));
+  },
+};
 
 type KanjiData = Awaited<ReturnType<typeof loadKanjiData>>;
 let loadedKanji: KanjiData | null = null;
@@ -59,7 +85,7 @@ const withKanji = (word: string, kanji: string) => word.split(kanji).flatMap((pa
  * The card of a kanji: meanings, on and kun readings, strokes, level, the parts it is made of (each one a
  * kanji to open in turn), its reading in Chinese, Korean and Vietnamese, and the words that use it.
  */
-export const KanjiModal: React.FC<Props> = ({ kanji, siblings = [], ownWords, onClose }) => {
+export const KanjiModal: React.FC<Props> = ({ kanji, siblings = [], ownWords, review = savedProgressReview, onClose }) => {
   const t = useT();
   const language = useLanguage();
   const translationLanguage = useTranslationLanguage();
@@ -68,6 +94,8 @@ export const KanjiModal: React.FC<Props> = ({ kanji, siblings = [], ownWords, on
   const [data, setData] = useState<KanjiData | null>(loadedKanji);
   const [failed, setFailed] = useState(false);
   const [examples, setExamples] = useState<DictionaryEntry[] | null>(null);
+  // Read again after toggling, for the saved progress that is not React state.
+  const [, setReviewRevision] = useState(0);
 
   useEffect(() => { setCurrent(kanji); }, [kanji]);
 
@@ -149,6 +177,21 @@ export const KanjiModal: React.FC<Props> = ({ kanji, siblings = [], ownWords, on
               </button>
             ))}
           </div>
+          {(() => {
+            const inReview = review.isIn(current);
+            return (
+              <button
+                type="button"
+                onClick={() => { review.toggle(current); setReviewRevision((value) => value + 1); }}
+                aria-pressed={inReview}
+                className={`inline-flex min-h-9 shrink-0 items-center gap-1 rounded-lg border px-2 text-xs font-semibold ${inReview
+                  ? 'border-indigo-300 bg-indigo-50 text-indigo-700 dark:border-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300'
+                  : 'border-zinc-200 text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800'}`}
+              >
+                <Repeat className="h-3.5 w-3.5" /> {t(inReview ? 'study.inReview' : 'study.addToReview')}
+              </button>
+            );
+          })()}
           <button type="button" onClick={onClose} className="tap-area shrink-0 rounded-full p-2 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800" aria-label={t('nav.close')}>
             <X className="h-5 w-5" />
           </button>

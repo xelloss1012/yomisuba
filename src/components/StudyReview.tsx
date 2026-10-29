@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BookOpen, Check, EyeOff, Play, Volume2 } from 'lucide-react';
+import { BookOpen, Check, EyeOff, Info, Play, Volume2 } from 'lucide-react';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { favoriteFields } from '../utils/favoritesExport';
 import { speakJapanese } from '../utils/japaneseSpeech';
 import { BookRef, GlobalNote, passageKey, underlinedAt, VocabularyItem } from '../utils/studyData';
-import { DAY_MS, Grade, GRADES, nextIntervals, reviewQueue, startOfDay, StudyProgress } from '../utils/studyProgress';
+import { DAY_MS, Grade, GRADES, kanjiKey, kanjiNewPerDay, nextIntervals, reviewQueue, startOfDay, StudyProgress } from '../utils/studyProgress';
+import { KanjiInfo, kunReading } from '../utils/kanjiInfo';
+import type { OwnWord } from './KanjiModal';
 import { getHistoryEntryResponse } from '../utils/translationHistory';
 
 interface Props {
@@ -20,16 +22,32 @@ interface Props {
   onSeeInBook: (books: BookRef[], text: string) => void;
   canSeeInBook: (books: BookRef[]) => boolean;
   chapterLabel: (spineIndex: number) => string;
+  /** The kanji in the reviews, with what the card shows of them. */
+  kanji: ReviewKanji[];
+  onChangeKanjiNewPerDay: (count: number) => void;
+  onOpenKanji: (kanji: string) => void;
 }
 
-type ReviewScope = 'all' | 'words' | 'passages';
+export interface ReviewKanji {
+  kanji: string;
+  info: KanjiInfo | null;
+  /** The reader's saved words that write it. */
+  words: OwnWord[];
+  /** When it was put in the reviews: new kanji are taken in that order. */
+  since: number;
+}
 
-/** A card of the review: a word of the vocabulary or an underlined passage. */
+type ReviewScope = 'all' | 'words' | 'passages' | 'kanji';
+
+/** A card of the review: a word of the vocabulary, an underlined passage or a kanji. */
 type ReviewCard =
   | { kind: 'word'; key: string; item: VocabularyItem; since: number }
-  | { kind: 'passage'; key: string; note: GlobalNote; since: number };
+  | { kind: 'passage'; key: string; note: GlobalNote; since: number }
+  | { kind: 'kanji'; key: string; item: ReviewKanji; since: number };
 
 const NEW_PER_DAY_OPTIONS = [5, 10, 20, 30, 50, 0];
+/** The readings a kanji card shows behind (生 has eighteen kun readings): the first ones; the rest are on its card. */
+const REVIEW_READINGS = 4;
 
 /** A span of time as the language says it, in its largest whole unit: "10 min", "3 días", "2 meses". */
 export const formatSpan = (ms: number, language: string): string => {
@@ -86,17 +104,25 @@ const withWord = (text: string, words: string[]): React.ReactNode => {
  * Reviews the vocabulary one word at a time: the word (with the sentence it was saved from), then its
  * reading and meaning, and how well it was remembered decides when it comes back.
  */
-export const StudyReview: React.FC<Props> = ({ items, passages, progress, onAnswer, onChangeNewPerDay, onMark, onSeeInBook, canSeeInBook, chapterLabel }) => {
+export const StudyReview: React.FC<Props> = ({
+  items, passages, progress, onAnswer, onChangeNewPerDay, onMark, onSeeInBook, canSeeInBook, chapterLabel,
+  kanji, onChangeKanjiNewPerDay, onOpenKanji,
+}) => {
   const t = useT();
   const language = useLanguage();
   const [scope, setScope] = useState<ReviewScope>('all');
-  // Words and passages together, new ones taken in the order they were met while reading.
+  // Words, passages and kanji together, new ones taken in the order they were met while reading.
   const cards = useMemo(() => [
-    ...(scope !== 'passages' ? items.map((item): ReviewCard => ({ kind: 'word', key: item.key, item, since: item.firstSavedAt })) : []),
-    ...(scope !== 'words'
+    ...(scope === 'all' || scope === 'words' ? items.map((item): ReviewCard => ({ kind: 'word', key: item.key, item, since: item.firstSavedAt })) : []),
+    ...(scope === 'all' || scope === 'passages'
       ? passages.map((note): ReviewCard => ({ kind: 'passage', key: passageKey(note.annotation.id), note, since: underlinedAt(note.annotation.id) }))
       : []),
-  ].sort((a, b) => a.since - b.since), [items, passages, scope]);
+    ...(scope === 'all' || scope === 'kanji'
+      ? kanji.map((item): ReviewCard => ({ kind: 'kanji', key: kanjiKey(item.kanji), item, since: item.since }))
+      : []),
+  ].sort((a, b) => a.since - b.since), [items, passages, kanji, scope]);
+  const scopes = (['all', 'words', 'passages', 'kanji'] as const)
+    .filter((value) => (value === 'passages' ? passages.length > 0 : value === 'kanji' ? kanji.length > 0 : true));
   const byKey = useMemo(() => new Map(cards.map((card) => [card.key, card])), [cards]);
   const [queue, setQueue] = useState<string[] | null>(null);
   const [shown, setShown] = useState(false);
@@ -148,9 +174,9 @@ export const StudyReview: React.FC<Props> = ({ items, passages, progress, onAnsw
           </p>
         )}
         <div className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
-          {passages.length > 0 && (
+          {scopes.length > 2 && (
             <div role="radiogroup" aria-label={t('review.scope')} className="mb-3 flex gap-1 rounded-xl bg-zinc-100 p-1 dark:bg-zinc-800">
-              {(['all', 'words', 'passages'] as const).map((value) => (
+              {scopes.map((value) => (
                 <button
                   key={value}
                   type="button"
@@ -194,14 +220,29 @@ export const StudyReview: React.FC<Props> = ({ items, passages, progress, onAnsw
             ))}
           </select>
         </label>
+        {kanji.length > 0 && (
+          <label className="flex items-center justify-between gap-3 text-xs text-zinc-700 dark:text-zinc-300">
+            {t('review.kanjiNewPerDay')}
+            <select
+              value={kanjiNewPerDay(progress)}
+              onChange={(event) => onChangeKanjiNewPerDay(Number(event.target.value))}
+              className="min-h-9 rounded-lg border border-zinc-300 bg-white px-2 text-xs text-zinc-800 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
+            >
+              {NEW_PER_DAY_OPTIONS.map((count) => (
+                <option key={count} value={count}>{count ? count : t('review.noLimit')}</option>
+              ))}
+            </select>
+          </label>
+        )}
         <p className="text-[11px] text-zinc-500 dark:text-zinc-400">{t('review.explain')}</p>
         {!passages.length && <p className="text-[11px] text-zinc-500 dark:text-zinc-400">{t('review.passagesHint')}</p>}
+        {!kanji.length && <p className="text-[11px] text-zinc-500 dark:text-zinc-400">{t('review.kanjiHint')}</p>}
       </div>
     );
   }
 
   const intervals = nextIntervals(progress.cards[current.key], Date.now());
-  const books = current.kind === 'word' ? current.item.books : [current.note.book];
+  const books = current.kind === 'word' ? current.item.books : current.kind === 'passage' ? [current.note.book] : [];
   const markButtons = (
     <div className="mt-3 flex flex-wrap justify-center gap-1.5">
       {([['known', <Check key="i" className="h-3.5 w-3.5" />, t('study.markKnown')], ['ignored', <EyeOff key="i" className="h-3.5 w-3.5" />, t('study.ignore')]] as const).map(([how, icon, label]) => (
@@ -219,7 +260,16 @@ export const StudyReview: React.FC<Props> = ({ items, passages, progress, onAnsw
           {icon} {label}
         </button>
       ))}
-      {canSeeInBook(books) && (
+      {current.kind === 'kanji' && (
+        <button
+          type="button"
+          onClick={() => onOpenKanji(current.item.kanji)}
+          className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-zinc-200 px-2 text-[11px] font-semibold text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+        >
+          <Info className="h-3.5 w-3.5" /> {t('review.kanjiCard')}
+        </button>
+      )}
+      {current.kind !== 'kanji' && canSeeInBook(books) && (
         <button
           type="button"
           onClick={() => onSeeInBook(books, current.kind === 'word' ? current.item.favorite.query : current.note.annotation.quote)}
@@ -265,6 +315,42 @@ export const StudyReview: React.FC<Props> = ({ items, passages, progress, onAnsw
               </span>
             </button>
             <p className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">{item.books.map((book) => book.title).join(' · ')}</p>
+            {markButtons}
+          </div>
+        )}
+      </>
+    );
+  }
+
+  /** A kanji asks for its meaning and readings; behind, those and the reader's words that write it. */
+  function renderKanji(item: ReviewKanji) {
+    const { info } = item;
+    return (
+      <>
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">{t('review.recallKanji')}</p>
+        <p lang="ja" className="mt-2 font-mincho text-7xl leading-none text-zinc-900 dark:text-zinc-100">{item.kanji}</p>
+        {shown && (
+          <div className="mt-5 w-full max-w-md border-t border-zinc-200 pt-4 text-left dark:border-zinc-700">
+            {info && (
+              <>
+                <p className="text-center text-base font-semibold text-zinc-900 dark:text-zinc-100">{info.meanings.slice(0, 4).join(', ')}</p>
+                <p lang="ja" className="mt-2 text-center text-sm text-zinc-700 dark:text-zinc-300">
+                  {info.on.length > 0 && <span className="mr-3"><span className="text-[10px] font-semibold uppercase text-zinc-500">{t('kanji.on')}</span> {info.on.slice(0, REVIEW_READINGS).join('、')}</span>}
+                  {info.kun.length > 0 && <span><span className="text-[10px] font-semibold uppercase text-zinc-500">{t('kanji.kun')}</span> {info.kun.slice(0, REVIEW_READINGS).map(kunReading).join('、')}</span>}
+                </p>
+              </>
+            )}
+            {item.words.length > 0 && (
+              <ul className="mt-3 space-y-1">
+                {item.words.slice(0, 3).map((word) => (
+                  <li key={word.word} className="text-sm text-zinc-800 dark:text-zinc-200">
+                    <span lang="ja" className="font-semibold">{withWord(word.word, [item.kanji])}</span>
+                    {word.reading && word.reading !== word.word && <span lang="ja" className="ml-2 text-xs text-zinc-500 dark:text-zinc-400">{word.reading}</span>}
+                    <span className="ml-2 text-xs text-zinc-600 dark:text-zinc-400">{word.meaning}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
             {markButtons}
           </div>
         )}
@@ -318,7 +404,7 @@ export const StudyReview: React.FC<Props> = ({ items, passages, progress, onAnsw
       <div className="mt-3 flex flex-1 flex-col items-center justify-center rounded-2xl border border-zinc-200 bg-zinc-50/60 px-4 py-6 text-center dark:border-zinc-800 dark:bg-zinc-800/30">
         {current.kind === 'word'
           ? renderWord(current.item)
-          : renderPassage(current.note)}
+          : current.kind === 'passage' ? renderPassage(current.note) : renderKanji(current.item)}
       </div>
 
       <div className="mt-3">

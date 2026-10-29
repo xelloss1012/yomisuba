@@ -33,16 +33,18 @@ import { kanjiInfo } from '../utils/kanjiInfo';
 import { KanjiModal, OwnWord, useKanjiData } from './KanjiModal';
 import { useWordLevels, WordLevelBadge } from './WordLevelBadge';
 import { getKindLabel } from './TranslationHistoryModal';
-import { formatDue, StudyReview } from './StudyReview';
+import { formatDue, ReviewKanji, StudyReview } from './StudyReview';
 import {
   answer,
   countStatuses,
   Grade,
   isDue,
+  kanjiKey,
   markIgnored,
   markKnown,
   readStudyProgress,
   resetCard,
+  reviewedKanji,
   reviewQueue,
   setCard,
   statusOf,
@@ -217,8 +219,14 @@ export const StudyDashboard: React.FC<Props> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [data, sort, query, bookFilter, language, statusFilter, progress]);
 
-  // The kanji of the saved words and of the lookups, filtered and sorted as asked.
-  const allKanji = useMemo(() => (data ? collectKanji(data) : []), [data]);
+  // The kanji of the saved words and of the lookups, and those put in the reviews from elsewhere (a card
+  // opened in the reader), filtered and sorted as asked.
+  const inReviewKanji = useMemo(() => reviewedKanji(progress), [progress]);
+  const allKanji = useMemo(() => {
+    const collected = data ? collectKanji(data) : [];
+    const known = new Set(collected.map((item) => item.kanji));
+    return [...collected, ...inReviewKanji.filter((kanji) => !known.has(kanji)).map((kanji) => ({ kanji, words: [], lookups: 0, books: [] }))];
+  }, [data, inReviewKanji]);
   const kanjiDifficulty = (kanji: string): number => {
     const jlpt = wordLevels ? kanjiJlpt(wordLevels, kanji) : undefined;
     if (jlpt) return 6 - jlpt;
@@ -245,10 +253,14 @@ export const StudyDashboard: React.FC<Props> = ({
   // The underlined passages chosen to be studied, beside the vocabulary.
   const reviewPassages = useMemo(() => (data ? data.notes.filter((note) => note.annotation.review) : []), [data]);
   const reviewCounts = useMemo(() => {
-    const keys = [...(data?.vocabulary ?? []).map((item) => item.key), ...reviewPassages.map((note) => passageKey(note.annotation.id))];
+    const keys = [
+      ...(data?.vocabulary ?? []).map((item) => item.key),
+      ...reviewPassages.map((note) => passageKey(note.annotation.id)),
+      ...inReviewKanji.map(kanjiKey),
+    ];
     const queue = reviewQueue(keys, progress, Date.now());
     return { ...countStatuses(keys, progress, Date.now()), toReview: queue.due.length + queue.fresh.length };
-  }, [data, reviewPassages, progress]);
+  }, [data, reviewPassages, inReviewKanji, progress]);
 
   const chapterLabel = (spineIndex: number) => `${t('common.chapter')} ${spineIndex + 1}`;
   const notes = useMemo(() => (data
@@ -563,7 +575,8 @@ export const StudyDashboard: React.FC<Props> = ({
     return t(`study.status_${status}`);
   };
 
-  const renderCardActions = (key: string, extra?: React.ReactNode) => {
+  /** The actions on a card; `canIgnore` false where taking it out already is the toggle beside (kanji). */
+  const renderCardActions = (key: string, extra?: React.ReactNode, canIgnore = true) => {
     const card = progress.cards[key];
     const status = statusOf(card);
     const action = (label: string, icon: React.ReactNode, run: () => void) => (
@@ -580,7 +593,7 @@ export const StudyDashboard: React.FC<Props> = ({
       <div className="mt-2 flex flex-wrap gap-1.5">
         {extra}
         {status !== 'known' && action(t('study.markKnown'), <Check className="h-3.5 w-3.5" />, () => updateProgress((current) => setCard(current, key, markKnown(current.cards[key], now))))}
-        {status === 'ignored'
+        {!canIgnore ? null : status === 'ignored'
           ? action(t('study.unignore'), <RotateCcw className="h-3.5 w-3.5" />, () => updateProgress((current) => setCard(current, key, resetCard(now))))
           : action(t('study.ignore'), <EyeOff className="h-3.5 w-3.5" />, () => updateProgress((current) => setCard(current, key, markIgnored(current.cards[key], now))))}
         {status !== 'new' && status !== 'ignored' && action(t('study.reset'), <RotateCcw className="h-3.5 w-3.5" />, () => updateProgress((current) => setCard(current, key, resetCard(now))))}
@@ -592,19 +605,76 @@ export const StudyDashboard: React.FC<Props> = ({
   const ownWordsOf = (kanji: string): OwnWord[] => (allKanji.find((item) => item.kanji === kanji)?.words ?? [])
     .map((item) => ({ word: item.word, reading: item.reading, meaning: favoriteFields(item.favorite).meaning }));
 
+  const reviewKanjiItems: ReviewKanji[] = inReviewKanji.map((kanji) => ({
+    kanji,
+    info: kanjiData ? kanjiInfo(kanjiData, kanji, language) : null,
+    words: ownWordsOf(kanji),
+    since: progress.cards[kanjiKey(kanji)]?.updatedAt ?? 0,
+  }));
+
+  const isKanjiInReview = (kanji: string) => {
+    const card = progress.cards[kanjiKey(kanji)];
+    return Boolean(card && card.status !== 'ignored');
+  };
+  /** Puts a kanji in the reviews (a new card) or takes it out (ignored, so that it leaves every device). */
+  const toggleKanjiReview = (kanji: string) => {
+    const key = kanjiKey(kanji);
+    const now = Date.now();
+    updateProgress((current) => {
+      const card = current.cards[key];
+      return setCard(current, key, card && card.status !== 'ignored' ? markIgnored(card, now) : resetCard(now));
+    });
+  };
+  // "Add the list": the kanji shown that are in saved words and not yet in the reviews, easiest first.
+  const KANJI_ADD_AT_ONCE = 20;
+  const kanjiToAdd = kanjiList
+    .filter((item) => item.words.length > 0 && !progress.cards[kanjiKey(item.kanji)])
+    .sort((a, b) => kanjiDifficulty(a.kanji) - kanjiDifficulty(b.kanji))
+    .slice(0, KANJI_ADD_AT_ONCE);
+  const addKanjiList = () => {
+    const now = Date.now();
+    updateProgress((current) => kanjiToAdd.reduce((next, item, index) => setCard(next, kanjiKey(item.kanji), resetCard(now + index)), current));
+  };
+
   const renderKanji = () => (
     <>
       <p className="mb-2 text-[11px] text-zinc-500 dark:text-zinc-400">{t('study.kanjiExplain')}</p>
+      {kanjiToAdd.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50/60 px-3 py-2 dark:border-indigo-900 dark:bg-indigo-950/30">
+          <p className="min-w-0 flex-1 basis-48 text-[11px] text-indigo-900 dark:text-indigo-200">{t('study.kanjiAddHint')}</p>
+          <button
+            type="button"
+            onClick={addKanjiList}
+            className="inline-flex min-h-9 items-center gap-1 rounded-lg bg-indigo-600 px-3 text-xs font-semibold text-white hover:bg-indigo-700"
+          >
+            <Repeat className="h-3.5 w-3.5" /> {t('study.kanjiAddList', { count: kanjiToAdd.length })}
+          </button>
+        </div>
+      )}
       <ul className="grid gap-2 sm:grid-cols-2">
         {kanjiList.slice(0, shown).map((item) => {
           const info = kanjiData ? kanjiInfo(kanjiData, item.kanji, language) : null;
           const jlpt = wordLevels ? kanjiJlpt(wordLevels, item.kanji) : undefined;
+          const inReview = isKanjiInReview(item.kanji);
+          const key = kanjiKey(item.kanji);
+          const reviewButton = (
+            <button
+              type="button"
+              onClick={() => toggleKanjiReview(item.kanji)}
+              aria-pressed={inReview}
+              className={`inline-flex min-h-8 items-center gap-1 rounded-lg border px-2 text-[11px] font-semibold ${inReview
+                ? 'border-indigo-300 bg-indigo-50 text-indigo-700 dark:border-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300'
+                : 'border-zinc-200 text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800'}`}
+            >
+              <Repeat className="h-3.5 w-3.5" /> {t(inReview ? 'study.inReview' : 'study.addToReview')}
+            </button>
+          );
           return (
-            <li key={item.kanji}>
+            <li key={item.kanji} className="rounded-xl border border-zinc-200 bg-zinc-50/50 p-3 dark:border-zinc-800 dark:bg-zinc-800/30">
               <button
                 type="button"
                 onClick={() => setOpenKanji(item.kanji)}
-                className="flex w-full items-start gap-3 rounded-xl border border-zinc-200 bg-zinc-50/50 p-3 text-left hover:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-800/30 dark:hover:bg-zinc-800/60"
+                className="flex w-full items-start gap-3 rounded-lg text-left"
               >
                 <span lang="ja" className="font-mincho text-4xl leading-none text-zinc-900 dark:text-zinc-100">{item.kanji}</span>
                 <span className="min-w-0 flex-1">
@@ -625,8 +695,14 @@ export const StudyDashboard: React.FC<Props> = ({
                       {item.words.slice(0, 6).map((word) => word.word).join('・')}
                     </span>
                   )}
+                  {inReview && (
+                    <span className={`mt-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-medium ${STATUS_STYLES[statusOf(progress.cards[key])]}`}>
+                      {statusLabel(key)}
+                    </span>
+                  )}
                 </span>
               </button>
+              {inReview ? renderCardActions(key, reviewButton, false) : <div className="mt-2 flex flex-wrap gap-1.5">{reviewButton}</div>}
             </li>
           );
         })}
@@ -1021,6 +1097,9 @@ export const StudyDashboard: React.FC<Props> = ({
                   if (book) onOpenBook(book, text);
                 }}
                 canSeeInBook={(books) => Boolean(shelfBookOf(books))}
+                kanji={reviewKanjiItems}
+                onChangeKanjiNewPerDay={(count) => updateProgress((current) => ({ ...current, kanjiNewPerDay: count, settingsUpdatedAt: Date.now() }))}
+                onOpenKanji={setOpenKanji}
               />
             )
             : listEmpty ? <p className="py-12 text-center text-sm text-zinc-500 dark:text-zinc-400">{t('study.noResults')}</p>
@@ -1030,7 +1109,12 @@ export const StudyDashboard: React.FC<Props> = ({
                   : tab === 'history' ? renderHistory()
                     : renderSearches()}
         </div>
-        <KanjiModal kanji={openKanji} ownWords={ownWordsOf} onClose={() => setOpenKanji(null)} />
+        <KanjiModal
+          kanji={openKanji}
+          ownWords={ownWordsOf}
+          review={{ isIn: isKanjiInReview, toggle: toggleKanjiReview }}
+          onClose={() => setOpenKanji(null)}
+        />
       </section>
     </div>,
     document.body,
