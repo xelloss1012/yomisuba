@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { useT } from '../i18n/LanguageContext';
 import { APP_VERSION, AvailableUpdate, checkForUpdate } from '../utils/updateCheck';
+import { UpdateInstallButton } from './UpdateInstallButton';
 
 type Status =
   | { kind: 'idle' }
@@ -40,15 +41,12 @@ export const UpdateCheckNow: React.FC = () => {
       {status.kind === 'upToDate' && <span role="status">{t('update.upToDate')}</span>}
       {status.kind === 'failed' && <span role="status" className="text-rose-600 dark:text-rose-400">{t('update.checkFailed')}</span>}
       {status.kind === 'found' && (
-        <a
-          role="status"
-          href={status.update.apkUrl ?? status.update.releaseUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="font-semibold text-emerald-700 hover:underline dark:text-emerald-400"
-        >
-          {t('update.foundDownload', { version: status.update.version })}
-        </a>
+        <UpdateInstallButton
+          update={status.update}
+          label={t('update.foundDownload', { version: status.update.version })}
+          installLabel={t('update.foundInstall', { version: status.update.version })}
+          className="inline-flex items-center gap-1 font-semibold text-emerald-700 hover:underline dark:text-emerald-400"
+        />
       )}
     </span>
   );

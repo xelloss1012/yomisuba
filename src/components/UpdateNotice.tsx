@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { Download } from 'lucide-react';
 import { useT } from '../i18n/LanguageContext';
 import {
   AvailableUpdate,
@@ -7,13 +6,14 @@ import {
   dismissUpdate,
   isUpdateDismissed,
 } from '../utils/updateCheck';
+import { UpdateInstallButton } from './UpdateInstallButton';
 
 interface Props {
   /** The reader's preference; nothing is asked of GitHub while it is off. */
   enabled: boolean;
 }
 
-/** Tells the reader a newer release exists and links to its APK. Nothing is installed by the app. */
+/** Tells the reader a newer release exists and installs it (in the Android app) or links to its APK. */
 export const UpdateNotice: React.FC<Props> = ({ enabled }) => {
   const t = useT();
   const [update, setUpdate] = useState<AvailableUpdate | null>(null);
@@ -39,15 +39,12 @@ export const UpdateNotice: React.FC<Props> = ({ enabled }) => {
     >
       <p className="font-semibold text-indigo-900 dark:text-indigo-200">{t('update.available', { version: update.version })}</p>
       <div className="flex flex-wrap items-center justify-center gap-2">
-        <a
-          href={update.apkUrl ?? update.releaseUrl}
-          target="_blank"
-          rel="noopener noreferrer"
+        <UpdateInstallButton
+          update={update}
+          label={t('update.download')}
+          installLabel={t('update.install')}
           className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 font-semibold text-white hover:bg-indigo-700"
-        >
-          <Download className="h-3.5 w-3.5" />
-          {t('update.download')}
-        </a>
+        />
         <a
           href={update.releaseUrl}
           target="_blank"

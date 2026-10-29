@@ -1,8 +1,8 @@
 /**
  * Tells the Android app when a newer release is published on GitHub. It only
- * looks: the reader is sent to the release's APK to download and install it, and
- * Android asks for confirmation as it does for any APK (and only accepts it if it
- * is signed with the same key as the installed app). The web version needs none of
+ * looks: installing it is `UpdateInstallButton`'s, which downloads the release's
+ * APK and hands it to Android, which asks for confirmation as it does for any APK
+ * (and only accepts it if it is signed with the same key as the installed app). The web version needs none of
  * this, since every push to main publishes it again.
  *
  * It asks GitHub's public API at most every few hours, and the reader can turn it off.
