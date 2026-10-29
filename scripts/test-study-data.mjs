@@ -111,6 +111,15 @@ try {
   assert.ok(!data.lookups.some((item) => item.query === '古い'), 'counts of an older format are not counted');
   assert.deepEqual(data.textSearches.find((item) => item.query === '名前').books.length, 2);
 
+  // --- Kanji of the saved words and of the lookups -----------------------------------------
+  const kanji = studyData.collectKanji(data);
+  const sen = kanji.find((item) => item.kanji === '先');
+  assert.deepEqual(sen.words.map((item) => item.word), ['先生'], 'saved once though it is in two books');
+  assert.equal(sen.lookups, 7, '先生 looked up 7 times');
+  assert.equal(sen.books.length, 2);
+  assert.equal(kanji.find((item) => item.kanji === '猫').words.length, 1);
+  assert.ok(!kanji.some((item) => /[ぁ-んァ-ン]/.test(item.kanji)), 'only kanji');
+
   // --- What each book has ------------------------------------------------------------------
   const nekoSummary = data.books.find((book) => book.bookKey === neko);
   const kokoroSummary = data.books.find((book) => book.bookKey === kokoro);

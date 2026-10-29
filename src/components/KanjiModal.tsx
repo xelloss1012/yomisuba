@@ -7,13 +7,41 @@ import { KanjiInfo, kanjiInfo, kanjiOfText, kunReading, loadKanjiData } from '..
 import { classifyEntry, difficultyOf, kanjiJlpt, WordLevel } from '../utils/wordLevels';
 import { useWordLevels, WordLevelBadge } from './WordLevelBadge';
 
+export interface OwnWord {
+  word: string;
+  reading: string;
+  meaning: string;
+}
+
 interface Props {
   /** The kanji to show; null closes the card. */
   kanji: string | null;
   /** The other kanji of the word it was opened from, to go from one to another. */
   siblings?: string[];
+  /** The reader's own saved words that write each kanji, shown before the dictionary's. */
+  ownWords?: (kanji: string) => OwnWord[];
   onClose: () => void;
 }
+
+type KanjiData = Awaited<ReturnType<typeof loadKanjiData>>;
+let loadedKanji: KanjiData | null = null;
+
+/** The kanji data, or null while it loads (the first caller triggers it). */
+export const useKanjiData = (): KanjiData | null => {
+  const [data, setData] = useState<KanjiData | null>(loadedKanji);
+  useEffect(() => {
+    if (data) return undefined;
+    let cancelled = false;
+    loadKanjiData()
+      .then((result) => {
+        loadedKanji = result;
+        if (!cancelled) setData(result);
+      })
+      .catch((error) => console.error('[kanji]', error));
+    return () => { cancelled = true; };
+  }, [data]);
+  return data;
+};
 
 const EXAMPLES = 8;
 
@@ -31,13 +59,13 @@ const withKanji = (word: string, kanji: string) => word.split(kanji).flatMap((pa
  * The card of a kanji: meanings, on and kun readings, strokes, level, the parts it is made of (each one a
  * kanji to open in turn), its reading in Chinese, Korean and Vietnamese, and the words that use it.
  */
-export const KanjiModal: React.FC<Props> = ({ kanji, siblings = [], onClose }) => {
+export const KanjiModal: React.FC<Props> = ({ kanji, siblings = [], ownWords, onClose }) => {
   const t = useT();
   const language = useLanguage();
   const translationLanguage = useTranslationLanguage();
   const wordLevels = useWordLevels();
   const [current, setCurrent] = useState<string | null>(kanji);
-  const [data, setData] = useState<Awaited<ReturnType<typeof loadKanjiData>> | null>(null);
+  const [data, setData] = useState<KanjiData | null>(loadedKanji);
   const [failed, setFailed] = useState(false);
   const [examples, setExamples] = useState<DictionaryEntry[] | null>(null);
 
@@ -45,7 +73,7 @@ export const KanjiModal: React.FC<Props> = ({ kanji, siblings = [], onClose }) =
 
   useEffect(() => {
     if (!kanji || data) return;
-    loadKanjiData().then(setData).catch(() => setFailed(true));
+    loadKanjiData().then((result) => { loadedKanji = result; setData(result); }).catch(() => setFailed(true));
   }, [kanji, data]);
 
   useEffect(() => {
@@ -60,9 +88,14 @@ export const KanjiModal: React.FC<Props> = ({ kanji, siblings = [], onClose }) =
 
   useEffect(() => {
     if (!kanji) return undefined;
-    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    // Escape closes the card only, not the panel or dialog it was opened from.
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.stopPropagation();
+      onClose();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [kanji, onClose]);
 
   // The most useful words first (by level, then the shortest), only the ones that write it.
@@ -173,6 +206,27 @@ export const KanjiModal: React.FC<Props> = ({ kanji, siblings = [], onClose }) =
               ))}
             </div>
           )}
+
+          {(() => {
+            const own = ownWords?.(current) ?? [];
+            if (!own.length) return null;
+            return (
+              <>
+                <h3 className="mt-4 text-[11px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">{t('kanji.ownWords')}</h3>
+                <ul className="mt-1 space-y-1.5">
+                  {own.map((item) => (
+                    <li key={item.word} className="rounded-lg border border-amber-200 bg-amber-50/60 px-2.5 py-1.5 dark:border-amber-900/60 dark:bg-amber-950/20">
+                      <span className="flex flex-wrap items-baseline gap-x-2">
+                        <span lang="ja" className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{withKanji(item.word, current)}</span>
+                        {item.reading && item.reading !== item.word && <span lang="ja" className="text-xs text-zinc-500 dark:text-zinc-400">{item.reading}</span>}
+                      </span>
+                      <span className="block truncate text-xs text-zinc-700 dark:text-zinc-300">{item.meaning}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            );
+          })()}
 
           <h3 className="mt-4 text-[11px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">{t('kanji.examples')}</h3>
           {examples === null ? (

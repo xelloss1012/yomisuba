@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { BarChart3, BookOpen, Check, Clock, CloudDownload, Download, EyeOff, GraduationCap, Loader2, NotebookPen, RefreshCw, Repeat, RotateCcw, Search, Star, Trash2, X } from 'lucide-react';
+import { BarChart3, BookOpen, Brush, Check, Clock, CloudDownload, Download, EyeOff, GraduationCap, Loader2, NotebookPen, RefreshCw, Repeat, RotateCcw, Search, Star, Trash2, X } from 'lucide-react';
 import { Translate, useDictionaryOptions, useLanguage, useT, useTranslationLanguage } from '../i18n/LanguageContext';
 import { RecentBook } from '../utils/recentBooks';
 import {
   bookKeyOf,
+  collectKanji,
   collectStudyData,
   listStoredBooks,
   passageKey,
@@ -27,7 +28,9 @@ import { exportFileName, saveTextFile } from '../utils/exportFile';
 import { favoriteFields } from '../utils/favoritesExport';
 import { normalizeSearchQuery } from '../utils/bookSearch';
 import { getHistoryEntryResponse } from '../utils/translationHistory';
-import { classifyWord } from '../utils/wordLevels';
+import { classifyWord, kanjiJlpt } from '../utils/wordLevels';
+import { kanjiInfo } from '../utils/kanjiInfo';
+import { KanjiModal, OwnWord, useKanjiData } from './KanjiModal';
 import { useWordLevels, WordLevelBadge } from './WordLevelBadge';
 import { getKindLabel } from './TranslationHistoryModal';
 import { formatDue, StudyReview } from './StudyReview';
@@ -48,7 +51,9 @@ import {
   writeStudyProgress,
 } from '../utils/studyProgress';
 
-type Tab = 'summary' | 'review' | 'vocabulary' | 'notes' | 'history' | 'searches';
+type Tab = 'summary' | 'review' | 'vocabulary' | 'kanji' | 'notes' | 'history' | 'searches';
+type KanjiSort = 'lookups' | 'words' | 'level';
+type KanjiLevelFilter = 'all' | '5' | '4' | '3' | '2' | '1' | 'none';
 type StatusFilter = 'all' | 'due' | StudyStatus;
 
 const STATUS_STYLES: Record<StudyStatus, string> = {
@@ -133,6 +138,10 @@ export const StudyDashboard: React.FC<Props> = ({
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [exportFailed, setExportFailed] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [kanjiSort, setKanjiSort] = useState<KanjiSort>('lookups');
+  const [kanjiLevel, setKanjiLevel] = useState<KanjiLevelFilter>('all');
+  const [openKanji, setOpenKanji] = useState<string | null>(null);
+  const kanjiData = useKanjiData();
   // What is known of each word; read again whenever the dashboard opens (Drive may have brought changes).
   const [progress, setProgress] = useState<StudyProgress>(readStudyProgress);
   useEffect(() => {
@@ -166,7 +175,7 @@ export const StudyDashboard: React.FC<Props> = ({
     setShown(PAGE_SIZE);
     setExpanded(null);
     setExportMenuOpen(false);
-  }, [tab, query, bookFilter, sort, onlyWithNote, onlyInReview, statusFilter]);
+  }, [tab, query, bookFilter, sort, onlyWithNote, onlyInReview, statusFilter, kanjiSort, kanjiLevel]);
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -207,6 +216,31 @@ export const StudyDashboard: React.FC<Props> = ({
     : []),
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [data, sort, query, bookFilter, language, statusFilter, progress]);
+
+  // The kanji of the saved words and of the lookups, filtered and sorted as asked.
+  const allKanji = useMemo(() => (data ? collectKanji(data) : []), [data]);
+  const kanjiDifficulty = (kanji: string): number => {
+    const jlpt = wordLevels ? kanjiJlpt(wordLevels, kanji) : undefined;
+    if (jlpt) return 6 - jlpt;
+    const grade = kanjiData?.[kanji]?.g;
+    return grade ? (grade <= 6 ? 2 : grade === 8 ? 4 : 6) : 7;
+  };
+  const kanjiList = useMemo(() => allKanji
+    .filter((item) => {
+      if (!inBook(item.books)) return false;
+      if (kanjiLevel !== 'all') {
+        const jlpt = wordLevels ? kanjiJlpt(wordLevels, item.kanji) : undefined;
+        if (kanjiLevel === 'none' ? jlpt !== undefined : jlpt !== Number(kanjiLevel)) return false;
+      }
+      const info = kanjiData ? kanjiInfo(kanjiData, item.kanji, language) : null;
+      return matches(query, item.kanji, ...(info?.meanings ?? []), ...(info?.on ?? []), ...(info?.kun ?? []), ...item.words.map((word) => word.word));
+    })
+    .sort((a, b) => (kanjiSort === 'level'
+      ? kanjiDifficulty(a.kanji) - kanjiDifficulty(b.kanji)
+      : kanjiSort === 'words' ? b.words.length - a.words.length : b.lookups - a.lookups)
+      || b.lookups - a.lookups || b.words.length - a.words.length),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [allKanji, kanjiSort, kanjiLevel, query, bookFilter, wordLevels, kanjiData, language]);
 
   // The underlined passages chosen to be studied, beside the vocabulary.
   const reviewPassages = useMemo(() => (data ? data.notes.filter((note) => note.annotation.review) : []), [data]);
@@ -294,6 +328,7 @@ export const StudyDashboard: React.FC<Props> = ({
     { id: 'summary', label: t('study.tabSummary'), icon: <BarChart3 className="h-3.5 w-3.5" /> },
     { id: 'review', label: t('study.tabReview'), icon: <Repeat className="h-3.5 w-3.5" />, count: reviewCounts.toReview },
     { id: 'vocabulary', label: t('study.tabVocabulary'), icon: <Star className="h-3.5 w-3.5" />, count: data.vocabulary.length },
+    { id: 'kanji', label: t('study.tabKanji'), icon: <Brush className="h-3.5 w-3.5" />, count: allKanji.length },
     { id: 'notes', label: t('study.tabNotes'), icon: <NotebookPen className="h-3.5 w-3.5" />, count: data.notes.length },
     { id: 'history', label: t('study.tabHistory'), icon: <Clock className="h-3.5 w-3.5" />, count: data.history.length },
     { id: 'searches', label: t('study.tabSearches'), icon: <Search className="h-3.5 w-3.5" />, count: data.lookups.length },
@@ -433,6 +468,7 @@ export const StudyDashboard: React.FC<Props> = ({
     const tiles = [
       { label: t('study.statBooks'), value: data.books.length },
       { label: t('study.statWords'), value: data.vocabulary.length },
+      { label: t('study.statKanji'), value: allKanji.length },
       { label: t('study.statNotes'), value: data.notes.filter((note) => note.annotation.note).length },
       { label: t('study.statLookups'), value: data.lookups.reduce((sum, item) => sum + item.count, 0) },
       { label: t('study.statDue'), value: reviewCounts.toReview },
@@ -551,6 +587,53 @@ export const StudyDashboard: React.FC<Props> = ({
       </div>
     );
   };
+
+  /** The saved words that write a kanji, for its card. */
+  const ownWordsOf = (kanji: string): OwnWord[] => (allKanji.find((item) => item.kanji === kanji)?.words ?? [])
+    .map((item) => ({ word: item.word, reading: item.reading, meaning: favoriteFields(item.favorite).meaning }));
+
+  const renderKanji = () => (
+    <>
+      <p className="mb-2 text-[11px] text-zinc-500 dark:text-zinc-400">{t('study.kanjiExplain')}</p>
+      <ul className="grid gap-2 sm:grid-cols-2">
+        {kanjiList.slice(0, shown).map((item) => {
+          const info = kanjiData ? kanjiInfo(kanjiData, item.kanji, language) : null;
+          const jlpt = wordLevels ? kanjiJlpt(wordLevels, item.kanji) : undefined;
+          return (
+            <li key={item.kanji}>
+              <button
+                type="button"
+                onClick={() => setOpenKanji(item.kanji)}
+                className="flex w-full items-start gap-3 rounded-xl border border-zinc-200 bg-zinc-50/50 p-3 text-left hover:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-800/30 dark:hover:bg-zinc-800/60"
+              >
+                <span lang="ja" className="font-mincho text-4xl leading-none text-zinc-900 dark:text-zinc-100">{item.kanji}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-center gap-1.5">
+                    <span className="truncate text-xs font-semibold text-zinc-800 dark:text-zinc-200">{info ? info.meanings.slice(0, 3).join(', ') : ''}</span>
+                    {info && <WordLevelBadge level={{ ...(jlpt ? { jlpt } : {}), band: info.grade <= 6 ? 'basic' : info.grade === 8 ? 'common' : 'uncommon' }} />}
+                  </span>
+                  {info && (
+                    <span lang="ja" className="mt-0.5 block truncate text-[11px] text-zinc-500 dark:text-zinc-400">
+                      {[...info.on.slice(0, 2), ...info.kun.slice(0, 2).map((reading) => reading.replace('.', ''))].join('、')}
+                    </span>
+                  )}
+                  <span className="mt-1 block text-[10px] text-zinc-500 dark:text-zinc-400">
+                    {t('study.kanjiCounts', { words: item.words.length, lookups: item.lookups })}
+                  </span>
+                  {item.words.length > 0 && (
+                    <span lang="ja" className="mt-1 block truncate text-xs text-zinc-700 dark:text-zinc-300">
+                      {item.words.slice(0, 6).map((word) => word.word).join('・')}
+                    </span>
+                  )}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {more(kanjiList.length)}
+    </>
+  );
 
   const renderVocabulary = () => (
     <>
@@ -759,7 +842,7 @@ export const StudyDashboard: React.FC<Props> = ({
     </div>
   );
 
-  const listEmpty = (tab === 'vocabulary' && !vocabulary.length) || (tab === 'notes' && !notes.length)
+  const listEmpty = (tab === 'vocabulary' && !vocabulary.length) || (tab === 'kanji' && !kanjiList.length) || (tab === 'notes' && !notes.length)
     || (tab === 'history' && !history.length) || (tab === 'searches' && !lookups.length && !textSearches.length);
 
   // In a portal: the home card blurs what is behind it, which would confine a fixed element to the card.
@@ -850,6 +933,30 @@ export const StudyDashboard: React.FC<Props> = ({
                 <option value="word">{t('study.sortWord')}</option>
               </select>
             )}
+            {tab === 'kanji' && (
+              <select
+                value={kanjiLevel}
+                onChange={(event) => setKanjiLevel(event.target.value as KanjiLevelFilter)}
+                aria-label={t('study.kanjiLevelLabel')}
+                className="min-h-9 rounded-lg border border-zinc-300 bg-white px-2 text-xs text-zinc-800 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
+              >
+                <option value="all">{t('study.kanjiLevelAll')}</option>
+                {['5', '4', '3', '2', '1'].map((level) => <option key={level} value={level}>N{level}</option>)}
+                <option value="none">{t('study.kanjiLevelNone')}</option>
+              </select>
+            )}
+            {tab === 'kanji' && (
+              <select
+                value={kanjiSort}
+                onChange={(event) => setKanjiSort(event.target.value as KanjiSort)}
+                aria-label={t('study.sortLabel')}
+                className="min-h-9 rounded-lg border border-zinc-300 bg-white px-2 text-xs text-zinc-800 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
+              >
+                <option value="lookups">{t('study.kanjiSortLookups')}</option>
+                <option value="words">{t('study.kanjiSortWords')}</option>
+                <option value="level">{t('study.kanjiSortLevel')}</option>
+              </select>
+            )}
             {tab === 'notes' && (
               <label className="flex min-h-9 items-center gap-1.5 text-xs text-zinc-700 dark:text-zinc-300">
                 <input type="checkbox" checked={onlyWithNote} onChange={(event) => setOnlyWithNote(event.target.checked)} />
@@ -918,10 +1025,12 @@ export const StudyDashboard: React.FC<Props> = ({
             )
             : listEmpty ? <p className="py-12 text-center text-sm text-zinc-500 dark:text-zinc-400">{t('study.noResults')}</p>
               : tab === 'vocabulary' ? renderVocabulary()
+                : tab === 'kanji' ? renderKanji()
                 : tab === 'notes' ? renderNotes()
                   : tab === 'history' ? renderHistory()
                     : renderSearches()}
         </div>
+        <KanjiModal kanji={openKanji} ownWords={ownWordsOf} onClose={() => setOpenKanji(null)} />
       </section>
     </div>,
     document.body,

@@ -1,5 +1,6 @@
 import { bookPage, latestPaginationCounts } from './driveDevice';
 import { FREQUENT_QUERIES_VERSION, FrequentQuery, normalizeFrequentQuery } from './frequentQueries';
+import { kanjiOfText } from './kanjiInfo';
 import { normalizeNote, TextAnnotation } from './textAnnotations';
 import type { TranslationFavorite } from './translationFavorites';
 import type { DictionaryHistoryData, TranslationHistoryEntry } from './translationHistory';
@@ -220,6 +221,43 @@ export interface VocabularyItem {
 export interface GlobalNote {
   book: BookRef;
   annotation: TextAnnotation;
+}
+
+/** A kanji of the reader's words: the saved words that write it and how often words with it were looked up. */
+export interface GlobalKanji {
+  kanji: string;
+  words: VocabularyItem[];
+  /** Dictionary lookups of words that write it, in every book (激怒 and 過激 both count for 激). */
+  lookups: number;
+  books: BookRef[];
+}
+
+/** The kanji of the saved words and of the words looked up, each with what it was met in. */
+export function collectKanji(data: Pick<StudyData, 'vocabulary' | 'lookups'>): GlobalKanji[] {
+  const byKanji = new Map<string, GlobalKanji>();
+  const entry = (kanji: string) => {
+    let found = byKanji.get(kanji);
+    if (!found) {
+      found = { kanji, words: [], lookups: 0, books: [] };
+      byKanji.set(kanji, found);
+    }
+    return found;
+  };
+  for (const item of data.vocabulary) {
+    for (const kanji of kanjiOfText(item.word)) {
+      const found = entry(kanji);
+      found.words.push(item);
+      for (const book of item.books) addBook(found.books, book);
+    }
+  }
+  for (const lookup of data.lookups) {
+    for (const kanji of kanjiOfText(lookup.query)) {
+      const found = entry(kanji);
+      found.lookups += lookup.count;
+      for (const book of lookup.books) addBook(found.books, book);
+    }
+  }
+  return [...byKanji.values()];
 }
 
 /** The name of an underlined passage in the progress of study, beside the words of the vocabulary. */
