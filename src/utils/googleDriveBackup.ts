@@ -1108,8 +1108,9 @@ async function saveReaderGroup(
   const save = previous.catch(() => undefined).then(async () => {
     const existing = await findFile(accessToken, fileName, folderId);
 
-    // Safeguard: Do not overwrite non-empty Drive files with empty local data!
-    if (existing) {
+    // Safeguard: Do not overwrite non-empty Drive files with empty local data, unless this device emptied
+    // the group itself (the group is dirty): then the empty list is what the reader wants kept.
+    if (existing && !data.dirtyGroups?.includes(group)) {
       const isLocalEmpty =
         (group === 'bookmarks' && data.bookmarks.length === 0) ||
         (group === 'annotations' && data.annotations.length === 0) ||
@@ -1163,7 +1164,9 @@ export function queueGoogleDriveReaderData(data: ReaderBookBackup): void {
   try {
     const pending = getPendingGoogleDriveReaderData();
     const existing = pending[data.bookKey];
-    if (existing) {
+    // An empty copy whose lists were changed on purpose (the last favorite removed) is what the reader wants.
+    const emptiedOnPurpose = data.dirtyGroups?.some((group) => group === 'bookmarks' || group === 'annotations' || group === 'favorites');
+    if (existing && !emptiedOnPurpose) {
       const isNewEmpty = (!data.position || (data.position.spineIndex === 0 && data.position.page === 0))
         && data.bookmarks.length === 0 && data.annotations.length === 0 && data.favorites.length === 0;
       const existingHasData = Boolean(existing.position && (existing.position.spineIndex > 0 || existing.position.page > 0))
@@ -1172,8 +1175,10 @@ export function queueGoogleDriveReaderData(data: ReaderBookBackup): void {
         return; // Don't replace existing non-empty pending snapshot with empty
       }
     }
+    // The groups changed since the last upload add up, so that a list emptied on purpose is sent as empty.
+    const dirtyGroups = pendingDirtyGroups(existing, data);
     const { dirtyGroups: _ignored, ...snapshot } = data;
-    pending[data.bookKey] = { ...snapshot, formatVersion: 1 };
+    pending[data.bookKey] = { ...snapshot, formatVersion: 1, ...(dirtyGroups ? { dirtyGroups } : {}) };
     localStorage.setItem(PENDING_READER_DATA_KEY, JSON.stringify(pending));
   } catch (error) {
     console.warn('No se pudo guardar localmente la cola de sincronización de Drive:', error);
@@ -1194,11 +1199,24 @@ export function getPendingGoogleDriveReaderData(): Record<string, ReaderBookBack
   }
 }
 
+/**
+ * The groups a queued copy has to write: those of the copy already waiting plus the new ones. A copy
+ * without groups (an old queue, or a full sync) writes every group, so it stays without them.
+ */
+function pendingDirtyGroups(existing: ReaderBookBackup | undefined, data: ReaderBookBackup): ReaderDataGroup[] | undefined {
+  if (!data.dirtyGroups?.length) return undefined;
+  if (existing && !existing.dirtyGroups?.length) return undefined;
+  return [...new Set([...(existing?.dirtyGroups || []), ...data.dirtyGroups])];
+}
+
 function clearPendingGoogleDriveReaderData(data: ReaderBookBackup): void {
   try {
     const pending = getPendingGoogleDriveReaderData();
+    const queued = pending[data.bookKey];
+    if (!queued) return;
+    const { dirtyGroups: _queuedGroups, ...queuedSnapshot } = queued;
     const { dirtyGroups: _ignored, ...snapshot } = data;
-    if (JSON.stringify(pending[data.bookKey]) !== JSON.stringify({ ...snapshot, formatVersion: 1 })) return;
+    if (JSON.stringify(queuedSnapshot) !== JSON.stringify({ ...snapshot, formatVersion: 1 })) return;
     delete pending[data.bookKey];
     if (Object.keys(pending).length) {
       localStorage.setItem(PENDING_READER_DATA_KEY, JSON.stringify(pending));
@@ -1498,6 +1516,8 @@ function isReaderBookBackup(value: unknown): value is ReaderBookBackup {
       Array.isArray(data.favorites)
       && data.favorites.every(isFavorite)
     ))
+    && (data.dirtyGroups === undefined || (Array.isArray(data.dirtyGroups)
+      && data.dirtyGroups.every((group) => (STUDY_GROUPS as unknown[]).includes(group))))
     && (data.frequentQueriesVersion === undefined || data.frequentQueriesVersion === FREQUENT_QUERIES_VERSION)
     && (data.frequentQueries === undefined || (
       Array.isArray(data.frequentQueries)
