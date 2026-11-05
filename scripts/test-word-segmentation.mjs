@@ -154,6 +154,20 @@ try {
   assert.deepEqual(await pageWords('剣を摑んだ。'), ['剣:剣', 'を:を', '摑んだ:掴む']);
   assert.deepEqual(await pageWords('啞然とした'), ['啞然:唖然', 'と:と', 'した:する']);
 
+  // Passive and causative endings conjugate the verb, which keeps its base form; after a noun, they make a verb.
+  assert.deepEqual(await pageWords('腕を摑まれていた'), ['腕:腕', 'を:を', '摑まれていた:掴む']);
+  assert.deepEqual(await pageWords('本を読まれた'), ['本:本', 'を:を', '読まれた:読む']);
+  assert.deepEqual(await pageWords('食べさせられた'), ['食べさせられた:食べる']);
+  assert.deepEqual(await pageWords('大人びた'), ['大人びた:大人びる']);
+
+  // The lookup reads traditional kanji in their everyday form too.
+  const grabbed = await getDictionarySearchTerms('摑まれていた', 'es');
+  assert.equal(grabbed.baseForm, '掴む');
+  assert.equal(grabbed.hasCompleteTextMatch, true);
+  // The word whose main spelling it is goes first: 数 is かず/すう, not 屡々 (しばしば), which lists it as a rare spelling.
+  const number = await getDictionarySearchTerms('数', 'es');
+  assert.ok(number.entries[0].kanji[0] === '数', `got ${number.entries[0].kanji.join(',')}`);
+
   // A set phrase the dictionary lists is one word; a noun, a particle and a verb that are not stay apart.
   assert.deepEqual(await pageWords('鎧を身に着けている'), ['鎧:鎧', 'を:を', '身に着けている:身に着ける']);
   assert.deepEqual(await pageWords('それが気に入った'), ['それ:それ', 'が:が', '気に入った:気に入る']);

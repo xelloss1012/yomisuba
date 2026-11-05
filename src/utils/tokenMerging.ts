@@ -96,9 +96,18 @@ export const mergeJapaneseTokens = (locatedTokens: LocatedToken[]): MergedToken[
     const previousIsAdjectivalNoun =
       previous?.token.pos === '名詞' &&
       previous.token.pos_detail_1 === '形容動詞語幹';
-    // 不安気, 自慢気: the suffix 気 (げ) is cut off as a noun of its own, unlike 不安げ.
-    const isSuffix = token.pos_detail_1 === '接尾' ||
+    // 不安気, 自慢気: the suffix 気 (げ) is cut off as a noun of its own, unlike 不安げ. A verb suffix
+    // (れる, られる, させる) is not one: it conjugates the verb, which keeps its base form.
+    const isSuffix = (token.pos_detail_1 === '接尾' && token.pos !== '動詞') ||
       isKiSuffix(previous?.token, token);
+    // 読まれる, 摑まれていた, 食べさせる: the passive and causative endings belong to the verb before them.
+    const isVerbSuffix = token.pos === '動詞' &&
+      token.pos_detail_1 === '接尾' &&
+      previous?.token.pos === '動詞';
+    // 大人びた, 汗ばむ: a verb suffix after a noun makes a verb of it (大人びる), like する does.
+    const isNounVerb = token.pos === '動詞' &&
+      token.pos_detail_1 === '接尾' &&
+      previous?.token.pos === '名詞';
     const isAuxiliary = token.pos === '助動詞' &&
       (
         ['動詞', '形容詞', '形容動詞', '助動詞'].includes(previous?.token.pos || '') ||
@@ -143,6 +152,8 @@ export const mergeJapaneseTokens = (locatedTokens: LocatedToken[]): MergedToken[
 
     if (adjacent && previous && (
       isSuffix ||
+      isVerbSuffix ||
+      isNounVerb ||
       isSuruVerb ||
       isAuxiliary ||
       isTeFormConnector ||
@@ -158,16 +169,20 @@ export const mergeJapaneseTokens = (locatedTokens: LocatedToken[]): MergedToken[
         reading: previous.token.reading && token.reading
           ? previous.token.reading + token.reading
           : previous.token.reading || token.reading,
-        pos: isSuruVerb ? '動詞' : previous.token.pos,
-        pos_detail_1: isSuruVerb ? '自立' : previous.token.pos_detail_1,
+        pos: isSuruVerb || isNounVerb ? '動詞' : previous.token.pos,
+        pos_detail_1: isSuruVerb || isNounVerb ? '自立' : previous.token.pos_detail_1,
         basic_form: isSuffix
           ? mergedSurface
           : isSuruVerb
             ? previous.token.surface_form + (token.basic_form || 'する')
-            : previous.token.basic_form,
+            : isNounVerb
+              ? previous.token.surface_form + (token.basic_form || '')
+              : previous.token.basic_form,
         joinedSuffix: Boolean(previous.token.joinedSuffix || isSuffix),
         joinedConjugation: Boolean(
           previous.token.joinedConjugation ||
+          isVerbSuffix ||
+          isNounVerb ||
           isSuruVerb ||
           isTeFormAuxiliary ||
           isContractedTeRu ||

@@ -529,7 +529,7 @@ const findRawEntries = (
   const normalizedDirect = unique(directTerms.map(normalizeSelection)).filter(Boolean);
   const normalizedWhole = unique(wholePhraseTerms.map(normalizeSelection)).filter(Boolean);
   const normalizedSub = unique(subTokenTerms.map(normalizeSelection)).filter(Boolean);
-  const ranked = new Map<string, { entry: CompactEntry; score: number; exactText?: boolean }>();
+  const ranked = new Map<string, { entry: CompactEntry; score: number; exactText?: boolean; form: string }>();
 
   const addMatches = (
     matches: CompactEntry[] | undefined,
@@ -544,7 +544,7 @@ const findRawEntries = (
         : score;
       const current = ranked.get(entry.id);
       if (!current || effectiveScore < current.score) {
-        ranked.set(entry.id, { entry, score: effectiveScore, ...(markExactText ? { exactText: true } : {}) });
+        ranked.set(entry.id, { entry, score: effectiveScore, form, ...(markExactText ? { exactText: true } : {}) });
       } else if (markExactText && effectiveScore === current.score) {
         current.exactText = true;
       }
@@ -609,7 +609,17 @@ const findRawEntries = (
     if (hiragana) addMatches(index.byForm.get(hiragana), 5 + position * 0.01, hiragana, false, false);
   });
 
-  return [...ranked.values()].sort((left, right) => left.score - right.score);
+  // Equally good matches: the entry that writes the word as its main spelling first. 数 is かず and すう
+  // before 屡々 (しばしば), which lists 数 among its rare spellings.
+  const spellingRank = ({ entry, form }: { entry: CompactEntry; form: string }) => {
+    const at = entry.k.indexOf(form);
+    if (at >= 0) return at;
+    const reading = entry.r.indexOf(form);
+    return reading >= 0 ? reading : entry.k.length + entry.r.length;
+  };
+  return [...ranked.values()]
+    .sort((left, right) => left.score - right.score || spellingRank(left) - spellingRank(right))
+    .map(({ form: _form, ...match }) => match);
 };
 
 export interface DictionarySearchOptions {
@@ -636,7 +646,8 @@ export const getDictionarySearchTerms = async (
   try {
     const tokenizer = await getTokenizer();
     // The same pieces the reader joins (不安気な is cut as 不 + 安気), so the lookup is of the word shown.
-    const tokens = joinNounPieces(await tokenizer.tokenize(originalText));
+    // Traditional kanji (摑まれていた) in their everyday form, which kuromoji knows: else 摑 is cut off alone.
+    const tokens = joinNounPieces(await tokenizer.tokenize(toEverydayKanji(originalText)));
     tokenizerAvailable = true;
 
     // A verb that only adds an aspect to the て-form before it (送り出してしまおう,
