@@ -96,7 +96,8 @@ export const ReaderNavbar: React.FC<Props> = ({
         isVisible ? 'translate-y-0 opacity-100 pointer-events-auto' : '-translate-y-full opacity-0 pointer-events-none'
       }`}
     >
-      <div className="bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md border-b border-zinc-200/80 dark:border-zinc-800/80 px-3 py-3 shadow-sm">
+      {/* Below the status bar and the camera when the app is drawn edge to edge (0 when Android leaves room for them). */}
+      <div className="bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md border-b border-zinc-200/80 dark:border-zinc-800/80 px-3 pb-3 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] shadow-sm">
         <div
           className="flex min-w-0 items-center gap-1 overflow-x-auto pt-2 [&::-webkit-scrollbar]:hidden"
           style={{ scrollbarWidth: 'none' }}

@@ -314,6 +314,7 @@ export const EpubReader: React.FC<Props> = ({
     progress: number;
   } | null>(null);
   const [readerFit, setReaderFit] = useState({ scale: 1, offsetY: 0 });
+  const pageHostRef = useRef<HTMLDivElement>(null);
   const [isReaderFullscreen, setIsReaderFullscreen] = useState(false);
   const [fullscreenFrameSize, setFullscreenFrameSize] = useState<{ width: number; height: number } | null>(null);
   const [fullscreenError, setFullscreenError] = useState<string | null>(null);
@@ -4055,23 +4056,29 @@ export const EpubReader: React.FC<Props> = ({
     }
 
     const container = containerRef.current;
+    const host = pageHostRef.current;
     const header = container?.querySelector<HTMLElement>('[data-reader-chrome="header"]');
     const footer = container?.querySelector<HTMLElement>('[data-reader-chrome="footer"]');
-    if (!container || !header || !footer) return;
+    if (!container || !host || !header || !footer) return;
 
+    // The page shrinks into the room between the header and the footer, and is centred there. Heights, not
+    // positions: the bars may still be sliding in. The header is at the top and the footer at the bottom
+    // (their heights include the room for the status and navigation bars); the page's layout box
+    // (offsetTop/offsetHeight, not the transformed one) may start below the status bar.
     const updateFit = () => {
       const { width, height } = container.getBoundingClientRect();
-      if (width <= 0 || height <= 0) return;
+      if (width <= 0 || height <= 0 || host.offsetHeight <= 0) return;
 
-      const fitWidth = fullscreenFrameSize?.width || width;
-      const fitHeight = fullscreenFrameSize?.height || height;
+      const fitWidth = fullscreenFrameSize?.width || host.offsetWidth;
+      const fitHeight = fullscreenFrameSize?.height || host.offsetHeight;
       const margin = 12;
-      const headerHeight = header.getBoundingClientRect().height;
-      const footerHeight = footer.getBoundingClientRect().height;
-      const heightScale = (fitHeight - headerHeight - footerHeight - margin * 2) / fitHeight;
+      const roomTop = header.offsetHeight;
+      const roomBottom = height - footer.offsetHeight;
+      const heightScale = (roomBottom - roomTop - margin * 2) / fitHeight;
       const widthScale = (fitWidth - margin * 2) / fitWidth;
       const scale = Math.max(0.1, Math.min(1, heightScale, widthScale));
-      setReaderFit({ scale, offsetY: (headerHeight - footerHeight) / 2 });
+      const pageCentre = host.offsetTop + host.offsetHeight / 2;
+      setReaderFit({ scale, offsetY: (roomTop + roomBottom) / 2 - pageCentre });
     };
 
     updateFit();
@@ -4223,7 +4230,7 @@ export const EpubReader: React.FC<Props> = ({
       {showUi && (
         <button
           onClick={() => setShowUi(false)}
-          className="tap-area-free fixed z-[55] p-2 rounded-full backdrop-blur-md shadow-md transition-colors right-3 bottom-[118px] bg-white/90 text-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-200"
+          className="tap-area-free fixed z-[55] p-2 rounded-full backdrop-blur-md shadow-md transition-colors right-3 bottom-[calc(env(safe-area-inset-bottom,0px)+118px)] bg-white/90 text-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-200"
           title={t('nav.hideControls')}
           aria-label={t('nav.hideControls')}
         >
@@ -4277,10 +4284,17 @@ export const EpubReader: React.FC<Props> = ({
         </button>
       )}
 
-      {/* Keep the viewport fixed so showing the controls never changes pagination. */}
+      {/* Keep the viewport fixed so showing the controls never changes pagination. It stays clear of the
+          status bar, the camera and the navigation bar when the app is drawn edge to edge: the insets are 0
+          where Android leaves room for them itself. */}
       <div
-        className="absolute inset-0 flex items-center justify-center overflow-hidden"
+        ref={pageHostRef}
+        className="absolute flex items-center justify-center overflow-hidden"
         style={{
+          top: 'env(safe-area-inset-top, 0px)',
+          right: 'env(safe-area-inset-right, 0px)',
+          bottom: 'env(safe-area-inset-bottom, 0px)',
+          left: 'env(safe-area-inset-left, 0px)',
           transform: showUi
             ? `translateY(${readerFit.offsetY}px) scale(${readerFit.scale})`
             : 'none',

@@ -65,6 +65,14 @@
   animation: selectionEdgeArrowRight 0.8s ease-in-out infinite;
 }
 
+/* The dialogs that open as a sheet from the bottom on a phone (fixed inset-0 items-end) stay clear of the
+   status bar and the navigation bar when the app is drawn edge to edge; the insets are 0 where Android
+   leaves room for them itself, so nothing changes there. */
+.fixed.inset-0.items-end {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
 /* The strokes of a kanji drawn one after another (KanjiStrokes): each path has pathLength 1. */
 @keyframes kanjiStroke {
   to { stroke-dashoffset: 0; }
