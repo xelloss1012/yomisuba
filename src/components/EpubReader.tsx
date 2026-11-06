@@ -317,6 +317,8 @@ export const EpubReader: React.FC<Props> = ({
   const pageHostRef = useRef<HTMLDivElement>(null);
   const [isReaderFullscreen, setIsReaderFullscreen] = useState(false);
   const [fullscreenFrameSize, setFullscreenFrameSize] = useState<{ width: number; height: number } | null>(null);
+  const fullscreenFrameSizeRef = useRef(fullscreenFrameSize);
+  fullscreenFrameSizeRef.current = fullscreenFrameSize;
   const [fullscreenError, setFullscreenError] = useState<string | null>(null);
   const isReaderFullscreenRef = useRef(false);
   const fullscreenExitTimerRef = useRef<number | undefined>(undefined);
@@ -3906,14 +3908,42 @@ export const EpubReader: React.FC<Props> = ({
     void analyzeCurrentPage(true);
   }, [analyzeCurrentPage]);
 
+  /**
+   * Out of full screen, the page goes back to filling its room once that room is again the size it was
+   * frozen at (the bars may take a moment to come back), so that it is never laid out in between.
+   */
+  const releaseFullscreenFrame = useCallback(() => {
+    if (fullscreenExitTimerRef.current !== undefined) window.clearTimeout(fullscreenExitTimerRef.current);
+    const startedAt = Date.now();
+    const release = () => {
+      const host = pageHostRef.current;
+      const frozen = fullscreenFrameSizeRef.current;
+      const room = host ? window.getComputedStyle(host) : null;
+      const back = !room || !frozen || (
+        Math.abs(parseFloat(room.width) - frozen.width) < 0.5 && Math.abs(parseFloat(room.height) - frozen.height) < 0.5
+      );
+      if (back || Date.now() - startedAt > 1500) {
+        setFullscreenFrameSize(null);
+        fullscreenExitTimerRef.current = undefined;
+        return;
+      }
+      fullscreenExitTimerRef.current = window.setTimeout(release, 100);
+    };
+    fullscreenExitTimerRef.current = window.setTimeout(release, 300);
+  }, []);
+
   const handleToggleReaderFullscreen = useCallback(async () => {
     if (!isReaderFullscreenRef.current) {
       const iframe = iframeRef.current;
       if (!iframe) return;
 
+      // The page keeps its exact size, decimals included: with the insets of an edge-to-edge screen it is
+      // rarely a whole number of pixels (783.71), and the rounded clientHeight (784) would lay the chapter
+      // out again on a slightly different page and move the reader to another one.
+      const style = window.getComputedStyle(iframe);
       const size = {
-        width: iframe.clientWidth || window.innerWidth,
-        height: iframe.clientHeight || window.innerHeight,
+        width: parseFloat(style.width) || iframe.clientWidth || window.innerWidth,
+        height: parseFloat(style.height) || iframe.clientHeight || window.innerHeight,
       };
       setFullscreenFrameSize(size);
       isReaderFullscreenRef.current = true;
@@ -3937,10 +3967,7 @@ export const EpubReader: React.FC<Props> = ({
       if (fullscreenExitTimerRef.current !== undefined) {
         window.clearTimeout(fullscreenExitTimerRef.current);
       }
-      fullscreenExitTimerRef.current = window.setTimeout(() => {
-        setFullscreenFrameSize(null);
-        fullscreenExitTimerRef.current = undefined;
-      }, 300);
+      releaseFullscreenFrame();
       setFullscreenError(null);
     } catch (error) {
       setFullscreenError(error instanceof Error ? error.message : 'No se pudo salir de pantalla completa.');
@@ -3955,10 +3982,7 @@ export const EpubReader: React.FC<Props> = ({
       if (fullscreenExitTimerRef.current !== undefined) {
         window.clearTimeout(fullscreenExitTimerRef.current);
       }
-      fullscreenExitTimerRef.current = window.setTimeout(() => {
-        setFullscreenFrameSize(null);
-        fullscreenExitTimerRef.current = undefined;
-      }, 300);
+      releaseFullscreenFrame();
     };
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
