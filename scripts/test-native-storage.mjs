@@ -120,6 +120,19 @@ try {
     assert.deepEqual([...await bytesOf((await store.get('r')).cover)], [9]);
     await store.save({ ...(await store.get('r')), cover: undefined, lastOpened: 6000 });
     assert.ok((await store.get('r')).cover, 'a save without a cover keeps the one there is');
+
+    // Opened again with the same cover: it is not written again; a new one is.
+    const coverPath = [...files.store.keys()].find((path) => path.endsWith('.cover'));
+    const coverWrites = () => files.writes.filter((path) => path === coverPath).length;
+    const writesBefore = coverWrites();
+    await store.save({ ...(await store.get('r')), lastOpened: 7000 });
+    assert.equal(coverWrites(), writesBefore, 'the same cover is not written twice');
+    await store.save({ ...light, cover: new Blob([Buffer.from([4, 5])], { type: 'image/png' }) });
+    assert.equal(coverWrites(), writesBefore + 1, 'a changed cover is');
+    assert.deepEqual([...await bytesOf((await store.get('r')).cover)], [4, 5]);
+
+    assert.equal(await store.has('r'), true);
+    assert.equal(await store.has('nope'), false);
   }
 
   // A damaged entry does not hide the others, and a book without its text is not handed out.
@@ -134,6 +147,7 @@ try {
       if (path.endsWith('.epub') && files.store.get(path).toString() === 'epub half') files.store.delete(path);
     }
     assert.equal(await store.get('half'), null);
+    assert.equal(await store.has('half'), false, 'nor counted as saved');
   }
 
   // Reading data: the right keys, copied, and restored only when the storage was cleared.

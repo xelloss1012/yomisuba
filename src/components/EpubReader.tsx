@@ -2159,16 +2159,32 @@ export const EpubReader: React.FC<Props> = ({
             : fallbackPosition
               ? { node: fallbackPosition.offsetNode, offset: fallbackPosition.offset }
               : null;
-          if (!caretPosition || caretPosition.node.nodeType !== Node.TEXT_NODE) return false;
+          if (caretPosition && caretPosition.node.nodeType === Node.TEXT_NODE) {
+            const token = pageWordsRef.current.find(({ range }) =>
+              range.isPointInRange(caretPosition.node, caretPosition.offset)
+            );
+            const hitToken = token && Array.from(token.range.getClientRects()).some((rect) =>
+              cx >= rect.left && cx <= rect.right && cy >= rect.top && cy <= rect.bottom
+            );
+            if (token && hitToken) return selectPageWord(token);
+          }
 
-          const token = pageWordsRef.current.find(({ range }) =>
-            range.isPointInRange(caretPosition.node, caretPosition.offset)
-          );
-          if (!token) return false;
-          const hitToken = Array.from(token.range.getClientRects()).some((rect) =>
-            cx >= rect.left && cx <= rect.right && cy >= rect.top && cy <= rect.bottom
-          );
-          return hitToken ? selectPageWord(token) : false;
+          // A finger rarely lands exactly on a character: a tap just beside a word (in the gap between
+          // two lines, or at the end of one) takes the nearest word, but only within a short reach of
+          // about half a character (the narrow side of a word's box is one character across). Blank parts
+          // of the page stay out of reach, so a tap there still shows or hides the bars.
+          let nearest: { token: PageWordToken; distance: number } | null = null;
+          for (const token of pageWordsRef.current) {
+            for (const rect of Array.from(token.range.getClientRects())) {
+              if (!rect.width || !rect.height) continue;
+              const reach = Math.min(Math.max(Math.min(rect.width, rect.height) * 0.5, 8), 16);
+              const dx = Math.max(rect.left - cx, 0, cx - rect.right);
+              const dy = Math.max(rect.top - cy, 0, cy - rect.bottom);
+              const distance = Math.hypot(dx, dy);
+              if (distance <= reach && (!nearest || distance < nearest.distance)) nearest = { token, distance };
+            }
+          }
+          return nearest ? selectPageWord(nearest.token) : false;
         };
 
         // Returns true when the gesture selected a word in analysis mode, so the

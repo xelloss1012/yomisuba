@@ -165,6 +165,12 @@ export async function getRecentBook(id: string): Promise<RecentBook | null> {
   return idbGetBook(id);
 }
 
+/** Whether a book is saved, without reading its whole text back where that can be avoided. */
+export async function isRecentBookSaved(id: string): Promise<boolean> {
+  if (nativeBooks && (await nativeBooks.has(id).catch(() => false))) return true;
+  return (await idbGetBook(id)) !== null;
+}
+
 /** The book with its text, which a book from `listRecentBooks` may not have yet. */
 export async function loadRecentBook(book: RecentBook): Promise<RecentBook> {
   if (book.blobLoaded !== false) return book;

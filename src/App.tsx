@@ -9,7 +9,7 @@ import { AVAILABLE_LANGUAGES, setActiveLanguage, t } from './utils/i18n';
 import { SharedPayload, sharedToBook, watchSharedContent, checkPendingShared } from './utils/sharedContent';
 import { setReaderAutoRotate } from './utils/readerOrientation';
 import { getUpdateInstallState } from './utils/appUpdater';
-import { createBookId, deleteRecentBook, getLastBookId, getRecentBook, listRecentBooks, loadRecentBook, MAX_SHELF_BOOKS, migrateBooksToNativeStorage, RecentBook, requestPersistentStorage, saveRecentBook, setLastBookId } from './utils/recentBooks';
+import { createBookId, deleteRecentBook, getLastBookId, getRecentBook, isRecentBookSaved, listRecentBooks, loadRecentBook, MAX_SHELF_BOOKS, migrateBooksToNativeStorage, RecentBook, requestPersistentStorage, saveRecentBook, setLastBookId } from './utils/recentBooks';
 import {
   deleteGoogleDriveBook,
   downloadGoogleDriveBook,
@@ -53,6 +53,7 @@ import { writeClipboardText } from './utils/readerClipboard';
 import { BookPosition, comparePositions, describeDevice, getDeviceId, latestPaginationCounts } from './utils/driveDevice';
 import { DriveConflict, DriveConflictModal } from './components/DriveConflictModal';
 import { DeleteBookChoice, DeleteBookModal, DeleteBookRequest } from './components/DeleteBookModal';
+import { Loader2 } from 'lucide-react';
 import { bookDataKeys, bookKeyOf, listStoredBooks } from './utils/studyData';
 import { mergeProgress, readStudyProgress, STUDY_PROGRESS_EVENT, writeStudyProgress } from './utils/studyProgress';
 import type { DriveStudyState } from './components/StudyDashboard';
@@ -120,6 +121,8 @@ export const App: React.FC = () => {
   const currentEpubRef = React.useRef<ParsedEpub | null>(null);
   const currentBookIdRef = React.useRef<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  /** What opening a book is waiting for, shown on the home screen so that a slow start does not look stuck. */
+  const [openingStep, setOpeningStep] = useState<'reading' | 'drive' | 'saving' | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [isGoogleDriveSignInPending, setIsGoogleDriveSignInPending] = useState(false);
@@ -723,6 +726,7 @@ export const App: React.FC = () => {
   const openBook = async (fileOrBlob: File | Blob, preferredId?: string, preferredName?: string, forceDriveRestore = false) => {
     const requestId = ++openBookRequestIdRef.current;
     setIsLoading(true);
+    setOpeningStep('reading');
     setErrorMessage(null);
 
     try {
@@ -739,6 +743,7 @@ export const App: React.FC = () => {
 
       let driveSession = googleDriveSession;
       if (!driveSession && driveSessionRefreshPromiseRef.current && navigator.onLine) {
+        setOpeningStep('drive');
         try {
           await driveSessionRefreshPromiseRef.current;
           driveSession = googleDriveSessionRef.current;
@@ -750,6 +755,7 @@ export const App: React.FC = () => {
 
       // Drive's reading data is only taken once it is settled that Drive's data is wanted.
       if (driveSession && navigator.onLine && (driveDecidedRef.current || forceDriveRestore)) {
+        setOpeningStep('drive');
         try {
           const readerData = await restoreGoogleDriveReaderData(driveSession.accessToken, {
             bookKey: `yomisuba_book_${encodeURIComponent(`${parsed.metadata.title}|${parsed.metadata.creator}`)}`,
@@ -783,11 +789,12 @@ export const App: React.FC = () => {
         blob: new Blob([buffer], { type: 'application/epub+zip' }),
         cover: parsed.coverBlob,
       };
+      setOpeningStep('saving');
       try {
         await saveRecentBook(recentBook);
         if (requestId !== openBookRequestIdRef.current) return;
-        // Read it back: a write that did not stick would only show up at the next launch, as a missing book.
-        if (!(await getRecentBook(id))) throw new Error('The book was not found after saving it.');
+        // Checked: a write that did not stick would only show up at the next launch, as a missing book.
+        if (!(await isRecentBookSaved(id))) throw new Error('The book was not found after saving it.');
         setLastBookId(id);
         void requestPersistentStorage();
       } catch (err) {
@@ -828,6 +835,7 @@ export const App: React.FC = () => {
     } finally {
       if (requestId === openBookRequestIdRef.current) {
         setIsLoading(false);
+        setOpeningStep(null);
       }
     }
   };
@@ -845,7 +853,11 @@ export const App: React.FC = () => {
     isOpeningSharedRef.current = true;
     const language = settings.language;
     setIsLoading(true);
-    const failed = (message: string) => setErrorMessage(t('import.sharedFailed', language, { message }));
+    setOpeningStep('reading');
+    const failed = (message: string) => {
+      setOpeningStep(null);
+      setErrorMessage(t('import.sharedFailed', language, { message }));
+    };
     if (payload.error) { setIsLoading(false); failed(payload.error); return; }
     sharedToBook(payload, {
       textAuthor: t('import.textFileAuthor', language),
@@ -916,8 +928,14 @@ export const App: React.FC = () => {
 
         const lastBookId = getLastBookId();
         if (lastBookId) {
+          // Reading a long book from the device's files takes a moment: the home screen says so.
+          const requestBefore = openBookRequestIdRef.current;
+          setOpeningStep('reading');
           const listed = books.find((book) => book.id === lastBookId);
-          const lastBook = listed && listed.blobLoaded !== false ? listed : await getRecentBook(lastBookId);
+          const lastBook = await Promise.resolve(listed && listed.blobLoaded !== false ? listed : getRecentBook(lastBookId))
+            .finally(() => {
+              if (openBookRequestIdRef.current === requestBefore) setOpeningStep(null);
+            });
           if (lastBook && !cancelled && !isOpeningSharedRef.current && !busyOnHome()) {
             await openBook(lastBook.blob, lastBook.id, lastBook.name);
           }
@@ -943,11 +961,14 @@ export const App: React.FC = () => {
   /** Opens a book of the shelf; with `search`, the book opens with that search already made. */
   const handleOpenRecent = (book: RecentBook, search?: string) => {
     void (async () => {
+      const requestBefore = openBookRequestIdRef.current;
+      setOpeningStep('reading');
       try {
         const full = await loadRecentBook(book);
         setInitialSearch(search?.trim() || null);
         await openBook(full.blob, full.id, full.name);
       } catch (error) {
+        if (openBookRequestIdRef.current === requestBefore) setOpeningStep(null);
         setErrorMessage(error instanceof Error ? error.message : String(error));
       }
     })();
@@ -1224,6 +1245,16 @@ export const App: React.FC = () => {
           />
         )}
       </div>
+      {openingStep && !(currentEpub && currentBookId) && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed z-40 left-1/2 -translate-x-1/2 bottom-[max(calc(env(safe-area-inset-bottom,0px)+16px),24px)] flex items-center gap-2 rounded-full px-4 py-2 shadow-lg backdrop-blur-md pointer-events-none text-sm bg-white/90 text-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-200"
+        >
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>{t(`opening.${openingStep}`, settings.language)}</span>
+        </div>
+      )}
       <DeleteBookModal
         request={deleteRequest}
         onConfirm={answerDeleteBook}

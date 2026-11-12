@@ -72,6 +72,8 @@ export interface NativeBookStore {
   /** Every saved book, newest first, without its text: `blob` is empty and `blobLoaded` is false. */
   list(): Promise<RecentBook[]>;
   get(id: string): Promise<RecentBook | null>;
+  /** Whether the book is saved, without reading its text. */
+  has(id: string): Promise<boolean>;
   remove(id: string): Promise<void>;
 }
 
@@ -112,13 +114,14 @@ export function createNativeBookStore(files: NativeFiles): NativeBookStore {
           await files.writeBase64(where.epub, await blobToBase64(book.blob.slice(start, start + CHUNK_BYTES)), start > 0);
         }
       }
-      let coverType: string | undefined;
+      const previousText = await files.readText(where.meta);
+      const previousCoverType = previousText ? (JSON.parse(previousText) as BookMeta).coverType : undefined;
+      let coverType = previousCoverType;
       if (book.cover && book.cover.size > 0) {
         coverType = book.cover.type || 'image/png';
-        await files.writeBase64(where.cover, await blobToBase64(book.cover), false);
-      } else {
-        const previous = await files.readText(where.meta);
-        coverType = previous ? (JSON.parse(previous) as BookMeta).coverType : undefined;
+        // A book opened again brings the same cover: it is only written when it is new or has changed.
+        const unchanged = previousCoverType === coverType && (await files.size(where.cover)) === book.cover.size;
+        if (!unchanged) await files.writeBase64(where.cover, await blobToBase64(book.cover), false);
       }
       // The details go last: a book counts as saved only once they are there.
       const meta: BookMeta = {
@@ -149,6 +152,12 @@ export function createNativeBookStore(files: NativeFiles): NativeBookStore {
     async get(id) {
       const text = await files.readText((await paths(id)).meta);
       return text ? toBook(JSON.parse(text) as BookMeta, true) : null;
+    },
+
+    async has(id) {
+      const where = await paths(id);
+      // The details are written last, so with them and the text there the book is saved.
+      return (await files.readText(where.meta)) !== null && ((await files.size(where.epub)) ?? 0) > 0;
     },
 
     async remove(id) {
