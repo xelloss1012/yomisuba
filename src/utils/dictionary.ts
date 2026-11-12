@@ -382,20 +382,70 @@ export const warmUpDictionary = () => {
   void getTokenizer().catch(() => undefined);
 };
 
-export const tokenizeJapanese = async (text: string): Promise<JapaneseMorphologicalToken[]> => {
-  const tokenizer = await getTokenizer(true);
-  // 摑む, 啞然: read in their everyday kanji, which kuromoji knows, but standing as the book wrote them.
+const toHiragana = (text: string): string =>
+  text.replace(/[ァ-ヶ]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0x60));
+
+/**
+ * ヤバい, スカした, ムカつく: an adjective or a verb written in katakana for effect, with its ending in
+ * hiragana. kuromoji only knows it in hiragana and cuts it into a noun and a stray ending (ヤバ + いん),
+ * so such a run is read in hiragana when that reads it as one word that takes its ending. Not otherwise:
+ * キスした stays キス + した, and テレビを stays テレビ + を.
+ */
+const readKatakanaWords = async (
+  tokenizer: TokenizerClient,
+  text: string,
+  tokens: JapaneseMorphologicalToken[],
+): Promise<{ text: string; tokens: JapaneseMorphologicalToken[] }> => {
+  // Where each token starts: kuromoji's tokens cover the text one after another.
+  const starts = (list: JapaneseMorphologicalToken[]) => {
+    let offset = 0;
+    return list.map((token) => {
+      const at = token.word_position ? token.word_position - 1 : offset;
+      offset = at + token.surface_form.length;
+      return { token, at };
+    });
+  };
+  const runs = [...text.matchAll(/[ァ-ヶー]+(?=[ぁ-ゖ])/g)]
+    .map((match) => ({ start: match.index ?? 0, end: (match.index ?? 0) + match[0].length }))
+    .filter(({ start }) => starts(tokens).some(({ token, at }) => at === start && /^[ァ-ヶー]+$/.test(token.surface_form)));
+  if (!runs.length) return { text, tokens };
+  const reading = (chosen: typeof runs) => chosen.reduce(
+    (current, { start, end }) => current.slice(0, start) + toHiragana(current.slice(start, end)) + current.slice(end),
+    text,
+  );
+  const candidate = reading(runs);
+  const candidateTokens = await tokenizer.tokenize(candidate);
+  const kept = runs.filter(({ start, end }) => starts(candidateTokens).some(({ token, at }) =>
+    at === start &&
+    start + token.surface_form.length > end &&
+    ['動詞', '形容詞'].includes(token.pos) &&
+    Boolean(token.basic_form) && token.basic_form !== '*'
+  ));
+  if (!kept.length) return { text, tokens };
+  if (kept.length === runs.length) return { text: candidate, tokens: candidateTokens };
+  const partial = reading(kept);
+  return { text: partial, tokens: await tokenizer.tokenize(partial) };
+};
+
+/**
+ * The tokens of a text as kuromoji reads it best, standing as the book wrote it: 摑む and 啞然 in their
+ * everyday kanji, which kuromoji knows, and ヤバい in hiragana.
+ */
+const tokenizeReadable = async (tokenizer: TokenizerClient, text: string): Promise<JapaneseMorphologicalToken[]> => {
   const everyday = toEverydayKanji(text);
-  const tokens = await tokenizer.tokenize(everyday);
-  if (everyday === text) return tokens;
+  const read = await readKatakanaWords(tokenizer, everyday, await tokenizer.tokenize(everyday));
+  if (read.text === text) return read.tokens;
   let offset = 0;
-  return tokens.map((token) => {
+  return read.tokens.map((token) => {
     const at = token.word_position ? token.word_position - 1 : offset;
     offset = at + token.surface_form.length;
     const surface = text.slice(at, offset);
     return surface === token.surface_form ? token : { ...token, surface_form: surface };
   });
 };
+
+export const tokenizeJapanese = async (text: string): Promise<JapaneseMorphologicalToken[]> =>
+  tokenizeReadable(await getTokenizer(true), text);
 
 /** Which of these forms the dictionary lists exactly as they are written (in the bundled JMdict). */
 export const findDictionaryForms = async (forms: string[]): Promise<Set<string>> => {
@@ -617,8 +667,13 @@ const findRawEntries = (
     const reading = entry.r.indexOf(form);
     return reading >= 0 ? reading : entry.k.length + entry.r.length;
   };
+  // Then the entry that also lists more of the other forms looked up: スカす that is also read すかす
+  // ("to put on airs") before the スカす of sumo slang.
+  const allTerms = [...normalizedDirect, ...normalizedWhole, ...normalizedSub];
+  const formsListed = ({ entry }: { entry: CompactEntry }) =>
+    allTerms.filter((term) => entry.k.includes(term) || entry.r.includes(term)).length;
   return [...ranked.values()]
-    .sort((left, right) => left.score - right.score || spellingRank(left) - spellingRank(right))
+    .sort((left, right) => left.score - right.score || spellingRank(left) - spellingRank(right) || formsListed(right) - formsListed(left))
     .map(({ form: _form, ...match }) => match);
 };
 
@@ -647,8 +702,25 @@ export const getDictionarySearchTerms = async (
     const tokenizer = await getTokenizer();
     // The same pieces the reader joins (不安気な is cut as 不 + 安気), so the lookup is of the word shown.
     // Traditional kanji (摑まれていた) in their everyday form, which kuromoji knows: else 摑 is cut off alone.
-    const tokens = joinNounPieces(await tokenizer.tokenize(toEverydayKanji(originalText)));
+    const rawTokens = await tokenizeReadable(tokenizer, originalText);
+    const tokens = joinNounPieces(rawTokens);
     tokenizerAvailable = true;
+
+    // 高難易度: a prefix joined to a noun the dictionary does not know with it (高難易). The word is then
+    // the nouns after the prefix (難易度), looked up before their pieces.
+    const unprefixed = rawTokens.flatMap((token, index) => {
+      const noun = rawTokens[index + 1];
+      if (token.pos !== '接頭詞' || noun?.pos !== '名詞') return [];
+      let rest = '';
+      for (let end = index + 1; rawTokens[end]?.pos === '名詞'; end += 1) rest += rawTokens[end].surface_form;
+      return rest.length > noun.surface_form.length ? [{ joined: token.surface_form + noun.surface_form, rest }] : [];
+    });
+    if (unprefixed.length) {
+      const listed = await findDictionaryForms(unprefixed.flatMap(({ joined, rest }) => [joined, rest]));
+      for (const { joined, rest } of unprefixed) {
+        if (!listed.has(joined) && listed.has(rest)) subTokenTerms.push(rest);
+      }
+    }
 
     // A verb that only adds an aspect to the て-form before it (送り出してしまおう,
     // 食べている, 書いてる) is not the word being looked up: the reader joins it to
@@ -688,10 +760,20 @@ export const getDictionarySearchTerms = async (
       }
     }
 
+    let bookSpelling: string | null = null;
     if (lastVerbIdx >= 0) {
       phraseBase = tokens.slice(0, lastVerbIdx).map((t) => t.surface_form).join('') + tokens[lastVerbIdx].basic_form;
       if (phraseBase && phraseBase !== originalText) {
         wholePhraseTerms.unshift(phraseBase);
+      }
+      // スカした: read in hiragana (すかす), but looked up first as the book spells it (スカす), which is
+      // the word the dictionary means by it.
+      const verb = tokens[lastVerbIdx];
+      const katakana = verb.surface_form.match(/^[ァ-ヶー]+/)?.[0];
+      if (katakana && phraseBase && verb.basic_form?.startsWith(toHiragana(katakana))) {
+        const spelled = tokens.slice(0, lastVerbIdx).map((t) => t.surface_form).join('') +
+          katakana + verb.basic_form.slice(katakana.length);
+        if (spelled !== originalText) bookSpelling = spelled;
       }
     }
 
@@ -722,9 +804,32 @@ export const getDictionarySearchTerms = async (
         wholePhraseTerms.unshift(verbBase);
       }
     }
+    if (bookSpelling) {
+      wholePhraseTerms.unshift(bookSpelling);
+      // The hiragana reading is then only a lead (すかす is also 賺す, to coax), unless the dictionary does
+      // not list the word as the book spells it.
+      if ((await findDictionaryForms([bookSpelling])).has(bookSpelling)) {
+        for (const form of [phraseBase, tokens[lastVerbIdx].basic_form]) {
+          const at = form ? wholePhraseTerms.indexOf(form) : -1;
+          if (at < 0 || form === bookSpelling) continue;
+          wholePhraseTerms.splice(at, 1);
+          subTokenTerms.unshift(form as string);
+        }
+      }
+    }
   } catch (err) {
     // The regex fallback still provides useful lookups when the tokenizer is unavailable.
     console.error('[dictionary] tokenizer error:', err);
+  }
+
+  // 救えない: kuromoji reads the potential of a godan verb (救える) as a verb of its own, which the
+  // dictionary only lists for some (読める). Otherwise the verb it comes from is looked up (救う).
+  const potentials = wholePhraseTerms.filter((term) => godanPotentialStemToDictionaryForm[term.slice(-2, -1)] && term.endsWith('る'));
+  if (potentials.length) {
+    const listed = await findDictionaryForms(potentials);
+    for (const term of potentials) {
+      if (!listed.has(term)) wholePhraseTerms.push(term.slice(0, -2) + godanPotentialStemToDictionaryForm[term.slice(-2, -1)]);
+    }
   }
 
   const directTerms = [originalText];

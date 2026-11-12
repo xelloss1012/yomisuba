@@ -173,6 +173,33 @@ try {
   assert.deepEqual(await pageWords('それが気に入った'), ['それ:それ', 'が:が', '気に入った:気に入る']);
   assert.deepEqual(await pageWords('学校に行った'), ['学校:学校', 'に:に', '行った:行く']);
 
+  // A noun and に that the dictionary lists as an adverb are one word, unless the noun is qualified.
+  assert.deepEqual((await pageWords('何だか無性に殴りたい')).slice(0, 3), ['何だか:何だか', '無性に:無性に', '殴りたい:殴る']);
+  assert.deepEqual(await pageWords('家の前に立つ'), ['家:家', 'の:の', '前:前', 'に:に', '立つ:立つ']);
+  assert.deepEqual(await pageWords('彼の先に行く'), ['彼:彼', 'の:の', '先:先', 'に:に', '行く:行く']);
+  assert.deepEqual(await pageWords('先に行く'), ['先に:先に', '行く:行く']);
+  assert.deepEqual(await pageWords('一緒に行こう'), ['一緒に:一緒に', '行こう:行く']);
+
+  // An adjective or a verb written in katakana for effect is one word, read in hiragana; a katakana noun stays one.
+  assert.deepEqual(await pageWords('ヤバいんですけど'), ['ヤバい:やばい', 'ん:ん', 'です:です', 'けど:けど']);
+  assert.deepEqual(await pageWords('スカしたエリート顔'), ['スカした:すかす', 'エリート顔:エリート顔']);
+  assert.deepEqual(await pageWords('ムカつく'), ['ムカつく:むかつく']);
+  assert.deepEqual(await pageWords('キスした'), ['キスした:キスする']);
+  assert.deepEqual(await pageWords('テレビを見た'), ['テレビ:テレビ', 'を:を', '見た:見る']);
+  const lead = async (text) => (await getDictionarySearchTerms(text, 'es')).entries[0];
+  assert.ok((await lead('ヤバいんですけど')).kana.includes('やばい'));
+  // スカす as the book spells it ("to put on airs"), before すかす (賺す, to coax).
+  const posing = await getDictionarySearchTerms('スカした', 'es');
+  assert.equal(posing.baseForm, 'スカす');
+  assert.ok(posing.entries[0].kana.includes('すかす') && posing.entries[0].kana.includes('スカす'), posing.entries[0].kana.join(','));
+  // A prefix the dictionary does not list with its noun: the noun compound after it is the word.
+  assert.ok((await lead('高難易度')).kanji.includes('難易度'));
+  // The potential of a godan verb that the dictionary does not list is looked up by its verb.
+  const rescue = await getDictionarySearchTerms('救えない', 'es');
+  assert.equal(rescue.baseForm, '救う');
+  assert.ok(rescue.entries[0].kanji.includes('救う'));
+  assert.equal((await getDictionarySearchTerms('読めない', 'es')).baseForm, '読める', 'a listed potential stays');
+
   console.log('PASS: kuromoji pieces are joined into the words a reader means (suffixes, する verbs) and looked up main word first.');
 } finally {
   await server.close();

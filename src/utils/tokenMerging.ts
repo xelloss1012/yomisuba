@@ -43,12 +43,27 @@ const expressionAt = (tokens: MergedToken[], index: number): string | null => {
   return noun.token.surface_form + particle.token.surface_form + base;
 };
 
+/**
+ * The adverb a noun and に may make: 無性に, 一緒に. kuromoji reads 無性に as one word in some sentences
+ * and as 無性 + に in others (無性に殴りたい). Not when the noun is qualified (彼の先に is "ahead of
+ * him", not 先に, "first"), nor with nouns of time or place, whose に keeps its own meaning (前に).
+ */
+const ADVERB_NOUNS = new Set(['一般', 'サ変接続']);
+const QUALIFYING_PARTICLES = new Set(['の', 'が']);
+
+const adverbAt = (tokens: MergedToken[], index: number): string | null => {
+  const [noun, particle] = tokens.slice(index, index + 2);
+  if (!noun || !particle || noun.end !== particle.start) return null;
+  if (noun.token.pos !== '名詞' || !ADVERB_NOUNS.has(noun.token.pos_detail_1 ?? "")) return null;
+  if (particle.token.pos !== '助詞' || particle.token.surface_form !== 'に') return null;
+  const before = tokens[index - 1];
+  if (before?.end === noun.start && before.token.pos === '助詞' && QUALIFYING_PARTICLES.has(before.token.surface_form)) return null;
+  return noun.token.surface_form + particle.token.surface_form;
+};
+
 /** The set phrases the words could make, to ask the dictionary which of them it lists. */
 export const expressionCandidates = (tokens: MergedToken[]): string[] =>
-  tokens.flatMap((_, index) => {
-    const form = expressionAt(tokens, index);
-    return form ? [form] : [];
-  });
+  tokens.flatMap((_, index) => [expressionAt(tokens, index), adverbAt(tokens, index)].filter((form): form is string => Boolean(form)));
 
 /** Joins into one word each set phrase that the dictionary lists (`known`). */
 export const joinExpressions = (tokens: MergedToken[], known: ReadonlySet<string>): MergedToken[] => {
@@ -56,6 +71,24 @@ export const joinExpressions = (tokens: MergedToken[], known: ReadonlySet<string
   for (let index = 0; index < tokens.length; index += 1) {
     const form = expressionAt(tokens, index);
     if (!form || !known.has(form)) {
+      const adverb = adverbAt(tokens, index);
+      if (adverb && known.has(adverb)) {
+        const [noun, particle] = tokens.slice(index, index + 2);
+        joined.push({
+          start: noun.start,
+          end: particle.end,
+          token: {
+            ...noun.token,
+            pos: '副詞',
+            pos_detail_1: '一般',
+            surface_form: adverb,
+            reading: noun.token.reading && particle.token.reading ? noun.token.reading + particle.token.reading : noun.token.reading,
+            basic_form: adverb,
+          },
+        });
+        index += 1;
+        continue;
+      }
       joined.push(tokens[index]);
       continue;
     }
