@@ -884,8 +884,11 @@ export const EpubReader: React.FC<Props> = ({
     // reserves the larger header/footer areas only while the UI is open.
     const pageColumnWidth = `calc(100vw - ${sidePad * 2}px)`;
     const pageColumnGap = `${sidePad * 2}px`;
-    const padTop = isVertical ? (mobile ? 18 : 32) : (mobile ? 18 : 32);
-    const padBottom = mobile ? 52 : 40;
+    // On a phone the text sits a little high: the buttons of the footer stay at the bottom while reading,
+    // and a tap on the last line must not land on them. The page keeps its length (the two add up to the
+    // same), and the room above stays inside the safe area, under the status bar and the camera.
+    const padTop = mobile ? 8 : 32;
+    const padBottom = mobile ? 62 : 40;
     const pad = `${padTop}px 0 ${padBottom}px`;
     // In vertical-rl a page is a column: its inline size is the screen height
     // minus the top and bottom padding, and the gap between columns equals that
