@@ -54,6 +54,7 @@ import { BookPosition, comparePositions, describeDevice, getDeviceId, latestPagi
 import { DriveConflict, DriveConflictModal } from './components/DriveConflictModal';
 import { DeleteBookChoice, DeleteBookModal, DeleteBookRequest } from './components/DeleteBookModal';
 import { Loader2 } from 'lucide-react';
+import { bookNeedsPull, markAllBooksToPull, markBookPulled } from './utils/driveBooksToPull';
 import { bookDataKeys, bookKeyOf, listStoredBooks } from './utils/studyData';
 import { mergeProgress, readStudyProgress, STUDY_PROGRESS_EVENT, writeStudyProgress } from './utils/studyProgress';
 import type { DriveStudyState } from './components/StudyDashboard';
@@ -310,15 +311,16 @@ export const App: React.FC = () => {
   };
 
   /**
-   * Whose data Drive keeps. The same device, or a device that has nothing yet, loads it as always;
-   * after another device (or an older version that did not say which) the person decides.
+   * Whose data Drive keeps. When this device wrote last, Drive holds nothing newer than what it keeps
+   * itself, so nothing is taken from Drive ('same'). A device that has nothing yet loads it; after another
+   * device (or an older version that did not say which) the person decides.
    */
   const decideDriveSync = async (
     session: GoogleDriveSession,
     writer: DriveWriter | null,
     driveHasData: boolean,
-  ): Promise<'load' | 'keep'> => {
-    if (writer?.deviceId === getDeviceId()) return 'load';
+  ): Promise<'load' | 'keep' | 'same'> => {
+    if (writer?.deviceId === getDeviceId()) return 'same';
     if (!writer && (FRESH_DEVICE || !driveHasData)) return 'load';
     return askDriveConflict(session, writer);
   };
@@ -360,8 +362,10 @@ export const App: React.FC = () => {
             driveDecidedRef.current = false;
             setDriveSettingsReady(false);
             const choice = await decideDriveSync(session, writer, Boolean(settingsDate));
-            let settingsLoaded = choice === 'keep' || !settingsDate;
+            let settingsLoaded = choice !== 'load' || !settingsDate;
             if (choice === 'load') {
+              // Every book takes the other device's reading data when it next opens here.
+              markAllBooksToPull();
               clearPendingGoogleDriveReaderDataQueue();
               if (settingsDate) {
                 try {
@@ -390,7 +394,7 @@ export const App: React.FC = () => {
               // Saving still works; the next check simply finds no claim of this device.
             }
             lastWriterCheckRef.current = Date.now();
-            await syncStudyProgress(session, choice);
+            await syncStudyProgress(session, choice === 'keep' ? 'keep' : 'load');
             if (choice === 'load') {
               await reopenCurrentBook();
               // What the closed reader left queued is older than what was just loaded.
@@ -401,7 +405,7 @@ export const App: React.FC = () => {
             // Saves the settings now in use, so that Drive holds this device's after "keep".
             settingsRevisionRef.current += 1;
             setSettingsRevision(settingsRevisionRef.current);
-            if (choice === 'keep') {
+            if (choice !== 'load') {
               void syncPendingGoogleDriveReaderData(session.accessToken).catch(() => undefined);
             }
           })();
@@ -741,8 +745,13 @@ export const App: React.FC = () => {
       const parsed = await parseEpub(buffer);
       if (requestId !== openBookRequestIdRef.current) return;
 
+      // The book opens with the reading data this device keeps: Drive holds something newer only after
+      // another device wrote there and the person chose to load it (or on a device that had nothing). Only
+      // then is Drive waited for, once per book; otherwise opening never depends on the network.
+      const bookKey = `yomisuba_book_${encodeURIComponent(`${parsed.metadata.title}|${parsed.metadata.creator}`)}`;
+      const takeFromDrive = forceDriveRestore || bookNeedsPull(bookKey);
       let driveSession = googleDriveSession;
-      if (!driveSession && driveSessionRefreshPromiseRef.current && navigator.onLine) {
+      if (takeFromDrive && !driveSession && driveSessionRefreshPromiseRef.current && navigator.onLine) {
         setOpeningStep('drive');
         try {
           await driveSessionRefreshPromiseRef.current;
@@ -754,22 +763,22 @@ export const App: React.FC = () => {
       if (requestId !== openBookRequestIdRef.current) return;
 
       // Drive's reading data is only taken once it is settled that Drive's data is wanted.
-      if (driveSession && navigator.onLine && (driveDecidedRef.current || forceDriveRestore)) {
+      if (takeFromDrive && driveSession && navigator.onLine && (driveDecidedRef.current || forceDriveRestore)) {
         setOpeningStep('drive');
         try {
           const readerData = await restoreGoogleDriveReaderData(driveSession.accessToken, {
-            bookKey: `yomisuba_book_${encodeURIComponent(`${parsed.metadata.title}|${parsed.metadata.creator}`)}`,
+            bookKey,
             title: parsed.metadata.title,
             creator: parsed.metadata.creator,
           });
           // Changes of this book still waiting to go up (made offline, or from the vocabulary panel) are
           // newer than Drive's copy: they go up instead of being overwritten by it.
-          const bookKey = `yomisuba_book_${encodeURIComponent(`${parsed.metadata.title}|${parsed.metadata.creator}`)}`;
           if (getPendingGoogleDriveReaderData()[bookKey]) {
             void syncPendingGoogleDriveReaderData(driveSession.accessToken).catch(() => undefined);
           } else if (readerData) {
             applyGoogleDriveReaderData(readerData);
           }
+          markBookPulled(bookKey);
         } catch (error) {
           if (navigator.onLine) {
             setSyncError(t('sync.readingUpdateError', settings.language, { message: error instanceof Error ? error.message : String(error) }));
