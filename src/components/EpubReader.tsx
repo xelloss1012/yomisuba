@@ -3672,18 +3672,58 @@ export const EpubReader: React.FC<Props> = ({
     return () => window.removeEventListener('keydown', onKey);
   }, [bookGlossaryScope, imageViewerSrc, isBookmarksOpen, isPageGlossaryOpen, isRtl, isSearchOpen, isSettingsOpen, isTocOpen, isTranslateOpen, isTranslationHistoryOpen, handleNextPage, handlePrevPage, onCloseBook, openSearch]);
 
+  // The back gesture closes what is on top, one thing at a time: the layer opened last (a definition opened
+  // from the vocabulary closes before the vocabulary), then the selection menu, and only with nothing open
+  // does it leave the book. Closing a panel by mistake of the gesture must not send the reader home.
+  const backLayers = [
+    { id: 'image', open: Boolean(imageViewerSrc), close: () => setImageViewerSrc(null) },
+    { id: 'note', open: noteEditorId !== null, close: () => setNoteEditorId(null) },
+    { id: 'translate', open: isTranslateOpen, close: () => setIsTranslateOpen(false) },
+    { id: 'history', open: isTranslationHistoryOpen, close: () => setIsTranslationHistoryOpen(false) },
+    { id: 'pageGlossary', open: isPageGlossaryOpen, close: () => setIsPageGlossaryOpen(false) },
+    { id: 'bookGlossary', open: bookGlossaryScope !== null, close: () => setBookGlossaryScope(null) },
+    { id: 'search', open: isSearchOpen, close: () => setIsSearchOpen(false) },
+    { id: 'bookmarks', open: isBookmarksOpen, close: () => setIsBookmarksOpen(false) },
+    { id: 'toc', open: isTocOpen, close: () => setIsTocOpen(false) },
+    { id: 'settings', open: isSettingsOpen, close: () => setIsSettingsOpen(false) },
+    {
+      id: 'selection',
+      open: selectedText.trim().length > 0,
+      close: () => {
+        iframeRef.current?.contentWindow?.getSelection()?.removeAllRanges();
+        selectedTextRef.current = '';
+        setSelectedText('');
+        setSelectionPos(null);
+        selectionRangeRef.current = null;
+        selectionAnnotationRef.current = null;
+        selectedTextAnnotationIdRef.current = null;
+        setIsSelectionUnderlined(false);
+      },
+    },
+  ];
+  const backLayersRef = useRef(backLayers);
+  backLayersRef.current = backLayers;
+  const backOrderRef = useRef<string[]>([]);
+  useEffect(() => {
+    const open = backLayers.filter((layer) => layer.open).map((layer) => layer.id);
+    backOrderRef.current = [
+      ...backOrderRef.current.filter((id) => open.includes(id)),
+      ...open.filter((id) => !backOrderRef.current.includes(id)),
+    ];
+  });
+  const onCloseBookRef = useRef(onCloseBook);
+  onCloseBookRef.current = onCloseBook;
+
   useEffect(() => {
     let cancelled = false;
     let removeListener: (() => Promise<void>) | undefined;
     void CapacitorApp.addListener('backButton', () => {
       if (cancelled) return;
-      if (imageViewerSrc) setImageViewerSrc(null);
-      else if (isPageGlossaryOpen) setIsPageGlossaryOpen(false);
-      else if (bookGlossaryScope) setBookGlossaryScope(null);
-      else if (isTranslationHistoryOpen) setIsTranslationHistoryOpen(false);
-      else if (isSearchOpen) setIsSearchOpen(false);
-      else if (isBookmarksOpen) setIsBookmarksOpen(false);
-      else onCloseBook();
+      const layer = [...backOrderRef.current].reverse()
+        .map((id) => backLayersRef.current.find((item) => item.id === id && item.open))
+        .find(Boolean);
+      if (layer) layer.close();
+      else onCloseBookRef.current();
     }).then((listener) => {
       removeListener = () => listener.remove();
     });
@@ -3691,7 +3731,7 @@ export const EpubReader: React.FC<Props> = ({
       cancelled = true;
       if (removeListener) void removeListener();
     };
-  }, [bookGlossaryScope, imageViewerSrc, isBookmarksOpen, isPageGlossaryOpen, isSearchOpen, isTranslationHistoryOpen, onCloseBook]);
+  }, []);
 
   const handleCopyDebug = async () => {
     const text = debugLines.join('\n');
